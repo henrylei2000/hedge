@@ -7,7 +7,7 @@ import datetime
 import os
 
 
-def screen_market(market, start_date, end_date):
+def minervini_screen(market, start_date, end_date):
     index_name = ""
     # Variables
     if market == "^GSPC":
@@ -182,7 +182,7 @@ def main():
     while fund_date < today:
         screen_start_date = fund_date - datetime.timedelta(days=365)
         screen_end_date = fund_date
-        candidates = screen_market(index_name, screen_start_date, screen_end_date)
+        candidates = minervini_screen(index_name, screen_start_date, screen_end_date)
         manage_fund(fund_size, fund_date, candidates)
         clean_up()
         fund_date = fund_date + datetime.timedelta(days=30)
