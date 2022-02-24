@@ -83,12 +83,12 @@ class TestStrategy(bt.Strategy):
 
                     if self.dataclose[-1] < self.dataclose[-2]:
                         # previous close less than the previous close
+                        if self.dataclose[-2] - self.dataclose[0] > self.dataclose[0] * 0.05:
+                            # BUY, BUY, BUY!!! (with default parameters)
+                            self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
-                        # BUY, BUY, BUY!!! (with default parameters)
-                        self.log('BUY CREATE, %.2f' % self.dataclose[0])
-
-                        # Keep track of the created order to avoid a 2nd order
-                        self.order = self.buy()
+                            # Keep track of the created order to avoid a 2nd order
+                            self.order = self.buy()
 
         else:
 
@@ -101,6 +101,10 @@ class TestStrategy(bt.Strategy):
                 self.order = self.sell()
 
 
+"""
+Please run data/feeder.py first to save online data to csv
+"""
+
 if __name__ == '__main__':
     # Create a cerebro entity
     cerebro = bt.Cerebro()
@@ -111,15 +115,15 @@ if __name__ == '__main__':
     # Datas are in a subfolder of the samples. Need to find where the script is
     # because it could have been called from anywhere
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.join(modpath, 'datas/orcl-1995-2014.txt')
+    datapath = os.path.join(modpath, 'data/TSLA.csv')
 
     # Create a Data Feed
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
         # Do not pass values before this date
-        fromdate=datetime.datetime(2000, 1, 1),
+        fromdate=datetime.datetime(2021, 2, 23),
         # Do not pass values after this date
-        todate=datetime.datetime(2000, 12, 31),
+        todate=datetime.datetime(2022, 2, 23),
         reverse=False)
 
     # Add the Data Feed to Cerebro
@@ -129,7 +133,7 @@ if __name__ == '__main__':
     cerebro.broker.setcash(100000.0)
 
     # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.FixedSize, stake=10)
+    cerebro.addsizer(bt.sizers.FixedSize, stake=20)
 
     # Set the commission - 0.1% ... divide by 100 to remove the %
     cerebro.broker.setcommission(commission=0.001)
