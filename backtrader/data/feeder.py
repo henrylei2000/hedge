@@ -18,7 +18,7 @@ def stock_to_csv(ticker, start_date, end_date):
 
 
 def main():
-    ticker = "TSLA"
+    ticker = "TQQQ"
     today = datetime.datetime.now()
     yesterday = today - datetime.timedelta(days=1)
     one_year_ago = yesterday - datetime.timedelta(days=365)

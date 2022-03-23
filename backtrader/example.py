@@ -12,7 +12,7 @@ import backtrader as bt
 # Create a Strategy
 class TestStrategy(bt.Strategy):
     params = (
-        ('exitbars', 5),
+        ('exitbars', 30),
     )
 
     def log(self, txt, dt=None):
@@ -94,11 +94,17 @@ class TestStrategy(bt.Strategy):
 
             # Already in the market ... we might sell
             if len(self) >= (self.bar_executed + self.params.exitbars):
-                # SELL, SELL, SELL!!! (with all possible default parameters)
-                self.log('SELL CREATE, %.2f' % self.dataclose[0])
+                if self.dataclose[0] > self.dataclose[-1]:
+                    # current close less than previous close
 
-                # Keep track of the created order to avoid a 2nd order
-                self.order = self.sell()
+                    if self.dataclose[-1] > self.dataclose[-2]:
+                        # previous close greater than the previous close
+                        if self.dataclose[0] - self.dataclose[-2] > self.dataclose[-2] * 0.05:
+                            # SELL, SELL, SELL!!! (with all possible default parameters)
+                            self.log('SELL CREATE, %.2f' % self.dataclose[0])
+
+                            # Keep track of the created order to avoid a 2nd order
+                            self.order = self.sell()
 
 
 """
@@ -115,15 +121,19 @@ if __name__ == '__main__':
     # Datas are in a subfolder of the samples. Need to find where the script is
     # because it could have been called from anywhere
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.join(modpath, 'data/TSLA.csv')
+    datapath = os.path.join(modpath, 'data/TQQQ.csv')
+
+    today = datetime.datetime.now()
+    yesterday = today - datetime.timedelta(days=1)
+    one_year_ago = yesterday - datetime.timedelta(days=365)
 
     # Create a Data Feed
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
         # Do not pass values before this date
-        fromdate=datetime.datetime(2021, 2, 23),
+        fromdate=one_year_ago,
         # Do not pass values after this date
-        todate=datetime.datetime(2022, 2, 23),
+        todate=yesterday,
         reverse=False)
 
     # Add the Data Feed to Cerebro
@@ -133,7 +143,7 @@ if __name__ == '__main__':
     cerebro.broker.setcash(100000.0)
 
     # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.FixedSize, stake=20)
+    cerebro.addsizer(bt.sizers.FixedSize, stake=100)
 
     # Set the commission - 0.1% ... divide by 100 to remove the %
     cerebro.broker.setcommission(commission=0.001)
