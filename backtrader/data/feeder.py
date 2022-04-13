@@ -1,4 +1,5 @@
 from pandas_datareader import data as pdr
+import matplotlib.pyplot as plot
 import yfinance as yf
 import datetime
 
@@ -13,6 +14,8 @@ def stock_to_csv(ticker,
 
     # Download historical data as CSV for each stock (makes the process faster)
     df = pdr.get_data_yahoo(ticker, start_date, end_date)
+    df['Adj Close']. plot()
+    plot.show()
 
     try:
         if source == "main":

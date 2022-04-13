@@ -2,6 +2,39 @@
 import backtrader as bt
 
 
+class SMA(bt.SignalStrategy):
+
+    def __init__(self):  # Initiation
+        self.dataclose = self.datas[0].close
+        self.sma = bt.ind.SimpleMovingAverage(period=15)  # Processing
+
+    def log(self, txt, dt=None):
+        ''' Logging function fot this strategy'''
+        dt = dt or self.datas[0].datetime.date(0)
+        print('%s, %s' % (dt.isoformat(), txt))
+
+    def next(self):  # Processing
+        if self.sma > self.data.close:
+            # Do something
+            self.log('BUY CREATE, %.2f' % self.dataclose[0])
+            # Keep track of the created order to avoid a 2nd order
+            self.order = self.buy()
+
+        elif self.position and self.sma < self.data.close:  # Post-processing
+            # Do something else
+            self.log('SELL CREATE, %.2f' % self.dataclose[0])
+
+            # Keep track of the created order to avoid a 2nd order
+            self.order = self.sell()
+
+
+class SMACross(bt.SignalStrategy):
+    def __init__(self):
+        sma1, sma2 = bt.ind.SMA(period=10), bt.ind.SMA(period=20)
+        crossover = bt.ind.CrossOver(sma1, sma2)
+        self.signal_add(bt.SIGNAL_LONG, crossover)
+
+
 # Create a Strategy: Consecutive with a tad of Boll
 class Consecutive(bt.Strategy):
     params = (
@@ -86,7 +119,7 @@ class Consecutive(bt.Strategy):
             if (len(self) >= (self.bar_executed + self.params.exitbars)
                     and ((self.dataclose[0] > self.dataclose[-1] > self.dataclose[-2])
                          and (self.dataclose[0] - self.dataclose[-2] > self.dataclose[-2] * 0.05))
-                    and (self.data.close > self.boll.lines.top)):
+                    or (self.data.close > self.boll.lines.top)):
                 # SELL, SELL, SELL!!! (with all possible default parameters)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 

@@ -164,7 +164,7 @@ def extract_featuresets(ticker):
 def do_ml(ticker):
     X, y, df = extract_featuresets(ticker)
 
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.25)
+    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.5)
 
     clf = VotingClassifier([('lsvc', svm.LinearSVC()),
                             ('knn', neighbors.KNeighborsClassifier()),
@@ -187,4 +187,3 @@ if __name__ == '__main__':
     do_ml('XOM')
     do_ml('AAPL')
     do_ml('ABT')
-    do_ml('ATVI')
