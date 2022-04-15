@@ -91,7 +91,7 @@ def sort_change_rate():
         if change_rate >= 0:
             print(f" {change_rate}  {t}")
         else:
-            print(f" {change_rate}  {t}")
+            print(f"{change_rate}  {t}")
         rates.append(change_rate)
 
     df = pd.DataFrame(list(zip(tickers, rates)), columns=["Ticker", "Change"])
