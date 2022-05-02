@@ -21,9 +21,40 @@
         <canvas id="myChart"></canvas>
     </div>
     <script>
-        readTextFile("data/A.csv");
+        var dates = new Array();
+        var closes = new Array();
+        var sets = new Array();
 
-        function readTextFile(file)
+        var files = ["data/ABC.csv", "data/AAPL.csv", "data/ADM.csv"];
+        readFiles(files);
+
+        const data = {
+            labels: dates,
+            datasets: sets
+        };
+
+        showChart(data);
+
+        function showChart(data) {
+            const config = {
+                type: 'line',
+                data: data,
+              };
+
+            const myChart = new Chart(
+                document.getElementById('myChart'),
+                config
+            );
+        }
+
+        function readFiles(files) {
+            var colors = ['red', 'yellow', 'green', 'blue'];
+            for (var i = 0; i < files.length; i++) {
+                readFile(files[i], colors[i]);
+            }
+        }
+
+        function readFile(file, color="red")
         {
             var rawFile = new XMLHttpRequest();
             rawFile.open("GET", file, false);
@@ -34,40 +65,28 @@
                     if(rawFile.status === 200 || rawFile.status == 0)
                     {
                         var allText = rawFile.responseText;
+                        dates = [];
+                        closes = [];
+                        var prices = csvToArray(allText);
 
-                        prices = csvToArray(allText);
-                        var dates = new Array();
-                        var closes = new Array();
                         for (var i = 0; i < prices.length; i++) {
                             dates.push(prices[i]["Date"]);
                             closes.push(prices[i]["Adj Close"]);
                         }
-
-                        const data = {
-                            labels: dates,
-                            datasets: [{
-                              label: 'My First dataset',
-                              backgroundColor: 'rgb(255, 99, 132)',
-                              borderColor: 'rgb(255, 99, 132)',
-                              data: closes,
-                              tension: 0.1
-                            }]
-                        };
-
-                          const config = {
-                            type: 'line',
-                            data: data,
-                          };
-
-                        const myChart = new Chart(
-                            document.getElementById('myChart'),
-                            config
-                        );
+                        sets.push({
+                          label: file.substring(5, file.length - 4),
+                          backgroundColor: color,
+                          borderColor: color,
+                          data: closes,
+                          tension: 0.1
+                        });
                     }
                 }
             }
             rawFile.send(null);
         }
+
+
 
         function csvToArray(str, delimiter = ",") {
           // slice from start of text to the first \n index

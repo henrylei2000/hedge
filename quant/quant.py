@@ -181,9 +181,9 @@ def do_ml(ticker):
 
 
 if __name__ == '__main__':
-    # compile_data()
+    compile_data()
     # visualize_data()
     # examples of running:
-    do_ml('XOM')
-    do_ml('AAPL')
-    do_ml('ABT')
+    # do_ml('XOM')
+    # do_ml('AAPL')
+    # do_ml('ABT')
