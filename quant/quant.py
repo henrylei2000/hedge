@@ -41,7 +41,7 @@ def save_data(tickers):
         print(f"{t}...")
         try:
             df = pdr.get_data_yahoo(t, a_month_ago, yesterday)
-            df.to_csv(f"{t}.csv")
+            df.to_csv(f"data/{t}.csv")
         except Exception as ex:
             print("Retrying on: ", ex)
             time.sleep(10)
@@ -62,10 +62,12 @@ def read_data(ticker):
 
 
 # save_sp500_tickers()
-def compile_data():
+def compile_data(tickers=None):
+    if tickers is None:
+        tickers = get_sp500_tickers()
 
-    tickers = get_sp500_tickers()
     save_data(tickers)
+
     # main_df = pd.DataFrame()
     # for count, ticker in enumerate(tickers):
     #         df = read_data(ticker)
@@ -181,7 +183,9 @@ def do_ml(ticker):
 
 
 if __name__ == '__main__':
-    compile_data()
+    tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"]
+    save_data(tickers)
+    # compile_data(tickers)
     # visualize_data()
     # examples of running:
     # do_ml('XOM')
