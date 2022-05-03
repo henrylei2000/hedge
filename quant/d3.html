@@ -25,23 +25,27 @@ const svg = d3.select("#my_dataviz")
 
 //Read the data
 //d3.csv("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/connectedscatter.csv",
+
 d3.csv("data/AAPL.csv",
   // When reading the csv, I must format variables:
   function(d){
-    return { date : d3.timeParse("%Y-%m-%d")(d['Date']), value : d['Adj Close'] }
+    console.log(d);
+    return { date : d['Date'], value : d['Adj Close'] }
   }).then(
   // Now I can use this dataset:
   function(data) {
+    indexBase = data[0].value;
+    console.log(data.map(function(d) { return d.date; }));
     // Add X axis --> it is a date format
-    const x = d3.scaleTime()
-      .domain(d3.extent(data, d => d.date))
+    const x = d3.scalePoint()
+      .domain(data.map(function(d) { return d.date; }))
       .range([ 0, width ]);
     svg.append("g")
       .attr("transform", "translate(0," + height + ")")
-      .call(d3.axisBottom(x).ticks(d3.timeDay.every(1), '%-d %b'));
+      .call(d3.axisBottom(x));
     // Add Y axis
     const y = d3.scaleLinear()
-      .domain( [100, 200])
+      .domain( [85, 115])
       .range([ height, 0 ]);
     svg.append("g")
       .call(d3.axisLeft(y));
@@ -53,7 +57,7 @@ d3.csv("data/AAPL.csv",
       .attr("stroke-width", 2)
       .attr("d", d3.line()
         .x(d => x(d.date))
-        .y(d => y(d.value))
+        .y(d => y(d.value / indexBase * 100))
         );
 
     //var path = d3.select("path");
@@ -66,19 +70,25 @@ d3.csv("data/AAPL.csv",
           .transition()
           .ease(d3.easeLinear)
           .attr("stroke-dashoffset", 0)
-          .duration(2000);
+          .duration(3000);
 
 
     // Add the points
-<!--    svg-->
-<!--      .append("g")-->
-<!--      .selectAll("dot")-->
-<!--      .data(data)-->
-<!--      .join("circle")-->
-<!--        .attr("cx", d => x(d.date))-->
-<!--        .attr("cy", d => y(d.value))-->
-<!--        .attr("r", 5)-->
-<!--        .attr("fill", "#69b3a2")-->
+    var dots = svg
+      .append("g")
+      .selectAll("dot")
+      .data(data)
+      .join("circle")
+        .attr("cx", d => x(d.date))
+        .attr("cy", d => y(d.value / indexBase * 100))
+        .attr("r", 5)
+        .attr("fill", "#69b3a2").style("opacity", 0);
+
+    dots.transition().delay(function(d,i){ return 150*i; })
+      .duration(0)
+      .style("opacity", 1);
+
+    console.log(dots);
 });
 
 

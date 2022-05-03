@@ -71,7 +71,7 @@
 
                         for (var i = 0; i < prices.length; i++) {
                             dates.push(prices[i]["Date"]);
-                            closes.push(prices[i]["Adj Close"]);
+                            closes.push(prices[i]["Adj Close"]/prices[0]["Adj Close"] * 100);
                         }
                         sets.push({
                           label: file.substring(5, file.length - 4),
