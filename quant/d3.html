@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>D3 Chart</title>
+    <!-- Load d3.js -->
+    <script src="https://d3js.org/d3.v6.js"></script>
+</head>
+<body>
+<!-- Create a div where the graph will take place -->
+<div id="my_dataviz"></div>
+<script>
+// set the dimensions and margins of the graph
+const margin = {top: 10, right: 30, bottom: 30, left: 60},
+    width = 1080 - margin.left - margin.right,
+    height = 800 - margin.top - margin.bottom;
+
+// append the svg object to the body of the page
+const svg = d3.select("#my_dataviz")
+  .append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+//Read the data
+//d3.csv("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/connectedscatter.csv",
+d3.csv("data/AAPL.csv",
+  // When reading the csv, I must format variables:
+  function(d){
+    return { date : d3.timeParse("%Y-%m-%d")(d['Date']), value : d['Adj Close'] }
+  }).then(
+  // Now I can use this dataset:
+  function(data) {
+    // Add X axis --> it is a date format
+    const x = d3.scaleTime()
+      .domain(d3.extent(data, d => d.date))
+      .range([ 0, width ]);
+    svg.append("g")
+      .attr("transform", "translate(0," + height + ")")
+      .call(d3.axisBottom(x).ticks(d3.timeDay.every(1), '%-d %b'));
+    // Add Y axis
+    const y = d3.scaleLinear()
+      .domain( [100, 200])
+      .range([ height, 0 ]);
+    svg.append("g")
+      .call(d3.axisLeft(y));
+    // Add the line
+    var path = svg.append("path")
+      .datum(data)
+      .attr("fill", "none")
+      .attr("stroke", "#69b3a2")
+      .attr("stroke-width", 2)
+      .attr("d", d3.line()
+        .x(d => x(d.date))
+        .y(d => y(d.value))
+        );
+
+    //var path = d3.select("path");
+    console.log(path);
+    const length = path.node().getTotalLength();
+    console.log(length);
+
+    path.attr("stroke-dasharray", length + " " + length)
+        .attr("stroke-dashoffset", length)
+          .transition()
+          .ease(d3.easeLinear)
+          .attr("stroke-dashoffset", 0)
+          .duration(2000);
+
+
+    // Add the points
+<!--    svg-->
+<!--      .append("g")-->
+<!--      .selectAll("dot")-->
+<!--      .data(data)-->
+<!--      .join("circle")-->
+<!--        .attr("cx", d => x(d.date))-->
+<!--        .attr("cy", d => y(d.value))-->
+<!--        .attr("r", 5)-->
+<!--        .attr("fill", "#69b3a2")-->
+});
+
+
+</script>
+</body>
+</html>
