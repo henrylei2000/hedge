@@ -12,7 +12,7 @@
 <script>
 // set the dimensions and margins of the graph
 const margin = {top: 10, right: 30, bottom: 30, left: 60},
-    width = 1080 - margin.left - margin.right,
+    width = 1280 - margin.left - margin.right,
     height = 800 - margin.top - margin.bottom;
 
 // append the svg object to the body of the page
@@ -24,16 +24,26 @@ const svg = d3.select("#my_dataviz")
     .attr("transform", `translate(${margin.left},${margin.top})`);
 
 //Read the data
-//d3.csv("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/connectedscatter.csv",
 
-d3.csv("data/AAPL.csv",
-  // When reading the csv, I must format variables:
-  function(d){
-    console.log(d);
-    return { date : d['Date'], value : d['Adj Close'] }
-  }).then(
-  // Now I can use this dataset:
-  function(data) {
+const tickers = ["AAPL", "AAL", "AEP"];
+const logos = ["https://upload.wikimedia.org/wikipedia/commons/b/bd/Tesla_Motors.svg", "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg", "https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg"]
+const colors = ["#69b3a2", "#b32269", "#b3a269"];
+
+tickers.forEach((t, i) => getTicker(t, colors[i], logos[i]));
+
+function getTicker(ticker, color, logo) {
+    d3.csv("data/"+ ticker + ".csv",
+      // When reading the csv, I must format variables:
+      function(d){
+        return { date : d['Date'], value : d['Adj Close'] }
+      }).then(
+      // Now I can use this dataset:
+      function(data) {
+        drawLine(data, color, logo);
+    })
+};
+
+function drawLine(data, color, logo) {
     indexBase = data[0].value;
     console.log(data.map(function(d) { return d.date; }));
     // Add X axis --> it is a date format
@@ -53,8 +63,8 @@ d3.csv("data/AAPL.csv",
     var path = svg.append("path")
       .datum(data)
       .attr("fill", "none")
-      .attr("stroke", "#69b3a2")
-      .attr("stroke-width", 2)
+      .attr("stroke", color)
+      .attr("stroke-width", 3)
       .attr("d", d3.line()
         .x(d => x(d.date))
         .y(d => y(d.value / indexBase * 100))
@@ -81,15 +91,37 @@ d3.csv("data/AAPL.csv",
       .join("circle")
         .attr("cx", d => x(d.date))
         .attr("cy", d => y(d.value / indexBase * 100))
-        .attr("r", 5)
-        .attr("fill", "#69b3a2").style("opacity", 0);
+        .attr("r", 5).style("opacity", 0);
 
     dots.transition().delay(function(d,i){ return 150*i; })
-      .duration(0)
-      .style("opacity", 1);
+      .duration(0).attr("fill", color).style("opacity", 1);
 
     console.log(dots);
-});
+
+    svg.append('image')
+    .attr('xlink:href', logo)
+    .attr('width', 20)
+    .attr('height', 20)
+    .attr('x', 0)
+    .attr('y', height / 2)
+			.transition()
+			.delay(250)
+			.duration(3000)
+			.tween("pathTween", function(){return pathTween(path)})
+			// .tween("pathTween", pathTween); //Custom tween to set the cx and cy attributes
+
+		function pathTween(path){
+			var length = path.node().getTotalLength(); // Get the length of the path
+			var r = d3.interpolate(0, length); //Set up interpolation from 0 to the path length
+			return function(t){
+				var point = path.node().getPointAtLength(r(t)); // Get the next point along the path
+				d3.select(this) // Select the circle
+					.attr("x", point.x + 10) // Set the cx
+					.attr("y", point.y - 10) // Set the cy
+			}
+		}
+}
+
 
 
 </script>
