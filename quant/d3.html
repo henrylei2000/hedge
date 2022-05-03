@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>D3 Chart</title>
-    <!-- Load d3.js -->
+    <!-- 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 -->
     <script src="https://d3js.org/d3.v6.js"></script>
 </head>
 <body>
@@ -25,8 +25,10 @@ const svg = d3.select("#my_dataviz")
 
 //Read the data
 
-const tickers = ["AAPL", "AAL", "AEP"];
-const logos = ["https://upload.wikimedia.org/wikipedia/commons/b/bd/Tesla_Motors.svg", "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg", "https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg"]
+const tickers = ["TSLA", "AAPL", "GOOG"];
+const logos = ["https://upload.wikimedia.org/wikipedia/commons/b/bd/Tesla_Motors.svg",
+                "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg",
+                "https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg"]
 const colors = ["#69b3a2", "#b32269", "#b3a269"];
 
 tickers.forEach((t, i) => getTicker(t, colors[i], logos[i]));
@@ -55,7 +57,7 @@ function drawLine(data, color, logo) {
       .call(d3.axisBottom(x));
     // Add Y axis
     const y = d3.scaleLinear()
-      .domain( [85, 115])
+      .domain( [75, 125])
       .range([ height, 0 ]);
     svg.append("g")
       .call(d3.axisLeft(y));
