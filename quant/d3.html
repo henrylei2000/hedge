@@ -15,7 +15,7 @@ const margin = {top: 10, right: 160, bottom: 30, left: 60},
     width = 1440 - margin.left - margin.right,
     height = 960 - margin.top - margin.bottom,
     y_label_min = 45,
-    y_label_max = 105;
+    y_label_max = 130;
 
 // append the svg object to the body of the page
 const svg = d3.select("#my_dataviz")
@@ -37,7 +37,7 @@ function getTicker(ticker, color) {
     d3.csv("data/"+ ticker + ".csv",
       // When reading the csv, I must format variables:
       function(d){
-        return { date : d['Date'], value : d['Adj Close'] }
+        return { date : d['Date'].substring(5), value : d['Adj Close'] }
       }).then(
       // Now I can use this dataset:
       function(data) {
@@ -52,9 +52,18 @@ function drawLine(data, color, logo) {
     const x = d3.scalePoint()
       .domain(data.map(function(d) { return d.date; }))
       .range([ 0, width ]);
+
+     var show = 0;
+
+     const axis = d3.axisBottom(x)
+      .tickFormat(function(d) {
+        show += 1;
+        return show % 2 ? null : d;
+      });
+
     svg.append("g")
       .attr("transform", "translate(0," + height + ")")
-      .call(d3.axisBottom(x));
+      .call(axis);
     // Add Y axis
     const y = d3.scaleLinear()
       .domain( [y_label_min, y_label_max])
@@ -95,7 +104,7 @@ function drawLine(data, color, logo) {
         .attr("cy", d => y(d.value / indexBase * 100))
         .attr("r", 5).style("opacity", 0);
 
-    dots.transition().delay(function(d,i){ return 150*i; })
+    dots.transition().delay(function(d,i){ return 50 * i; })
       .duration(0).attr("fill", color).style("opacity", 1);
 
     console.log(dots);
@@ -107,7 +116,7 @@ function drawLine(data, color, logo) {
     .attr('x', 10)
     .attr('y', (y_label_max - 100) / (y_label_max - y_label_min) * height - 10)
 			.transition()
-			.delay(250)
+			.delay(150)
 			.duration(3000)
 			.tween("pathTween", function(){return pathTween(path)})
 			// .tween("pathTween", pathTween); //Custom tween to set the cx and cy attributes

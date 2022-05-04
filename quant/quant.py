@@ -36,17 +36,18 @@ def save_data(tickers):
     yesterday = today - datetime.timedelta(days=1)
     a_week_ago = yesterday - datetime.timedelta(days=7)
     a_month_ago = yesterday - datetime.timedelta(days=30)
+    three_month_ago = yesterday - datetime.timedelta(days=90)
     a_year_ago = yesterday - datetime.timedelta(days=365)
     for t in tickers:
         print(f"{t}...")
         try:
-            df = pdr.get_data_yahoo(t, a_month_ago, yesterday)
+            df = pdr.get_data_yahoo(t, three_month_ago, yesterday)
             df.to_csv(f"data/{t}.csv")
         except Exception as ex:
             print("Retrying on: ", ex)
             time.sleep(10)
             try:
-                df = pdr.get_data_yahoo(t, a_month_ago, yesterday)
+                df = pdr.get_data_yahoo(t, three_month_ago, yesterday)
                 df.to_csv(f"{t}.csv")
             except Exception as ex:
                 print("Failed on:", ex)
@@ -184,7 +185,6 @@ def do_ml(ticker):
 
 if __name__ == '__main__':
     tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"]
-    tickers = ["MHK", "KMB", "UAL", "VLO", "BBWI"]
     save_data(tickers)
     # compile_data(tickers)
     # visualize_data()
