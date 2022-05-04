@@ -74,9 +74,11 @@ def get_change_rate(ticker):
     today = datetime.datetime.now()
     yesterday = today - datetime.timedelta(days=1)
     a_week_ago = yesterday - datetime.timedelta(days=7)
+    a_month_ago = yesterday - datetime.timedelta(days=30)
+    a_year_ago = yesterday - datetime.timedelta(days=365)
     try:
-        df = si.get_data(ticker, start_date=a_week_ago, end_date=yesterday)
-        change_rate = (df.iloc[4, 4] - df.iloc[0, 4]) / df.iloc[0, 4]
+        df = si.get_data(ticker, start_date=a_month_ago, end_date=yesterday)
+        change_rate = (df.iloc[-1, 4] - df.iloc[0, 4]) / df.iloc[0, 4]  # iloc[-1]: last row
     except IndexError as e:
         change_rate = 0.0
     return change_rate * 100

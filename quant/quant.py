@@ -184,6 +184,7 @@ def do_ml(ticker):
 
 if __name__ == '__main__':
     tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"]
+    tickers = ["MHK", "KMB", "UAL", "VLO", "BBWI"]
     save_data(tickers)
     # compile_data(tickers)
     # visualize_data()

@@ -11,7 +11,7 @@
 <div id="my_dataviz"></div>
 <script>
 // set the dimensions and margins of the graph
-const margin = {top: 10, right: 30, bottom: 30, left: 60},
+const margin = {top: 10, right: 160, bottom: 30, left: 60},
     width = 1440 - margin.left - margin.right,
     height = 960 - margin.top - margin.bottom,
     y_label_min = 45,
@@ -28,17 +28,12 @@ const svg = d3.select("#my_dataviz")
 //Read the data
 
 const tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"];
-const logos = ["https://upload.wikimedia.org/wikipedia/en/0/04/Facebook_f_logo_%282021%29.svg",
-                "https://upload.wikimedia.org/wikipedia/commons/4/4a/Amazon_icon.svg",
-                "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg",
-                "https://upload.wikimedia.org/wikipedia/commons/0/0c/Netflix_2015_N_logo.svg",
-                "https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg",
-                "https://upload.wikimedia.org/wikipedia/commons/b/bb/Tesla_T_symbol.svg"]
+
 const colors = ["#69b3a2", "#b32269", "#b3a269", "#69a2b3", "#a211b3", "#22b333"];
 
-tickers.forEach((t, i) => getTicker(t, colors[i], logos[i]));
+tickers.forEach((t, i) => getTicker(t, colors[i]));
 
-function getTicker(ticker, color, logo) {
+function getTicker(ticker, color) {
     d3.csv("data/"+ ticker + ".csv",
       // When reading the csv, I must format variables:
       function(d){
@@ -46,7 +41,7 @@ function getTicker(ticker, color, logo) {
       }).then(
       // Now I can use this dataset:
       function(data) {
-        drawLine(data, color, logo);
+        drawLine(data, color, "misc/" + ticker + ".svg");
     })
 };
 
@@ -107,7 +102,7 @@ function drawLine(data, color, logo) {
 
     svg.append('image')
     .attr('xlink:href', logo)
-    .attr('width', 20)
+    .attr('width', 60)
     .attr('height', 20)
     .attr('x', 10)
     .attr('y', (y_label_max - 100) / (y_label_max - y_label_min) * height - 10)
