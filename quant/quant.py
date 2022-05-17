@@ -19,6 +19,15 @@ def save_sp500_tickers():
     df.to_csv("S&P500.csv", columns=['Symbol'])
 
 
+def save_nasdaq100_tickers():
+    table = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')
+    df = table[3]
+    try:
+        df.to_csv('Nasdaq100-Info.csv')
+        df.to_csv("Nasdaq100.csv", columns=['Ticker'])
+    except Exception as ex:
+        pass
+
 def get_sp500_tickers():
     tickers = []
     df = pd.read_csv("S&P500.csv")
@@ -30,6 +39,16 @@ def get_sp500_tickers():
 
     return tickers
 
+def get_nasdaq100_tickers():
+    tickers = []
+    df = pd.read_csv("Nasdaq100.csv")
+    for i, row in df.iterrows():
+        unique_id = i
+        symbol = row['Ticker']
+        sanitized_symbol = symbol.replace(".", "-")
+        tickers.append(sanitized_symbol)
+
+    return tickers
 
 def save_data(tickers):
     today = datetime.datetime.now()
@@ -48,13 +67,13 @@ def save_data(tickers):
             time.sleep(10)
             try:
                 df = pdr.get_data_yahoo(t, three_month_ago, yesterday)
-                df.to_csv(f"{t}.csv")
+                df.to_csv(f"data/{t}.csv")
             except Exception as ex:
                 print("Failed on:", ex)
 
 
 def read_data(ticker):
-    df = pd.read_csv(f"{ticker}.csv")
+    df = pd.read_csv(f"data/{ticker}.csv")
     df.set_index('Date', inplace=True)
     df.rename(columns={'Adj Close': ticker}, inplace=True)
     df.drop(['Open', 'High', 'Low', 'Close', 'Volume'], 1, inplace=True)
@@ -84,14 +103,14 @@ def compile_data(tickers=None):
 
     print(main_df.head())
 
-    main_df.to_csv('sp500_joined_closes.csv')
+    main_df.to_csv('joined_closes.csv')
 
 
 def visualize_data():
-    df = pd.read_csv('sp500_joined_closes.csv')
+    df = pd.read_csv('joined_closes.csv')
     df_corr = df.corr()
     print(df_corr.head())
-    df_corr.to_csv('sp500corr.csv')
+    df_corr.to_csv('corr.csv')
     data1 = df_corr.values
     fig1 = plt.figure()
     ax1 = fig1.add_subplot(111)
@@ -115,7 +134,7 @@ def visualize_data():
 
 def process_data_for_labels(ticker):
     hm_days = 7
-    df = pd.read_csv('sp500_joined_closes.csv', index_col=0)
+    df = pd.read_csv('joined_closes.csv', index_col=0)
     tickers = df.columns.values.tolist()
     df.fillna(0, inplace=True)
     for i in range(1, hm_days+1):
@@ -184,10 +203,14 @@ def do_ml(ticker):
 
 
 if __name__ == '__main__':
-    tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"]
-    save_data(tickers)
-    # compile_data(tickers)
-    # visualize_data()
+
+    #save_nasdaq100_tickers()
+
+    # tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"]
+    tickers = get_nasdaq100_tickers()
+    # save_data(tickers)
+    compile_data(tickers)
+    visualize_data()
     # examples of running:
     # do_ml('XOM')
     # do_ml('AAPL')

@@ -10,6 +10,29 @@ def save_sp500_tickers():
     df.to_csv("S&P500.csv", columns=['Symbol'])
 
 
+def save_nasdaq100_tickers():
+    table = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')
+    df = table[3]
+    try:
+        df.to_csv("Nasdaq100.csv", columns=['Ticker'])
+    except Exception as ex:
+        pass
+
+
+def get_nasdaq100_tickers():
+    print("updating nasdaq 100 tickers...")
+    save_nasdaq100_tickers()
+    tickers = []
+    df = pd.read_csv("Nasdaq100.csv")
+    for i, row in df.iterrows():
+        unique_id = i
+        symbol = row['Ticker']
+        sanitized_symbol = symbol.replace(".", "-")
+        tickers.append(sanitized_symbol)
+
+    return tickers
+
+
 def read_table():
     income_statement = si.get_income_statement("tsla")
     print(income_statement)
@@ -75,9 +98,11 @@ def get_change_rate(ticker):
     yesterday = today - datetime.timedelta(days=1)
     a_week_ago = yesterday - datetime.timedelta(days=7)
     a_month_ago = yesterday - datetime.timedelta(days=30)
+    year = datetime.date.today().year
+    year_beginning = datetime.datetime(year, 1, 1)
     a_year_ago = yesterday - datetime.timedelta(days=365)
     try:
-        df = si.get_data(ticker, start_date=a_month_ago, end_date=yesterday)
+        df = si.get_data(ticker, start_date=year_beginning, end_date=yesterday)
         change_rate = (df.iloc[-1, 4] - df.iloc[0, 4]) / df.iloc[0, 4]  # iloc[-1]: last row
     except IndexError as e:
         change_rate = 0.0
@@ -85,18 +110,23 @@ def get_change_rate(ticker):
 
 
 def sort_change_rate():
-    tickers = get_sp500_tickers()  # ["BRK.B"]
+    # tickers = get_sp500_tickers()  # ["BRK.B"]
+    tickers = get_nasdaq100_tickers()
     rates = []
+    selected_rates = []
+    selected_tickers = []
     for t in tickers:
         sanitized_symbol = t.replace(".", "-")
         change_rate = get_change_rate(sanitized_symbol)
         if change_rate >= 0:
             print(f" {change_rate}  {t}")
+            selected_rates.append(change_rate)
+            selected_tickers.append(t)
         else:
             print(f"{change_rate}  {t}")
         rates.append(change_rate)
 
-    df = pd.DataFrame(list(zip(tickers, rates)), columns=["Ticker", "Change"])
+    df = pd.DataFrame(list(zip(selected_tickers, selected_rates)), columns=["Ticker", "Change"])
 
     sorted_df = df.sort_values(by=['Change'], ascending=False)
 
