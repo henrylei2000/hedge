@@ -110,8 +110,8 @@ def get_change_rate(ticker):
 
 
 def sort_change_rate():
-    # tickers = get_sp500_tickers()  # ["BRK.B"]
-    tickers = get_nasdaq100_tickers()
+    tickers = get_sp500_tickers()  # ["BRK.B"]
+    # tickers = get_nasdaq100_tickers()
     rates = []
     selected_rates = []
     selected_tickers = []

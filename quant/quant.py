@@ -206,8 +206,8 @@ if __name__ == '__main__':
 
     #save_nasdaq100_tickers()
 
-    # tickers = ["FB", "AMZN", "AAPL", "NFLX", "GOOG", "TSLA"]
-    tickers = get_nasdaq100_tickers()
+    tickers = ["DKS", "ASO", "FL", "BBY", "AEO", "ANF"]
+    # tickers = get_nasdaq100_tickers()
     # save_data(tickers)
     compile_data(tickers)
     visualize_data()
