@@ -118,7 +118,7 @@ def sort_change_rate():
     for t in tickers:
         sanitized_symbol = t.replace(".", "-")
         change_rate = get_change_rate(sanitized_symbol)
-        if change_rate >= 0:
+        if change_rate > 0:
             print(f" {change_rate}  {t}")
             selected_rates.append(change_rate)
             selected_tickers.append(t)
