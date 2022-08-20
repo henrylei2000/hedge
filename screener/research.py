@@ -119,32 +119,22 @@ def sort_change_rate():
     selected_tickers = []
     selected_sectors = []
     selected_rates = []
-    n_selected_tickers = []
-    n_selected_sectors = []
-    n_selected_rates = []
     for t, s in tickers:
         sanitized_symbol = t.replace(".", "-")
         change_rate = get_change_rate(sanitized_symbol)
-        if change_rate > 0:
-            selected_rates.append(change_rate)
-            selected_tickers.append(t)
-            selected_sectors.append(s)
-        else:
-            n_selected_rates.append(change_rate)
-            n_selected_tickers.append(t)
-            n_selected_sectors.append(s)
+        selected_rates.append(change_rate)
+        selected_tickers.append(t)
+        selected_sectors.append(s)
 
         print(f"{change_rate}  {t}")
         rates.append(change_rate)
 
     df = pd.DataFrame(list(zip(selected_tickers, selected_sectors, selected_rates)), columns=["Ticker", "GICS Sector", "Change"])
-    n_df = pd.DataFrame(list(zip(n_selected_tickers, n_selected_sectors, n_selected_rates)), columns=["Ticker", "GICS Sector", "Change"])
 
     sorted_df = df.sort_values(by=['Change'], ascending=False)
-    n_sorted_df = n_df.sort_values(by=['Change'], ascending=True)
 
     print(sorted_df.head(10))
-    print(n_sorted_df.head(10))
+    print(sorted_df.tail(10).iloc[::-1])
 
 
 if __name__ == '__main__':
