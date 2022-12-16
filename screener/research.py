@@ -125,6 +125,8 @@ def get_change_rate(ticker, start):
         start_date = datetime.date(today.year, today.month - 2, today.day)
     elif start == "three_months_ago":
         start_date = datetime.date(today.year, today.month - 3, today.day)
+    elif start == "six_months_ago":
+        start_date = datetime.date(today.year, today.month - 6, today.day)
     elif start == "ytd":
         start_date = datetime.date(today.year, 1, 1)
     elif start == "a_year_ago":
@@ -184,4 +186,4 @@ def sort_change_rate(market="indices", start="a_week_ago"):
 
 
 if __name__ == '__main__':
-    sort_change_rate("indices", "three_months_ago")
+    sort_change_rate("indices", "a_year_ago")
