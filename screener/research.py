@@ -1,5 +1,6 @@
 from yahoo_fin import stock_info as si
 import pandas as pd
+import pandas_ta as ta
 import pandas_datareader.data as pdr
 import datetime
 
@@ -33,6 +34,22 @@ def get_nasdaq100_tickers():
         tickers.append((sanitized_symbol, sector))
 
     return tickers  # tuples of (ticker, sector)
+
+
+def get_sector_tickers():
+    print("updating spdr sector tickers...")
+    tickers = [('XLY', 'Consumer Discretionary'), ('XLK', 'Technology'),
+               ('XLC', 'Communication Services'), ('XLI', 'Industrials'), ('XLF', 'Financial Services'), ('XLB', 'Materials'),
+               ('XLE', 'Energy'), ('XLV', 'Health Care'), ('XLRE', 'Real Estate'), ('XLU', 'Utilities'), ('XLP', 'Consumer Staples')]
+
+    return tickers  # list of tuples
+
+
+def get_index_tickers():
+    print("updating index tickers...")
+    tickers = [('SPY', 'S&P 500'), ('QQQ', 'NASDAQ 100'), ('DIA', 'Dow-Jones')]
+
+    return tickers  # list of tuples
 
 
 def read_table():
@@ -96,46 +113,75 @@ def sort_market_cap():
     print(sorted_df)
 
 
-def get_change_rate(ticker):
-    today = datetime.datetime.now()
-    yesterday = today - datetime.timedelta(days=1)
-    a_week_ago = yesterday - datetime.timedelta(days=7)
-    a_month_ago = yesterday - datetime.timedelta(days=30)
-    year = datetime.date.today().year
-    year_beginning = datetime.datetime(year, 1, 1)
-    a_year_ago = yesterday - datetime.timedelta(days=365)
+def get_change_rate(ticker, start):
+    today = datetime.date.today()
+    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+
+    if start == "a_week_ago":
+        start_date = datetime.date(today.year, today.month, today.day - 7)
+    elif start == "a_month_ago":
+        start_date = datetime.date(today.year, today.month - 1, today.day)
+    elif start == "two_months_ago":
+        start_date = datetime.date(today.year, today.month - 2, today.day)
+    elif start == "three_months_ago":
+        start_date = datetime.date(today.year, today.month - 3, today.day)
+    elif start == "ytd":
+        start_date = datetime.date(today.year, 1, 1)
+    elif start == "a_year_ago":
+        start_date = datetime.date(today.year - 1, today.month, today.day)
+    elif start == "two_years_ago":
+        start_date = datetime.date(today.year - 2, today.month, today.day)
+    elif start == "five_years_ago":
+        start_date = datetime.date(today.year - 5, today.month, today.day)
+    elif start == "ten_years_ago":
+        start_date = datetime.date(today.year - 10, today.month, today.day)
+    elif start == "twenty_years_ago":
+        start_date = datetime.date(today.year - 20, today.month, today.day)
+    elif start == "thirty_years_ago":
+        start_date = datetime.date(today.year - 30, today.month, today.day)
+    else:
+        print("Invalid time frame, please try again.")
+        return 0
+
     try:
-        df = si.get_data(ticker, start_date=a_week_ago, end_date=yesterday)
+        df = si.get_data(ticker, start_date, end_date=yesterday)
         change_rate = (df.iloc[-1, 4] - df.iloc[0, 4]) / df.iloc[0, 4]  # iloc[-1]: last row
     except IndexError as e:
         change_rate = 0.0
     return change_rate * 100
 
 
-def sort_change_rate():
-    #tickers = get_sp500_tickers()  # ["BRK.B"]
-    tickers = get_nasdaq100_tickers()
+def sort_change_rate(market="indices", start="a_week_ago"):
+    if market == "s&p500":
+        tickers = get_sp500_tickers()  # ["BRK.B"]
+    elif market == "nasdaq100":
+        tickers = get_nasdaq100_tickers()
+    elif market == "sectors":
+        tickers = get_sector_tickers()
+    else:
+        tickers = get_index_tickers()
+
     rates = []
-    selected_tickers = []
-    selected_sectors = []
-    selected_rates = []
+    symbols = []
+    sectors = []
     for t, s in tickers:
         sanitized_symbol = t.replace(".", "-")
-        change_rate = get_change_rate(sanitized_symbol)
-        selected_rates.append(change_rate)
-        selected_tickers.append(t)
-        selected_sectors.append(s)
+        change_rate = get_change_rate(sanitized_symbol, start)
+        rates.append(change_rate)
+        symbols.append(t)
+        sectors.append(s)
 
         print(f"{change_rate}  {t}")
-        rates.append(change_rate)
 
-    df = pd.DataFrame(list(zip(selected_tickers, selected_sectors, selected_rates)), columns=["Ticker", "GICS Sector", "Change"])
+    df = pd.DataFrame(list(zip(symbols, sectors, rates)), columns=["Ticker", "Sector", "Change"])
 
     sorted_df = df.sort_values(by=['Change'], ascending=False)
 
-    print(sorted_df.head(10))
-    print(sorted_df.tail(10).iloc[::-1])
+    print("\n\n****************************\n\n")
+    print(f"{market} change rate since {start}\n\n")
+    print(sorted_df.head(13))
+    # print(sorted_df.tail(10).iloc[::-1])
 
 
 if __name__ == '__main__':
-    sort_change_rate()
+    sort_change_rate("indices", "three_months_ago")
