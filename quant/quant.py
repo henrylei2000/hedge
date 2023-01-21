@@ -129,7 +129,7 @@ def visualize_data():
     plt.xticks(rotation=90)
     heatmap1.set_clim(-1, 1)
     plt.tight_layout()
-    plt.show()
+    k
 
 
 def process_data_for_labels(ticker):
