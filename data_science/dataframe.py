@@ -100,3 +100,37 @@ df = pd.DataFrame(data)
 
 # Print the head of the dataframe
 print(df.tail(10))
+
+
+df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6], 'C': [7, 8, 9]})
+print(df)
+partial_df =df.iloc[:2,1:]
+print(partial_df)
+mean = df.mean()
+print(mean)
+df['city'] = ['NY', 'SF', 'NY']
+print(df)
+grouped = df.groupby('city').mean()
+print(grouped)
+mask = (df['A'] > 1) & (df['city'] == 'NY')
+df_filtered = df[mask]
+print(df_filtered)
+
+
+class Person:
+    def __init__(self, name="no_name"):
+        self.name = name
+
+    def get_name(self):
+        return self.name
+
+he = Person("Henry")
+name = he.get_name()
+print(name)
+
+
+import requests
+
+response = requests.get('http://184.67.98.98:8080/beamme/rest/travellers/abc123')
+
+print(response.text)

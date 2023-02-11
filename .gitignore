@@ -8,3 +8,4 @@ venv/*
 .DS_Store
 */.DS_Store
 database/*.db
+.ipynb_checkpoints

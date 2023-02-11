@@ -79,6 +79,3 @@ penalty = [1, 1]
 report = report_from_confusion_matrix(confusion_matrix, penalty)
 print("\n\n------------------ classification report ----------------")
 print(report)
-
-
-def foo(*args):
