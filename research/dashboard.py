@@ -191,6 +191,6 @@ file = 'tmt_nasdaq100.csv'
 clusters = get_tmt_tickers(file)
 present(clusters)
 
-ai_clusters = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN']
+ai_clusters = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN', 'AAPL']
 save_data(ai_clusters)
 compare_stocks(ai_clusters)
