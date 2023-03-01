@@ -122,7 +122,7 @@ def get_ratings(soup):
 recommendations = pd.DataFrame([], columns=['Ticker', 'Recommendation', 'Gap to Estimated'])
 
 # tickers = get_tmt_tickers()
-# df = pd.read_csv('xtmt_nasdaq100.csv')
+# df = pd.read_csv('tmt_nasdaq100.csv')
 # tickers = df['Ticker']
 # tickers = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN', 'AAPL']
 tickers = get_tmt_tickers()

@@ -3,6 +3,7 @@ import pandas as pd
 import mplfinance as mpf
 import talib # Import TA-Lib
 import matplotlib.pyplot as plt
+import numpy as np
 
 def visualize():
     # Set the ticker symbol and time interval
@@ -91,89 +92,14 @@ def candlesticks():
     fig.layout = dict(xaxis=dict(type="category"))
     fig.show()
 
-def bbands(ticker):
-    import pandas_ta as ta
-
-    # Download AMZN stock price data for the past year
-    symbol = 'AMZN'
-    # df = yf.download(symbol, period='1y')
-    # df = yf.download(symbol, period="1mo", interval="5m")
-
-    # ticker = "AMZN"
-    interval = "5m"
-
-    # Set the date range
-    end_date = pd.Timestamp.now() - pd.DateOffset(days=0)
-    start_date = end_date - pd.DateOffset(days=5)
-
-    # Retrieve the data from Yahoo Finance
-    df = yf.download(ticker, start=start_date, end=end_date, interval=interval, progress=False)
-
-    # Calculate Bollinger Bands
-    bbs = ta.bbands(df['Close'], length=20, std=2)
-
-    # Create signals based on Bollinger Bands
-    df['signal'] = 0
-    df.loc[df['Close'] < bbs['BBL_20_2.0'], 'signal'] = 1
-    df.loc[df['Close'] > bbs['BBU_20_2.0'], 'signal'] = -1
-
-    tcdf = bbs[['BBL_20_2.0', 'BBU_20_2.0']]  # DataFrame with two columns
-    tdf = tcdf
-
-    def buy_signals(df):
-        import numpy as np
-        signal = []
-        for _, row in df.iterrows():
-            if row['signal'] == 1:
-                signal.append(row['Close'])
-            else:
-                signal.append(np.nan)
-        return signal
-
-    def sell_signals(df):
-        import numpy as np
-        signal = []
-        for _, row in df.iterrows():
-            if row['signal'] == -1:
-                signal.append(row['Close'] * 1)
-            else:
-                signal.append(np.nan)
-        return signal
-
-    buy_signals = buy_signals(df)
-    sell_signals = sell_signals(df)
-
-    apds = [mpf.make_addplot(tdf),
-            mpf.make_addplot(buy_signals, type='scatter', markersize=20, marker='^'),
-            mpf.make_addplot(sell_signals, type='scatter', markersize=20, marker='v')]
-
-    mpf.plot(df, type='candle', volume=True, addplot=apds)
-    #mpf.plot(df.tail(100), type='candle', volume=True, mav=(10, 20), show_nontrading=False)
-
-    # Calculate daily returns
-    df['return'] = df['Close'].pct_change()
-
-    # Calculate strategy returns
-    df['strategy_return'] = df['return'] * df['signal'].shift(1)
-
-    # Calculate cumulative returns
-    df['cumulative_return'] = (1 + df['strategy_return']).cumprod() - 1
-
-    profit = df['cumulative_return'].iloc[-1]
-
-    # Plot cumulative returns
-    base = (df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]
-
-    print(f'{ticker} profit {profit} base {base}')
-    return [ticker, profit, base]
 
 
-def ta_bbands(ticker):
+def ta_bbands(ticker, plot=False):
     import pandas as pd
     import ta
 
     # Load data
-    df = yf.download(ticker, period="1mo", interval='5m', progress=False)
+    df = yf.download(ticker, period="5d", interval='5m', progress=False)
 
     # Calculate EMA
     df['EMA5'] = ta.trend.ema_indicator(df['Close'], window=5)
@@ -188,38 +114,30 @@ def ta_bbands(ticker):
     df['BBM'] = ta.volatility.bollinger_mavg(df['Close'], window=20)
     df['BBU'] = ta.volatility.bollinger_hband(df['Close'], window=20, window_dev=2)
 
-    # Identify buy and sell signals
-    # df['buy_signal'] = ((df['Close'] > df['EMA5']) & (df['EMA5'] > df['EMA10']) & (df['RSI'] < 30) & (df['Close'] < df['BBL']))
-    # df['sell_signal'] = ((df['Close'] < df['EMA5']) | (df['Close'] > df['BBU']))
-
-    df['buy_signal'] = (df['RSI'] < 30)  # & (df['Close'] > df['EMA5']) & (df['EMA5'] > df['EMA10'])  # & (df['Close'] < df['BBL'])
-    df['sell_signal'] = df['RSI'] > 70  # df['Close'] > df['BBU']
-
     # Define trading signals
     ema_buy = (df['Close'] > df['EMA5']) & (df['EMA5'] > df['EMA10'])
     ema_sell = (df['Close'] < df['EMA5']) & (df['EMA5'] < df['EMA10'])
-    rsi_buy = df['RSI'] < 30
-    rsi_sell = df['RSI'] > 70
+    rsi_buy = (df['RSI'] < 30) | (df['RSI'].shift(2) - df['RSI'] > 10)
+    rsi_sell = df['RSI'] > 72
     bbands_buy = df['Close'] < df['BBL']
     bbands_sell = df['Close'] > df['BBU']
     vwap_buy = (df['Close'] > df['vwap']) & (df['Close'].shift(1) <= df['vwap'].shift(1))
     vwap_sell = (df['Close'] < df['vwap']) & (df['Close'].shift(1) >= df['vwap'].shift(1))
-    df['long_signal'] = bbands_buy
-    df['short_signal'] = bbands_sell
+    df['long_signal'] = bbands_buy & rsi_buy
+    df['short_signal'] = bbands_sell & rsi_sell
 
     # Execute trades
     position = 0
     positions = []
-    last_action = 0
     for i in range(len(df)):
-        if df['long_signal'][i] and position == 0:
-            position = 1
+        if df['long_signal'][i] and position < 5:
+            position += 1
             positions.append(1)
-            last_action = 1
-        elif df['short_signal'][i] and position == 1:
-            position = 0
+            print(f'buy at {df["Close"][i]}')
+        elif df['short_signal'][i] and position > 0:
+            position -= 1
             positions.append(-1)
-            last_action = -1
+            print(f'sell at {df["Close"][i]}')
         else:
             positions.append(0)
 
@@ -233,47 +151,47 @@ def ta_bbands(ticker):
     df['cumulative_pnl'] = df['pnl'].cumsum()
 
     # print(df)
-    # df.to_csv(f'{ticker}.csv')
-    profit = 0
-    if last_action == 1:
-        if len(df.loc[df['position'] == -1, 'cumulative_pnl']):
-            profit = df.loc[df['position'] == -1, 'cumulative_pnl'].iloc[-1]
-    else:
-        profit = df['cumulative_pnl'].iloc[-1]
+    df.to_csv(f'./stock_data/{ticker}.csv')
+
+    profit = df['cumulative_pnl'].iloc[-1] + df['position'].sum() * df['Close'][-1]
 
     # Plot cumulative returns
     base = df['Close'].iloc[-1] - df['Close'].iloc[0]
 
-    def buy_signals(df):
-        import numpy as np
-        signal = []
-        for _, row in df.iterrows():
-            if row['position'] == 1:
-                signal.append(row['Close'])
-            else:
-                signal.append(np.nan)
-        return signal
+    print(f'pnl {profit} vs {base}')
 
-    def sell_signals(df):
-        import numpy as np
-        signal = []
-        for _, row in df.iterrows():
-            if row['position'] == -1:
-                signal.append(row['Close'] * 1)
-            else:
-                signal.append(np.nan)
-        return signal
+    if plot:
+        def buy(df):
+            signal = []
+            for _, row in df.iterrows():
+                if row['position'] == 1:
+                    signal.append(row['Close'])
+                else:
+                    signal.append(np.nan)
+            return signal
 
-    buy_signals = buy_signals(df)
-    sell_signals = sell_signals(df)
+        def sell(df):
+            signal = []
+            for _, row in df.iterrows():
+                if row['position'] == -1:
+                    signal.append(row['Close'] * 1)
+                else:
+                    signal.append(np.nan)
+            return signal
 
-    bbs = df[['BBL', 'BBU']]  # DataFrame with two columns
+        buy_signals = buy(df)
+        sell_signals = sell(df)
 
-    apds = [mpf.make_addplot(bbs.tail(100)),
-            mpf.make_addplot(buy_signals[-100:], type='scatter', markersize=50, marker='^'),
-            mpf.make_addplot(sell_signals[-100:], type='scatter', markersize=50, marker='v')]
-    mpf.plot(df.tail(100), type='candle', volume=True, addplot=apds)
-    # mpf.plot(df.tail(100), type='candle', volume=True, mav=(10, 20), show_nontrading=False)
+        bbs = df[['BBL', 'BBU']]  # DataFrame with two columns
+
+        apds = [mpf.make_addplot(bbs.iloc[:-1, :], color='red'), mpf.make_addplot(df['RSI'][:-1])]
+        if np.isfinite(buy_signals).any():
+            apds.append(mpf.make_addplot(buy_signals[:-1], type='scatter', markersize=50, marker='^'))
+        if np.isfinite(sell_signals).any():
+            apds.append(mpf.make_addplot(sell_signals[:-1], type='scatter', markersize=50, marker='v'))
+        mpf.plot(df.iloc[:-1, :], type='candle', volume=True, addplot=apds)
+        # mpf.plot(df.tail(100), type='candle', volume=True, mav=(10, 20), show_nontrading=False)
+
     return [ticker, profit, base]
 
 def get_tmt_tickers():
@@ -293,36 +211,9 @@ def backtesting():
             bt.append('')
         df.loc[len(df)] = bt
     print(df)
+    print(len(df), '-----------', df['Good'].value_counts()[1])
+
     print(df['Profit'].sum())
-
-
-def vwap(ticker):
-    import pandas as pd
-    import pandas_ta as ta
-
-    # Load data
-    df = yf.download(ticker, period="1mo", interval='5m', progress=False)
-    # df.set_index('Datetime', inplace=True)
-    # Add VWAP indicator
-    df['vwap'] = df.ta.vwap()
-    # Define trading signals
-    df['long_signal'] = (df['Close'] > df['vwap']) & (df['Close'].shift(1) <= df['vwap'].shift(1))
-    df['short_signal'] = (df['Close'] < df['vwap']) & (df['Close'].shift(1) >= df['vwap'].shift(1))
-
-    # Define trading logic
-    df['position'] = 0
-    df.loc[df['long_signal'], 'position'] = 1
-    df.loc[df['short_signal'], 'position'] = -1
-    df['position'] = df['position'].ffill()
-
-    # Calculate returns
-    df['returns'] = df['Close'].pct_change() * df['position'].shift(1)
-
-    # Calculate cumulative returns
-    df['cumulative_returns'] = (1 + df['returns']).cumprod()
-
-    # Print cumulative returns
-    print(df['cumulative_returns'].iloc[-1])
 
 
 def animate_stock():
@@ -367,4 +258,5 @@ def animate_stock():
 
 
 if __name__ == '__main__':
-    ta_bbands('NFLX')
+    # backtesting()
+    ta_bbands('ADBE', plot=True)
