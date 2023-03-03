@@ -1,8 +1,8 @@
-import yfinance as yf
 import pandas as pd
-import mplfinance as mpf
 import numpy as np
+import yfinance as yf
 import ta  # https://github.com/bukosabino/ta/
+import mplfinance as mpf
 from scraper.market_watch import fund_estimate
 
 
@@ -15,7 +15,7 @@ def get_candidate_tickers():
 def tech_analyze(ticker, stock_data, plot=False, verbose=False):
     # Load data
     df = stock_data
-    open, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
+    _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
 
     # ta features
     df['RSI'] = ta.momentum.rsi(close, window=14, fillna=False)
@@ -39,11 +39,11 @@ def tech_analyze(ticker, stock_data, plot=False, verbose=False):
     # Define trading signals
     rsi_buy = df['RSI'] < 30
     rsi_sell = df['RSI'] > 70
-    bbands_buy = (close < df['BBL'])
-    bbands_sell = (close > df['BBU'])
+    bollinger_buy = (close < df['BBL'])
+    bollinger_sell = (close > df['BBU'])
 
-    df['long_signal'] = bbands_buy & rsi_buy
-    df['short_signal'] = bbands_sell & rsi_sell
+    df['long_signal'] = bollinger_buy & rsi_buy
+    df['short_signal'] = bollinger_sell & rsi_sell
 
     # Execute trades
     if verbose:
@@ -128,7 +128,7 @@ def tech_analyze(ticker, stock_data, plot=False, verbose=False):
     return [ticker, df['Close'].iloc[-1], df['Close'].max(), df['Close'].min(), profit, base, recommendation]
 
 
-def back_testing(tickers=None, days=90):
+def back_testing(tickers=None, frequency=['90d', '1d']):
     if tickers is None or not len(tickers):
         tickers = get_candidate_tickers().tolist()
         plot = False
@@ -136,10 +136,10 @@ def back_testing(tickers=None, days=90):
     else:
         plot = True
         verbose = True
-    print(f'Processing {len(tickers)} tickers in the past {days} days...')
+    print(f'Processing {len(tickers)} tickers in the past {frequency[0]}...')
     df = pd.DataFrame(columns=['Ticker', 'Price', 'Max', 'Min', 'Profit', 'Reference', 'Recommendation'])
 
-    data = yf.download(tickers, period=f"{days}d", interval='1d', progress=True, group_by='Ticker')
+    data = yf.download(tickers, period=f"{frequency[0]}", interval=f'{frequency[1]}', progress=True, group_by='Ticker')
 
     if len(tickers) > 1:
         for i in range(len(tickers)):
@@ -177,6 +177,8 @@ def back_testing(tickers=None, days=90):
 
 
 if __name__ == '__main__':
-    # tickers = ['TSLA', 'AMZN', 'TQQQ']
-    tickers = None  # to scan all tickers!
-    back_testing(tickers)
+    tickers = ['TQQQ']
+    # tickers = None  # to have a FULL scan
+    low_frequency = ['90d', '1d']
+    high_frequency = ['7d', '5m']
+    back_testing(tickers, high_frequency)
