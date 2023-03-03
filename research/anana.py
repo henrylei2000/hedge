@@ -124,8 +124,8 @@ recommendations = pd.DataFrame([], columns=['Ticker', 'Recommendation', 'Gap to 
 # tickers = get_tmt_tickers()
 # df = pd.read_csv('tmt_nasdaq100.csv')
 # tickers = df['Ticker']
-# tickers = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN', 'AAPL']
-tickers = get_tmt_tickers()
+tickers = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN', 'AAPL']
+
 
 print(len(tickers))
 

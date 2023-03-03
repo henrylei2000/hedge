@@ -45,7 +45,7 @@ def tmt_from_nasdaq100(file):
 
     # Use the condition to select rows from the DataFrame
     tmt_rows = df[condition | exception]
-    tmt_rows.to_csv("tmt_nasdaq100.csv")
+    tmt_rows.to_csv(file)
 
 
 def get_tmt_tickers(file):
@@ -78,7 +78,8 @@ def get_pe(ticker):
     if len(element):
         tag = element[0].parent.parent.next_sibling
         if tag.text != '-':
-            pe = float(tag.text)
+            t = tag.text.replace(',', '')
+            pe = float(t)
     cap = 0
     element = soup(text="Market cap")
     if len(element):
