@@ -12,7 +12,33 @@ def get_candidate_tickers():
     return df['Ticker']
 
 
-def tech_analyze(ticker, stock_data, plot=False, verbose=False):
+def plot_trades(df):
+    def tradings(df):
+        bought, sold = [], []
+        for _, row in df.iterrows():
+            if row['position'] == 1:
+                bought.append(row['Close'])
+                sold.append(np.nan)
+            elif row['position'] == -1:
+                bought.append(np.nan)
+                sold.append(row['Close'])
+            else:
+                bought.append(np.nan)
+                sold.append(np.nan)
+        return bought, sold
+
+    buy_points, sell_points = tradings(df)
+
+    bbs = df[['BBL', 'BBU']]  # DataFrame with two columns
+    apds = [mpf.make_addplot(bbs.iloc[:-1, :], color='r'),
+            mpf.make_addplot(df['RSI'][:-1], linestyle='dotted', color='grey')]
+    if np.isfinite(buy_points).any():
+        apds.append(mpf.make_addplot(buy_points[:-1], type='scatter', markersize=200, marker='^'))
+    if np.isfinite(sell_points).any():
+        apds.append(mpf.make_addplot(sell_points[:-1], type='scatter', markersize=200, marker='v'))
+    mpf.plot(df.iloc[:-1, :], type='candle', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
+
+def tech_analyze(ticker, stock_data, verbose=False):
     # Load data
     df = stock_data
     _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
@@ -37,7 +63,7 @@ def tech_analyze(ticker, stock_data, plot=False, verbose=False):
     df['STC'] = ta.trend.stc(close, window_slow=50, window_fast=23, cycle=10, smooth1=3, smooth2=3, fillna=False)  # !!!
 
     # Define trading signals
-    rsi_buy = df['RSI'] < 30
+    rsi_buy = df['RSI'] < 35
     rsi_sell = df['RSI'] > 70
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
@@ -65,8 +91,6 @@ def tech_analyze(ticker, stock_data, plot=False, verbose=False):
                 print(f'sell at {df["Close"][i]:.2f}')
         else:
             positions.append(0)
-
-    # Calculate profit and loss
     df['position'] = positions
 
     # Calculate cumulative profit and loss
@@ -76,15 +100,16 @@ def tech_analyze(ticker, stock_data, plot=False, verbose=False):
     # profit per trade
     unsold = df['position'].sum()
     sold = len(df.loc[df['position'] == -1])
-    profit = df['cumulative_pnl'].iloc[-1] + unsold * df['Close'][-1]
-    if profit != 0:
-        profit = profit / (sold + unsold)
+    if sold:
+        profit = (df['cumulative_pnl'].iloc[-1] + unsold * df['Close'][-1]) / (sold + unsold)
+    else:
+        profit = 0
 
-    # reference point of profit/loss per trade
-    base = df['Close'].iloc[-1] - df['Close'].iloc[0]
+    # reference point of profit/loss if there was a trade [0, -1]
+    reference = df['Close'].iloc[-1] - df['Close'].iloc[0]
 
-    if profit != 0 and verbose:
-        print(f'[{profit:.2f} vs {base:.2f}]')
+    if verbose and profit:
+        print(f'[{profit:.2f} vs {reference:.2f}]')
         df.to_csv(f'./stock_data/{ticker}.csv')
 
     recommendation = np.nan
@@ -97,60 +122,36 @@ def tech_analyze(ticker, stock_data, plot=False, verbose=False):
             print(f'-------------------------------------------------------------- SELL {ticker}')
         recommendation = 'SELL'
 
-    if plot:
-        def tradings(df):
-            bought, sold = [], []
-            for _, row in df.iterrows():
-                if row['position'] == 1:
-                    bought.append(row['Close'])
-                    sold.append(np.nan)
-                elif row['position'] == -1:
-                    bought.append(np.nan)
-                    sold.append(row['Close'])
-                else:
-                    bought.append(np.nan)
-                    sold.append(np.nan)
-            return bought, sold
-
-        buy_points, sell_points = tradings(df)
-
-        bbs = df[['BBL', 'BBU']]  # DataFrame with two columns
-        apds = [mpf.make_addplot(bbs.iloc[:-1, :], color='r'),
-                mpf.make_addplot(df['RSI'][:-1], linestyle='dotted', color='grey')]
-        if np.isfinite(buy_points).any():
-            apds.append(mpf.make_addplot(buy_points[:-1], type='scatter', markersize=200, marker='^'))
-        if np.isfinite(sell_points).any():
-            apds.append(mpf.make_addplot(sell_points[:-1], type='scatter', markersize=200, marker='v'))
-        mpf.plot(df.iloc[:-1, :], type='candle', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
-
     if verbose:
+        plot_trades(df)
         print()
-    return [ticker, df['Close'].iloc[-1], df['Close'].max(), df['Close'].min(), profit, base, recommendation]
+
+    return [ticker, df['Close'].iloc[-1], df['Close'].max(), df['Close'].min(), profit, reference, recommendation]
 
 
 def back_testing(tickers=None, frequency=['90d', '1d']):
-    if tickers is None or not len(tickers):
-        tickers = get_candidate_tickers().tolist()
-        plot = False
-        verbose = False
-    else:
-        plot = True
+    if len(tickers):  # given tickers
         verbose = True
+    else:  # all tickers
+        tickers = get_candidate_tickers().tolist()
+        verbose = False
+
     print(f'Processing {len(tickers)} tickers in the past {frequency[0]}...')
-    df = pd.DataFrame(columns=['Ticker', 'Price', 'Max', 'Min', 'Profit', 'Reference', 'Recommendation'])
 
     data = yf.download(tickers, period=f"{frequency[0]}", interval=f'{frequency[1]}', progress=True, group_by='Ticker')
 
-    if len(tickers) > 1:
-        for i in range(len(tickers)):
-            ticker = tickers[i]
-            bt = tech_analyze(ticker, data[ticker].copy(), plot, verbose)
-            df.loc[i] = bt
-            if not i % 100 and i > 1:  # just to show progress
-                print('\U0001F375', end=' ')
-    else:
-        df.loc[0] = tech_analyze(tickers[0], data, plot, verbose)
+    # The container of reports
+    df = pd.DataFrame(columns=['Ticker', 'Price', 'Max', 'Min', 'Profit', 'Reference', 'Recommendation'])
 
+    for i in range(len(tickers)):
+        ticker = tickers[i]
+        stock_data = data[ticker] if ticker in data.columns else data
+        bt = tech_analyze(ticker, stock_data.copy(), verbose)
+        df.loc[i] = bt
+        if not i % 100 and i > 1:  # just to show progress
+            print('\U0001F375', end=' ')
+
+    # Performance review - only look into traded tickers (with signals)
     trades = df.loc[df['Profit'] != 0]
     positive = len(trades[trades['Profit'] > trades['Reference']])
     negative = len(trades[trades['Profit'] < trades['Reference']])
@@ -158,12 +159,13 @@ def back_testing(tickers=None, frequency=['90d', '1d']):
     print(f"[Performance] {len(trades)} traded, {positive} earned, {negative} lost, P/L: {pnl:.2f}")
     print()
 
+    # Recommendations on buy and sell - based on the signal in the last (or last two) interval(s)
     rec = df.loc[~df['Recommendation'].isnull()]
     if len(rec):  # signals for a trade
         buying = rec[rec['Recommendation'] == 'BUY']
         selling = rec[rec['Recommendation'] == 'SELL']
         if len(buying):
-            estimates = fund_estimate(buying['Ticker'])
+            estimates = fund_estimate(buying['Ticker'])  # reference analyst estimate from marketwatch.com
             report = pd.merge(buying, estimates, on='Ticker')
             pd.set_option('display.max_columns', None)
             pd.set_option('display.float_format', '{:.2f}'.format)
@@ -178,7 +180,7 @@ def back_testing(tickers=None, frequency=['90d', '1d']):
 
 if __name__ == '__main__':
     tickers = ['TQQQ']
-    # tickers = None  # to have a FULL scan
-    low_frequency = ['90d', '1d']
-    high_frequency = ['7d', '5m']
+    # tickers = []  # to have a FULL scan
+    low_frequency = ['90d', '1d']  # 90 days period, 1 day interval
+    high_frequency = ['7d', '30m']  # 7 days period, 5 minutes interval
     back_testing(tickers, high_frequency)
