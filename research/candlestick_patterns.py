@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import ta  # https://github.com/bukosabino/ta/
+import talib
 import mplfinance as mpf
 from scraper.market_watch import fund_estimate
-
 
 def get_candidate_tickers():
     file = "candidate_tickers.csv"
@@ -44,23 +43,12 @@ def tech_analyze(ticker, stock_data, verbose=False):
     _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
 
     # ta features
-    df['RSI'] = ta.momentum.rsi(close, window=14, fillna=False)
-    df['TSI'] = ta.momentum.tsi(close, window_slow=25, window_fast=13, fillna=False)  # !!!
-    df['UO'] = ta.momentum.ultimate_oscillator(high, low, close, window1=7, window2=14, window3=28,
-                                               weight1=4.0, weight2=2.0, weight3=1.0, fillna=False)  # !!!
-    df['STOCH'] = ta.momentum.stoch(high, low, close, window=14, smooth_window=3, fillna=False)
-    df['PVO'] = ta.momentum.pvo(volume, window_slow=26, window_fast=12, window_sign=9, fillna=False)  # !!!
-
+    # momentum
+    df['RSI'] = talib.RSI(close, timeperiod=13)
     # volume
-
     # volatility
-    df['BBU'] = ta.volatility.bollinger_hband(close, window=20, window_dev=2, fillna=False)
-    df['BBL'] = ta.volatility.bollinger_lband(close, window=20, window_dev=2, fillna=False)
-
+    df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=13, nbdevup=2, nbdevdn=2, matype=0)
     # trend
-    df['CCI'] = ta.trend.cci(high, low, close, window=20, constant=0.015, fillna=False)  # !!!
-    df['DPO'] = ta.trend.dpo(close, window=20, fillna=False)  # !!!
-    df['STC'] = ta.trend.stc(close, window_slow=50, window_fast=23, cycle=10, smooth1=3, smooth2=3, fillna=False)  # !!!
 
     # Define trading signals
     rsi_buy = df['RSI'] < 35
@@ -136,7 +124,7 @@ def back_testing(tickers=None, frequency=['90d', '1d']):
         tickers = get_candidate_tickers().tolist()
         verbose = False
 
-    print(f'Processing {len(tickers)} tickers in the past {frequency[0]}...')
+    print(f'Processing {len(tickers)} tickers with frequency {frequency}...')
 
     data = yf.download(tickers, period=f"{frequency[0]}", interval=f'{frequency[1]}', progress=True, group_by='Ticker')
 
@@ -150,18 +138,28 @@ def back_testing(tickers=None, frequency=['90d', '1d']):
         df.loc[i] = bt
         if not i % 100 and i > 1:  # just to show progress
             print('\U0001F375', end=' ')
+    print()
 
     # Performance review - only look into traded tickers (with signals)
-    trades = df.loc[df['Profit'] != 0]
-    positive = len(trades[trades['Profit'] > trades['Reference']])
-    negative = len(trades[trades['Profit'] < trades['Reference']])
-    pnl = trades['Profit'].sum()
-    print(f"[Performance] {len(trades)} traded, {positive} earned, {negative} lost, P/L: {pnl:.2f}")
-    print()
+    trades = df.loc[df['Profit'] != 0].copy()
+    profit, reference, price = trades['Profit'], trades['Reference'], trades['Price']
+    positive = len(trades[profit > reference])
+    negative = len(trades[profit < reference])
+    print(f"[Performance] {len(trades)} traded, {positive} earned, {negative} lost, P/L: {profit.sum():.2f}")
+
+    if len(trades) > 5:
+        trades['Performance'] = (profit - reference) / price
+
+        best_trades = trades.sort_values('Performance', ascending=False)
+        print('------------ TOP 5 --------------')
+        print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].head(5))
+        print('------------ BOTTOM 5 --------------')
+        print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].tail(5))
 
     # Recommendations on buy and sell - based on the signal in the last (or last two) interval(s)
     rec = df.loc[~df['Recommendation'].isnull()]
     if len(rec):  # signals for a trade
+        print('------------ RECOMMENDATION --------------')
         buying = rec[rec['Recommendation'] == 'BUY']
         selling = rec[rec['Recommendation'] == 'SELL']
         if len(buying):
@@ -175,7 +173,7 @@ def back_testing(tickers=None, frequency=['90d', '1d']):
         if len(selling):
             print(selling)
     else:  # not enough signals for a recommendation
-        print('Have a coffee, or tea \U0001F375')
+        print('No recommendations, have a tea \U0001F375')
 
 
 if __name__ == '__main__':
