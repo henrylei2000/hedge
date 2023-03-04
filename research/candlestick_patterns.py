@@ -30,7 +30,7 @@ def plot_trades(df):
 
     bbs = df[['BBL', 'BBU']]  # DataFrame with two columns
     apds = [mpf.make_addplot(bbs.iloc[:-1, :], color='r'),
-            mpf.make_addplot(df['RSI'][:-1], linestyle='dotted', color='grey')]
+            mpf.make_addplot(df['RSI'][:-1], linestyle='dotted', color='grey', secondary_y=True)]
     if np.isfinite(buy_points).any():
         apds.append(mpf.make_addplot(buy_points[:-1], type='scatter', markersize=200, marker='^'))
     if np.isfinite(sell_points).any():
@@ -70,21 +70,21 @@ def recommend(rec):
         print('No recommendations, have a tea \U0001F375')
 
 
-def tech_analyze(ticker, stock_data, window=20, verbose=False):
+def tech_analyze(ticker, stock_data, window=21, verbose=False):
     # Load data
     df = stock_data
     _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
 
     # ta features
     # momentum
-    df['RSI'] = talib.RSI(close, timeperiod=window)
+    df['RSI'] = talib.RSI(close, timeperiod=window-7)  # 21 and 14
     # volume
     # volatility
     df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=window, nbdevup=2, nbdevdn=2, matype=0)
     # trend
 
     # Define trading signals
-    rsi_buy = df['RSI'] < 35
+    rsi_buy = df['RSI'] < 30
     rsi_sell = df['RSI'] > 70
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
@@ -162,6 +162,8 @@ def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=
         b, e, s = window[0], window[1], 2
     elif len(window) == 3:
         b, e, s = window[0], window[1], window[2]
+    else:
+        b, e, s = 21, 22, 1
 
     for time_window in range(b, e, s):
         print(f'\U0001F375 time_window = {time_window}')
@@ -186,12 +188,12 @@ def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=
 
 if __name__ == '__main__':
     tickers = ['TQQQ']
-    tickers = []  # to have a FULL scan
+    # tickers = []  # to have a FULL scan
 
     low_frequency = ['90d', '1d']  # 90 days period, 1 day interval
     high_frequency = ['7d', '30m']  # 7 days period, 5 minutes interval
 
     recommend = False
-    window = [18, 25, 2]  # time_window beginning, end, and step
+    window = [21, 22, 2]  # time_window beginning, end, and step
 
     back_testing(tickers, high_frequency, recommend, window)
