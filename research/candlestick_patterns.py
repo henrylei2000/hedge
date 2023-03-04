@@ -37,17 +37,50 @@ def plot_trades(df):
         apds.append(mpf.make_addplot(sell_points[:-1], type='scatter', markersize=200, marker='v'))
     mpf.plot(df.iloc[:-1, :], type='candle', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
 
-def tech_analyze(ticker, stock_data, verbose=False):
+
+def review(trades):
+    profit, reference, price = trades['Profit'], trades['Reference'], trades['Price']
+    positive = len(trades[profit > reference])
+    negative = len(trades[profit < reference])
+    print(f"[Performance] {len(trades)} traded, {positive} won, {negative} lost, P/L: {profit.sum():.2f}")
+    if len(trades) > 3:
+        trades['Performance'] = (profit - reference) / price
+        best_trades = trades.sort_values('Performance', ascending=False)
+        print('------------ TOP 3 --------------')
+        print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].head(3))
+        print('------------ BOTTOM 3 --------------')
+        print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].tail(3))
+
+
+def recommend(rec):
+    if len(rec):
+        print('------------ RECOMMENDATION --------------')
+        buying = rec[rec['Recommendation'] == 'BUY']
+        selling = rec[rec['Recommendation'] == 'SELL']
+        if len(buying):
+            estimates = fund_estimate(buying['Ticker'])  # reference analyst estimate from marketwatch.com
+            report = pd.merge(buying, estimates, on='Ticker')
+            pd.set_option('display.max_columns', None)
+            pd.set_option('display.float_format', '{:.2f}'.format)
+            print(report[['Ticker', 'Price', 'Max', 'Min', 'Target', 'Consensus', 'Category']])
+            report.to_csv(f'./reports/report-{str(pd.Timestamp.now()):.16s}.csv')
+        if len(selling):
+            print(selling)
+    else:
+        print('No recommendations, have a tea \U0001F375')
+
+
+def tech_analyze(ticker, stock_data, window=20, verbose=False):
     # Load data
     df = stock_data
     _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
 
     # ta features
     # momentum
-    df['RSI'] = talib.RSI(close, timeperiod=13)
+    df['RSI'] = talib.RSI(close, timeperiod=window)
     # volume
     # volatility
-    df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=13, nbdevup=2, nbdevdn=2, matype=0)
+    df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=window, nbdevup=2, nbdevdn=2, matype=0)
     # trend
 
     # Define trading signals
@@ -61,7 +94,7 @@ def tech_analyze(ticker, stock_data, verbose=False):
 
     # Execute trades
     if verbose:
-        print(f'---- {ticker} ---- ')
+        print(f'\n---- {ticker} [window={window}] ---- ')
 
     position = 0
     positions = []
@@ -88,11 +121,7 @@ def tech_analyze(ticker, stock_data, verbose=False):
     # profit per trade
     unsold = df['position'].sum()
     sold = len(df.loc[df['position'] == -1])
-    if sold:
-        profit = (df['cumulative_pnl'].iloc[-1] + unsold * df['Close'][-1]) / (sold + unsold)
-    else:
-        profit = 0
-
+    profit = (df['cumulative_pnl'].iloc[-1] + unsold * df['Close'].iloc[-1]) / (sold + unsold) if (sold + unsold) else 0
     # reference point of profit/loss if there was a trade [0, -1]
     reference = df['Close'].iloc[-1] - df['Close'].iloc[0]
 
@@ -112,12 +141,11 @@ def tech_analyze(ticker, stock_data, verbose=False):
 
     if verbose:
         plot_trades(df)
-        print()
 
     return [ticker, df['Close'].iloc[-1], df['Close'].max(), df['Close'].min(), profit, reference, recommendation]
 
 
-def back_testing(tickers=None, frequency=['90d', '1d']):
+def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=[18]):
     if len(tickers):  # given tickers
         verbose = True
     else:  # all tickers
@@ -128,57 +156,42 @@ def back_testing(tickers=None, frequency=['90d', '1d']):
 
     data = yf.download(tickers, period=f"{frequency[0]}", interval=f'{frequency[1]}', progress=True, group_by='Ticker')
 
-    # The container of reports
-    df = pd.DataFrame(columns=['Ticker', 'Price', 'Max', 'Min', 'Profit', 'Reference', 'Recommendation'])
+    if len(window) == 1:
+        b, e, s = window[0], window[0] + 1, 2
+    elif len(window) == 2:
+        b, e, s = window[0], window[1], 2
+    elif len(window) == 3:
+        b, e, s = window[0], window[1], window[2]
 
-    for i in range(len(tickers)):
-        ticker = tickers[i]
-        stock_data = data[ticker] if ticker in data.columns else data
-        bt = tech_analyze(ticker, stock_data.copy(), verbose)
-        df.loc[i] = bt
-        if not i % 100 and i > 1:  # just to show progress
-            print('\U0001F375', end=' ')
-    print()
+    for time_window in range(b, e, s):
+        print(f'\U0001F375 time_window = {time_window}')
+        # building reports
+        df = pd.DataFrame(columns=['Ticker', 'Price', 'Max', 'Min', 'Profit', 'Reference', 'Recommendation'])
 
-    # Performance review - only look into traded tickers (with signals)
-    trades = df.loc[df['Profit'] != 0].copy()
-    profit, reference, price = trades['Profit'], trades['Reference'], trades['Price']
-    positive = len(trades[profit > reference])
-    negative = len(trades[profit < reference])
-    print(f"[Performance] {len(trades)} traded, {positive} earned, {negative} lost, P/L: {profit.sum():.2f}")
+        for i in range(len(tickers)):
+            ticker = tickers[i]
+            stock_data = data[ticker] if ticker in data.columns else data
+            bt = tech_analyze(ticker, stock_data.copy(), time_window, verbose)
+            df.loc[i] = bt
 
-    if len(trades) > 5:
-        trades['Performance'] = (profit - reference) / price
+        # Performance review - only look into traded tickers (with signals)
+        trades = df.loc[df['Profit'] != 0].copy()
+        review(trades)
 
-        best_trades = trades.sort_values('Performance', ascending=False)
-        print('------------ TOP 5 --------------')
-        print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].head(5))
-        print('------------ BOTTOM 5 --------------')
-        print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].tail(5))
-
-    # Recommendations on buy and sell - based on the signal in the last (or last two) interval(s)
-    rec = df.loc[~df['Recommendation'].isnull()]
-    if len(rec):  # signals for a trade
-        print('------------ RECOMMENDATION --------------')
-        buying = rec[rec['Recommendation'] == 'BUY']
-        selling = rec[rec['Recommendation'] == 'SELL']
-        if len(buying):
-            estimates = fund_estimate(buying['Ticker'])  # reference analyst estimate from marketwatch.com
-            report = pd.merge(buying, estimates, on='Ticker')
-            pd.set_option('display.max_columns', None)
-            pd.set_option('display.float_format', '{:.2f}'.format)
-            print(report[['Ticker', 'Price', 'Max', 'Min', 'Target', 'Consensus', 'Category']])
-            if not verbose:
-                report.to_csv(f'./reports/report-{str(pd.Timestamp.now()):.16s}.csv')
-        if len(selling):
-            print(selling)
-    else:  # not enough signals for a recommendation
-        print('No recommendations, have a tea \U0001F375')
+        # Recommendations on buy and sell - based on the signal in the last (or last two) interval(s)
+        if recommend:
+            rec = df.loc[~df['Recommendation'].isnull()]
+            recommend(rec)
 
 
 if __name__ == '__main__':
     tickers = ['TQQQ']
-    # tickers = []  # to have a FULL scan
+    tickers = []  # to have a FULL scan
+
     low_frequency = ['90d', '1d']  # 90 days period, 1 day interval
     high_frequency = ['7d', '30m']  # 7 days period, 5 minutes interval
-    back_testing(tickers, high_frequency)
+
+    recommend = False
+    window = [18, 25, 2]  # time_window beginning, end, and step
+
+    back_testing(tickers, high_frequency, recommend, window)
