@@ -52,7 +52,7 @@ def review(trades):
         print(best_trades[['Ticker', 'Price', 'Profit', 'Reference', 'Performance']].tail(3))
 
 
-def recommend(rec):
+def recommend_trade(rec):
     if len(rec):
         print('------------ RECOMMENDATION --------------')
         buying = rec[rec['Recommendation'] == 'BUY']
@@ -77,14 +77,14 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
 
     # ta features
     # momentum
-    df['RSI'] = talib.RSI(close, timeperiod=window-7)  # 21 and 14
+    df['RSI'] = talib.RSI(close, timeperiod=window-7)  # 14, when volatility window=21
     # volume
     # volatility
     df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=window, nbdevup=2, nbdevdn=2, matype=0)
     # trend
 
-    # Define trading signals
-    rsi_buy = df['RSI'] < 30
+    # Define trading signals - to be tuned according to the nature of candidates
+    rsi_buy = df['RSI'] < 35
     rsi_sell = df['RSI'] > 70
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
@@ -183,17 +183,17 @@ def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=
         # Recommendations on buy and sell - based on the signal in the last (or last two) interval(s)
         if recommend:
             rec = df.loc[~df['Recommendation'].isnull()]
-            recommend(rec)
+            recommend_trade(rec)
 
 
 if __name__ == '__main__':
-    tickers = ['TQQQ']
-    # tickers = []  # to have a FULL scan
+    tickers = ['NHS']
+    #tickers = []  # to have a FULL scan
 
     low_frequency = ['90d', '1d']  # 90 days period, 1 day interval
     high_frequency = ['7d', '30m']  # 7 days period, 5 minutes interval
 
-    recommend = False
-    window = [21, 22, 2]  # time_window beginning, end, and step
+    recommend = True
+    window = [20, 21, 2]  # time_window beginning, end, and step
 
-    back_testing(tickers, high_frequency, recommend, window)
+    back_testing(tickers, low_frequency, recommend, window)
