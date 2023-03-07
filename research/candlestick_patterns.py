@@ -29,13 +29,13 @@ def plot_trades(df):
     buy_points, sell_points = tradings(df)
 
     bbs = df[['BBL', 'BBU']]  # DataFrame with two columns
-    apds = [mpf.make_addplot(bbs.iloc[:-1, :], color='r'),
-            mpf.make_addplot(df['RSI'][:-1], linestyle='dotted', color='grey', secondary_y=True)]
+    apds = [mpf.make_addplot(bbs, color='r'),
+            mpf.make_addplot(df['RSI'], linestyle='dotted', color='grey', secondary_y=True)]
     if np.isfinite(buy_points).any():
-        apds.append(mpf.make_addplot(buy_points[:-1], type='scatter', markersize=200, marker='^'))
+        apds.append(mpf.make_addplot(buy_points, type='scatter', markersize=100, marker='^'))
     if np.isfinite(sell_points).any():
-        apds.append(mpf.make_addplot(sell_points[:-1], type='scatter', markersize=200, marker='v'))
-    mpf.plot(df.iloc[:-1, :], type='candle', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
+        apds.append(mpf.make_addplot(sell_points, type='scatter', markersize=100, marker='v'))
+    mpf.plot(df, type='candle', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
 
 
 def review(trades):
@@ -84,7 +84,7 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
     # trend
 
     # Define trading signals - to be tuned according to the nature of candidates
-    rsi_buy = df['RSI'] < 35
+    rsi_buy = df['RSI'] < 30
     rsi_sell = df['RSI'] > 70
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
@@ -187,11 +187,11 @@ def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=
 
 
 if __name__ == '__main__':
-    tickers = ['NHS']
+    tickers = ['CFG']
     #tickers = []  # to have a FULL scan
 
-    low_frequency = ['90d', '1d']  # 90 days period, 1 day interval
-    high_frequency = ['7d', '30m']  # 7 days period, 5 minutes interval
+    low_frequency = ['90d', '1d']  # 90 days period, 1-day interval
+    high_frequency = ['7d', '30m']  # 7 days period, 5-minute interval
 
     recommend = True
     window = [20, 21, 2]  # time_window beginning, end, and step
