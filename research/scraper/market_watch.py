@@ -75,7 +75,7 @@ def get_ratings(soup):
 
 
 def fund_estimate(tickers):
-    estimates = pd.DataFrame([], columns=['Ticker', 'Consensus', 'Category', 'To Target'])
+    estimates = pd.DataFrame([], columns=['Ticker', 'Consensus', 'Category', 'Potential'])
     for ticker in tickers:
         try:
             url = f'https://www.marketwatch.com/investing/stock/{ticker}/analystestimates'
@@ -115,7 +115,7 @@ def fund_estimate(tickers):
                 'Ticker': [ticker],
                 'Consensus': [consensus],
                 'Category': [recommendation],
-                'Target': [median]
+                'Potential': [diff]
             })
 
             estimates = pd.concat([estimates, row])

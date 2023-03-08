@@ -11,7 +11,7 @@ def get_candidate_tickers():
     return df['Ticker']
 
 
-def plot_trades(df):
+def plot_trades(ticker, df):
     def tradings(df):
         bought, sold = [], []
         for _, row in df.iterrows():
@@ -35,7 +35,7 @@ def plot_trades(df):
         apds.append(mpf.make_addplot(buy_points, type='scatter', markersize=100, marker='^'))
     if np.isfinite(sell_points).any():
         apds.append(mpf.make_addplot(sell_points, type='scatter', markersize=100, marker='v'))
-    mpf.plot(df, type='candle', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
+    mpf.plot(df, type='candle', title=f'{ticker}', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
 
 
 def review(trades):
@@ -62,7 +62,7 @@ def recommend_trade(rec):
             report = pd.merge(buying, estimates, on='Ticker')
             pd.set_option('display.max_columns', None)
             pd.set_option('display.float_format', '{:.2f}'.format)
-            print(report[['Ticker', 'Price', 'Max', 'Min', 'Target', 'Consensus', 'Category']])
+            print(report[['Ticker', 'Price', 'Max', 'Min', 'Potential', 'Consensus', 'Category']])
             report.to_csv(f'./reports/report-{str(pd.Timestamp.now()):.16s}.csv')
         if len(selling):
             print(selling)
@@ -84,7 +84,7 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
     # trend
 
     # Define trading signals - to be tuned according to the nature of candidates
-    rsi_buy = df['RSI'] < 30
+    rsi_buy = df['RSI'] < 35
     rsi_sell = df['RSI'] > 70
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
@@ -140,12 +140,12 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
         recommendation = 'SELL'
 
     if verbose:
-        plot_trades(df)
+        plot_trades(ticker, df)
 
     return [ticker, df['Close'].iloc[-1], df['Close'].max(), df['Close'].min(), profit, reference, recommendation]
 
 
-def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=[18]):
+def back_testing(tickers=None, frequency=['3mo', '1d'], recommend=False, window=[18]):
     if len(tickers):  # given tickers
         verbose = True
     else:  # all tickers
@@ -156,6 +156,7 @@ def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=
 
     data = yf.download(tickers, period=f"{frequency[0]}", interval=f'{frequency[1]}', progress=True, group_by='Ticker')
 
+    # beginning, end, step for time window parameters
     if len(window) == 1:
         b, e, s = window[0], window[0] + 1, 2
     elif len(window) == 2:
@@ -187,13 +188,13 @@ def back_testing(tickers=None, frequency=['90d', '1d'], recommend=False, window=
 
 
 if __name__ == '__main__':
-    tickers = ['CFG']
-    #tickers = []  # to have a FULL scan
+    tickers = ['TQQQ', 'LABU', 'SOXL']
+    # tickers = []  # to have a FULL scan, remember to turn on the recommend flag below
+    recommend = False  # True
 
-    low_frequency = ['90d', '1d']  # 90 days period, 1-day interval
+    low_frequency = ['3mo', '1d']  # 90 days period, 1-day interval
     high_frequency = ['7d', '30m']  # 7 days period, 5-minute interval
 
-    recommend = True
-    window = [20, 21, 2]  # time_window beginning, end, and step
+    window = [19, 20, 2]  # time_window beginning, end, and step
 
-    back_testing(tickers, low_frequency, recommend, window)
+    back_testing(tickers, high_frequency, recommend, window)
