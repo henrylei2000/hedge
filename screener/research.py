@@ -4,6 +4,23 @@ import pandas_ta as ta
 import pandas_datareader.data as pdr
 import datetime
 
+# new refactored code from GPT
+
+# define constants for time frames
+# TIME_FRAMES = {
+#     "a_week_ago": 7,
+#     "a_month_ago": 30,
+#     "two_months_ago": 60,
+#     "three_months_ago": 90,
+#     "six_months_ago": 180,
+#     "ytd": None,
+#     "a_year_ago": 365,
+#     "two_years_ago": 730,
+#     "five_years_ago": 1825,
+#     "ten_years_ago": 3650,
+#     "twenty_years_ago": 7300,
+#     "thirty_years_ago": 10950,
+# }
 
 def save_sp500_tickers():
     table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
@@ -120,13 +137,25 @@ def get_change_rate(ticker, start):
     if start == "a_week_ago":
         start_date = datetime.date(today.year, today.month, today.day - 7)
     elif start == "a_month_ago":
-        start_date = datetime.date(today.year, today.month - 1, today.day)
+        if today.day == 31:
+            start_date = datetime.date(today.year, today.month - 1, today.day - 1) #31st day goes to 30th the previous period
+        else:
+            start_date = datetime.date(today.year, today.month - 1, today.day)
     elif start == "two_months_ago":
-        start_date = datetime.date(today.year, today.month - 2, today.day)
+        if today.day == 31:
+            start_date = datetime.date(today.year, today.month - 2, today.day - 1)
+        else:
+            start_date = datetime.date(today.year, today.month - 2, today.day)
     elif start == "three_months_ago":
-        start_date = datetime.date(today.year, today.month - 3, today.day)
+        if today.day == 31:
+            start_date = datetime.date(today.year, today.month - 3, today.day - 1)
+        else:
+            start_date = datetime.date(today.year, today.month - 3, today.day)
     elif start == "six_months_ago":
-        start_date = datetime.date(today.year, today.month - 6, today.day)
+        if today.day == 31:
+            start_date = datetime.date(today.year, today.month - 6, today.day - 1)
+        else:
+            start_date = datetime.date(today.year, today.month - 6, today.day)
     elif start == "ytd":
         start_date = datetime.date(today.year, 1, 1)
     elif start == "a_year_ago":
@@ -186,4 +215,4 @@ def sort_change_rate(market="indices", start="a_week_ago"):
 
 
 if __name__ == '__main__':
-    sort_change_rate("indices", "a_year_ago")
+    sort_change_rate("indices", "ytd")
