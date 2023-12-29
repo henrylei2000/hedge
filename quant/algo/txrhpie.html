@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+
+    <title>TXRH Drivers</title>
+
+    <style>
+
+	.node {
+		cursor: pointer;
+	}
+
+	.node circle {
+	  fill: #fff;
+	  stroke: steelblue;
+	  stroke-width: 2px;
+	}
+
+	.node text {
+	  font: 12px sans-serif;
+	}
+
+	.link {
+	  fill: none;
+	  stroke: #ccc;
+	  stroke-width: 2px;
+	}
+
+    </style>
+
+  </head>
+
+  <body>
+
+<!-- load the d3.js library -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<svg id="demo11" width="200" height="200"></svg>
+<script>
+  d3.select("#demo11")
+    .append("g")
+    .attr("transform", "translate(100,100)");
+
+  var macd = [
+    {name: "a", size: "40", color: "#CBEED5"},
+    {name: "b", size: "10", color: "#5827B0"},
+    {name: "c", size: "10", color: "#B0273B"},
+    {name: "d", size: "10", color: "#B09C27"},
+    {name: "e", size: "30", color: "#eee"}
+  ];
+
+  var input = [
+    {name: "a", size: "18", color: "#CBEED5"},
+    {name: "b", size: "20", color: "#5827B0"},
+    {name: "c", size: "25", color: "#B0273B"},
+    {name: "d", size: "15", color: "#B09C27"},
+    {name: "e", size: "22", color: "#eee"}
+  ];
+
+  var txrh = [
+    {name: "a", size: "10", color: "#CBEED5"},
+    {name: "b", size: "35", color: "#5827B0"},
+    {name: "c", size: "35", color: "#B0273B"},
+    {name: "d", size: "15", color: "#B09C27"},
+    {name: "e", size: "5", color: "#eee"}
+  ];
+
+  var angleGen = d3.pie()
+        .startAngle(0)
+        .endAngle(2 * Math.PI)
+        .padAngle(.05)
+        .value((d) => d.size)
+        .sortValues((a,b) => a.name < b.name ? 1 : -1);;
+
+  var data = angleGen(input);
+
+  var arcGen = d3.arc()
+    .innerRadius(50)
+    .outerRadius(90);
+
+  var colorScale = d3.scaleSequential(d3.interpolate("purple", "orange"))
+    .domain([3,35]);
+
+  d3.select("#demo11 g")
+    .selectAll("path")
+    .data(data)
+    .enter()
+    .append("path")
+    .attr("d", arcGen)
+    .attr("fill", (d) => d.data.color)
+    .attr("stroke", "#eee")
+    .attr("stroke-width", 1);
+
+</script>
+
+
+
+  </body>
+</html>
