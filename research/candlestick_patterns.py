@@ -35,7 +35,9 @@ def plot_trades(ticker, df):
         apds.append(mpf.make_addplot(buy_points, type='scatter', markersize=100, marker='^'))
     if np.isfinite(sell_points).any():
         apds.append(mpf.make_addplot(sell_points, type='scatter', markersize=100, marker='v'))
-    mpf.plot(df, type='candle', title=f'{ticker}', volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
+    mpf.plot(df, type='candle',
+             title=f'{ticker}, {df["Close"].min():.2f} - {df["Close"][-1]:.2f} - {df["Close"].max():.2f}',
+             volume=True, addplot=apds, show_nontrading=False, figsize=(20, 12))
 
 
 def review(trades):
@@ -78,35 +80,39 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
     # ta features
     # momentum
     df['RSI'] = talib.RSI(close, timeperiod=window-7)  # 14, when volatility window=21
+    df['water'] = close.diff()
+    df['water_delta'] = close.diff().diff()
     # volume
     # volatility
     df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=window, nbdevup=2, nbdevdn=2, matype=0)
     # trend
 
     # Define trading signals - to be tuned according to the nature of candidates
-    rsi_buy = df['RSI'] < 35
+    rsi_buy = df['RSI'] < 30
     rsi_sell = df['RSI'] > 70
+
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
+    diff_buy = (df['water'] / close > 0.02) | (df['water_delta'] / close > 0.003)
+    diff_sell = (df['water'] / close < -0.02) | (df['water_delta'] / close < -0.003)
+    df['long_signal'] = diff_buy
+    df['short_signal'] = diff_sell
 
-    df['long_signal'] = bollinger_buy & rsi_buy
-    df['short_signal'] = bollinger_sell & rsi_sell
 
     # Execute trades
     if verbose:
         print(f'\n---- {ticker} [window={window}] ---- ')
 
-    position = 0
+    hold = False
     positions = []
-    max_stakes = 10
     for i in range(len(df)):
-        if df['long_signal'][i] and position < max_stakes:
-            position += 1
+        if df['long_signal'][i] and True:
+            hold = True
             positions.append(1)
             if verbose:
                 print(f'buy at {df["Close"][i]:.2f}')
-        elif df['short_signal'][i] and position > 0:
-            position -= 1
+        elif df['short_signal'][i] and hold:
+            hold = False
             positions.append(-1)
             if verbose:
                 print(f'sell at {df["Close"][i]:.2f}')
@@ -155,7 +161,6 @@ def back_testing(tickers=None, frequency=['3mo', '1d'], recommend=False, window=
     print(f'Processing {len(tickers)} tickers with frequency {frequency}...')
 
     data = yf.download(tickers, period=f"{frequency[0]}", interval=f'{frequency[1]}', progress=True, group_by='Ticker')
-
     # beginning, end, step for time window parameters
     if len(window) == 1:
         b, e, s = window[0], window[0] + 1, 2
@@ -187,14 +192,52 @@ def back_testing(tickers=None, frequency=['3mo', '1d'], recommend=False, window=
             recommend_trade(rec)
 
 
+def macd():
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    # Load historical price data
+    data = pd.read_csv("./stock_data/CFG.csv")
+    data["Date"] = pd.to_datetime(data["Datetime"])
+    data.set_index("Date", inplace=True)
+
+    # Calculate MACD indicator
+    exp1 = data["Close"].ewm(span=12, adjust=False).mean()
+    exp2 = data["Close"].ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+
+    # Plot MACD and signal lines
+    plt.figure(figsize=(10, 5))
+    plt.plot(data.index, macd, label="MACD")
+    plt.plot(data.index, signal, label="Signal")
+    plt.legend()
+
+    # Generate trading signals based on MACD and signal lines
+    data["MACD"] = macd
+    data["Signal"] = signal
+    data["Signal_Crossover"] = np.where(data["MACD"] > data["Signal"], 1, -1)
+
+    # Plot price data with trading signals
+    plt.figure(figsize=(10, 5))
+    plt.plot(data.index, data["Close"], label="Price")
+    plt.scatter(data[data["Signal_Crossover"] == 1].index, data[data["Signal_Crossover"] == 1]["Close"], label="Buy",
+                marker="^", color="green")
+    plt.scatter(data[data["Signal_Crossover"] == -1].index, data[data["Signal_Crossover"] == -1]["Close"], label="Sell",
+                marker="v", color="red")
+    plt.legend()
+    plt.show()
+
+
 if __name__ == '__main__':
-    tickers = ['TQQQ', 'LABU', 'SOXL']
+    tickers = ['TSLA', 'TQQQ'] # 'NVDA', 'NFLX'
     # tickers = []  # to have a FULL scan, remember to turn on the recommend flag below
-    recommend = False  # True
+    recommend = True
 
-    low_frequency = ['3mo', '1d']  # 90 days period, 1-day interval
-    high_frequency = ['7d', '30m']  # 7 days period, 5-minute interval
+    low_frequency = ['1y', '1d']  # 90 days period, 1-day interval
+    high_frequency = ['7d', '1m']  # 7 days period, 1-hour interval
 
-    window = [19, 20, 2]  # time_window beginning, end, and step
+    window = [20, 21, 2]  # time_window beginning, end, and step
 
     back_testing(tickers, high_frequency, recommend, window)

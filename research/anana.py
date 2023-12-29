@@ -119,67 +119,94 @@ def get_ratings(soup):
     return df
 
 
-recommendations = pd.DataFrame([], columns=['Ticker', 'Recommendation', 'Gap to Estimated'])
+def main():
+    recommendations = pd.DataFrame([], columns=['Ticker', 'Recommendation', 'Gap to Estimated'])
 
-# tickers = get_tmt_tickers()
-# df = pd.read_csv('tmt_nasdaq100.csv')
-# tickers = df['Ticker']
-tickers = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN', 'AAPL']
-
-
-print(len(tickers))
-
-for ticker in tickers:
-    try:
-        print(ticker)
-        url = f'https://www.marketwatch.com/investing/stock/{ticker}/analystestimates'
-        response = requests.get(url)
-        soup = BeautifulSoup(response.content, 'html.parser')
+    # tickers = get_tmt_tickers()
+    # df = pd.read_csv('tmt_nasdaq100.csv')
+    # tickers = df['Ticker']
+    tickers = ['AI', 'SOUN', 'GOOG', 'MSFT', 'AMZN', 'AAPL']
 
 
-        tables = ['snapshot', 'stock price targets']
+    print(len(tickers))
 
-        for t in tables:
-            df = get_two_columns(soup, t)
-            if t == 'snapshot':
-                recommendation = df.loc['Average Recommendation', 'value']
-            if t == 'stock price targets':
-                current_price_string = df.loc['Current Price', 'value'][1:].replace(',', '')
-                current_price = float(current_price_string)
-                median_string = df.loc['Median', 'value'][1:].replace(',', '')
-                median = float(median_string)
-                diff = (current_price - median) / median * 100
-            print(f'------------{t}------------')
+    for ticker in tickers:
+        try:
+            print(ticker)
+            url = f'https://www.marketwatch.com/investing/stock/{ticker}/analystestimates'
+            response = requests.get(url)
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+
+            tables = ['snapshot', 'stock price targets']
+
+            for t in tables:
+                df = get_two_columns(soup, t)
+                if t == 'snapshot':
+                    recommendation = df.loc['Average Recommendation', 'value']
+                if t == 'stock price targets':
+                    current_price_string = df.loc['Current Price', 'value'][1:].replace(',', '')
+                    current_price = float(current_price_string)
+                    median_string = df.loc['Median', 'value'][1:].replace(',', '')
+                    median = float(median_string)
+                    diff = (current_price - median) / median * 100
+                print(f'------------{t}------------')
+                print(df.head())
+
+            tables = ['quarterly number', 'Estimates']
+
+            for t in tables:
+                print(f'------------{t}------------')
+                df = get_table(soup, t)
+                print(df.head())
+
+            print(f'------------Ratings------------')
+            df = get_ratings(soup)
             print(df.head())
 
-        tables = ['quarterly number', 'Estimates']
-
-        for t in tables:
-            print(f'------------{t}------------')
-            df = get_table(soup, t)
+            print(f'------------Updates------------')
+            df = get_updates(soup)
             print(df.head())
 
-        print(f'------------Ratings------------')
-        df = get_ratings(soup)
-        print(df.head())
+            print('\n\n\n')
 
-        print(f'------------Updates------------')
-        df = get_updates(soup)
-        print(df.head())
+            row = pd.DataFrame({
+                'Ticker': [ticker],
+                'Recommendation': [recommendation],
+                'Gap to Estimated': [diff]
+            })
 
-        print('\n\n\n')
+            recommendations = pd.concat([recommendations, row])
+        except Exception as e:
+            pass
 
-        row = pd.DataFrame({
-            'Ticker': [ticker],
-            'Recommendation': [recommendation],
-            'Gap to Estimated': [diff]
-        })
+    res = recommendations.sort_values('Gap to Estimated')
+    res.set_index(['Ticker'], inplace=True)
+    print(res)
 
-        recommendations = pd.concat([recommendations, row])
-    except Exception as e:
-        pass
 
-res = recommendations.sort_values('Gap to Estimated')
-res.set_index(['Ticker'], inplace=True)
-print(res)
+
+import requests
+import pandas as pd
+import json
+
+# Replace "AAPL" with the ticker symbol of the company you want to retrieve financial statements for
+symbol = "AAPL"
+
+# Replace "YOUR_API_KEY" with your Alpha Vantage API key
+api_key = "HCNO3F8QZLEEVI3S"
+
+# Retrieve the income statement
+income_statement_url = f"https://www.alphavantage.co/query?function=EARNINGS&symbol={symbol}&apikey={api_key}"
+r = requests.get(income_statement_url)
+data = r.json()
+print(data)
+# for rp in data['annualReports']:
+#     print(rp)
+#     # with open(f"{symbol}_income_statement_{rp['fiscalDateEnding']}.json", "w") as outfile:
+#     #     json.dump(data, outfile)
+#     df = pd.DataFrame({'value': rp})
+#     df.to_csv(f"{symbol}_income_statement_{rp['fiscalDateEnding']}.csv")
+#     print(df)
+# print(data['quarterlyReports'][0])
 
