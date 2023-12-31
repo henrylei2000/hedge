@@ -94,7 +94,8 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
     bollinger_buy = (close < df['BBL'])
     bollinger_sell = (close > df['BBU'])
     diff_buy = (df['water'] / close > 0.02) | (df['water_delta'] / close > 0.003)
-    diff_sell = (df['water'] / close < -0.02) | (df['water_delta'] / close < -0.003)
+    diff_sell = (df['water'] / close < -0.01) | (df['water_delta'] / close < 0)
+
     df['long_signal'] = diff_buy
     df['short_signal'] = diff_sell
 
@@ -104,19 +105,32 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
         print(f'\n---- {ticker} [window={window}] ---- ')
 
     hold = False
+    max_stakes = 1
+    available_stakes = max_stakes
     positions = []
+    peak, base = 0, 0
+
     for i in range(len(df)):
-        if df['long_signal'][i] and True:
-            hold = True
+        current_price = df["Close"][i]
+        peak = max(peak, current_price)
+        if df['long_signal'][i] and available_stakes > 0:
+            available_stakes -= 1
+            base = current_price
+            peak = base  # reset peak
             positions.append(1)
             if verbose:
-                print(f'buy at {df["Close"][i]:.2f}')
-        elif df['short_signal'][i] and hold:
-            hold = False
-            positions.append(-1)
-            if verbose:
-                print(f'sell at {df["Close"][i]:.2f}')
+                print(f'buy at {current_price:.2f}')
+        elif df['short_signal'][i] and available_stakes < max_stakes:
+            # additional conditions for short
+            if current_price < base or current_price < peak * 0.95:
+                available_stakes += 1
+                positions.append(-1)
+                if verbose:
+                    print(f'sell at {current_price:.2f}')
+            else:
+                positions.append(0)
         else:
+
             positions.append(0)
     df['position'] = positions
 
@@ -231,7 +245,7 @@ def macd():
 
 
 if __name__ == '__main__':
-    tickers = ['TSLA', 'TQQQ'] # 'NVDA', 'NFLX'
+    tickers = ['TSLA'] # 'NVDA', 'NFLX'
     # tickers = []  # to have a FULL scan, remember to turn on the recommend flag below
     recommend = True
 
