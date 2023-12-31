@@ -11,7 +11,7 @@ def main():
                    (date text, action text, symbol text, quantity real, price real)''')
 
     # Insert a row of data
-    # cur.execute("INSERT INTO stocks VALUES ('2006-01-05','BUY','RHAT',100,35.14)")
+    cur.execute("INSERT INTO stocks VALUES ('2006-01-05','BUY','RHAT',100,35.14)")
 
     # Save (commit) the changes
     con.commit()
