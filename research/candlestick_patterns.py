@@ -72,38 +72,7 @@ def recommend_trade(rec):
         print('No recommendations, have a tea \U0001F375')
 
 
-def tech_analyze(ticker, stock_data, window=21, verbose=False):
-    # Load data
-    df = stock_data
-    _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
-
-    # ta features
-    # momentum
-    df['RSI'] = talib.RSI(close, timeperiod=window-7)  # 14, when volatility window=21
-    df['water'] = close.diff()
-    df['water_delta'] = close.diff().diff()
-    # volume
-    # volatility
-    df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=window, nbdevup=2, nbdevdn=2, matype=0)
-    # trend
-
-    # Define trading signals - to be tuned according to the nature of candidates
-    rsi_buy = df['RSI'] < 30
-    rsi_sell = df['RSI'] > 70
-
-    bollinger_buy = (close < df['BBL'])
-    bollinger_sell = (close > df['BBU'])
-    diff_buy = (df['water'] / close > 0.02) | (df['water_delta'] / close > 0.003)
-    diff_sell = (df['water'] / close < -0.01) | (df['water_delta'] / close < 0)
-
-    df['long_signal'] = diff_buy
-    df['short_signal'] = diff_sell
-
-
-    # Execute trades
-    if verbose:
-        print(f'\n---- {ticker} [window={window}] ---- ')
-
+def trade(df, verbose):
     hold = False
     max_stakes = 1
     available_stakes = max_stakes
@@ -132,7 +101,42 @@ def tech_analyze(ticker, stock_data, window=21, verbose=False):
         else:
 
             positions.append(0)
-    df['position'] = positions
+
+    return positions
+
+def tech_analyze(ticker, stock_data, window=21, verbose=False):
+    # Load data
+    df = stock_data
+    _, high, low, close, volume = df['Open'], df['High'], df['Low'], df['Close'], df['Volume']
+
+    # ta features
+    # momentum
+    df['ROC'] = talib.ROC(close, timeperiod=12)
+    df['RSI'] = talib.RSI(close, timeperiod=window-7)  # 14, when volatility window=21
+    df['water'] = close.diff()
+    df['water_delta'] = close.diff().diff()
+    # volume
+    # volatility
+    df['BBU'], _, df['BBL'] = talib.BBANDS(close, timeperiod=window, nbdevup=2, nbdevdn=2, matype=0)
+    # trend
+
+    # Define trading signals - to be tuned according to the nature of candidates
+    rsi_buy = df['RSI'] < 30
+    rsi_sell = df['RSI'] > 70
+
+    bollinger_buy = (close < df['BBL'])
+    bollinger_sell = (close > df['BBU'])
+    diff_buy = (df['water'] / close > 0.02) | (df['water_delta'] / close > 0.003)
+    diff_sell = (df['water'] / close < -0.01) | (df['water_delta'] / close < 0)
+
+    df['long_signal'] = diff_buy
+    df['short_signal'] = diff_sell
+
+    # Execute trades
+    if verbose:
+        print(f'\n---- {ticker} [window={window}] ---- ')
+
+    df['position'] = trade(df, verbose)
 
     # Calculate cumulative profit and loss
     df['pnl'] = df['position'] * df['Close'] * (-1)
