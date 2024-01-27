@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 # Function to get historical stock data from Yahoo Finance
 def get_stock_data(ticker, start_date, end_date):
-    stock_data = yf.download(ticker, interval="15m", start=start_date, end=end_date)
+    stock_data = yf.download(ticker, interval="5m", start=start_date, end=end_date)
     return stock_data
 
 # Function to calculate MACD and generate buy/sell signals
@@ -42,6 +42,7 @@ def backtest_strategy(data):
     balance = initial_balance
     position = 0
     shares_held = 0
+    trades = 0
 
     for index, row in data.iterrows():
         if row['Signal'] == 1 and balance > 0:
@@ -55,10 +56,11 @@ def backtest_strategy(data):
 
         elif row['Signal'] == -1 and shares_held > 0:
             # Sell signal
+            trades += 1
             balance += row['Close'] * shares_held
             position -= row['Close'] * shares_held
             print(f"Sold at: ${row['Close']:.2f} x {shares_held}")
-            print(f"Balance: ${balance:.2f}")
+            print(f" --------------- Trade {trades} ------------- Balance: ${balance:.2f}")
             shares_held = 0
 
     # Calculate final balance
@@ -68,7 +70,7 @@ def backtest_strategy(data):
 
 
 # Define stock symbol and date range
-ticker_symbol = 'TQQQ'
+ticker_symbol = 'NFLX'
 start_date = '2024-01-25'
 end_date = '2024-01-26'
 
