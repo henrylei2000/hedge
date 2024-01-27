@@ -1,5 +1,6 @@
 import pandas as pd
 import yfinance as yf
+import numpy as np
 import matplotlib.pyplot as plt
 
 # Function to get historical stock data from Yahoo Finance
@@ -9,9 +10,9 @@ def get_stock_data(ticker, start_date, end_date):
 
 # Function to calculate MACD and generate buy/sell signals
 def generate_signals(data):
-    short_window = 10
-    long_window = 21
-    signal_window = 6
+    short_window = 6
+    long_window = 12
+    signal_window = 5
 
     # Calculate short-term and long-term exponential moving averages
     data['Short_MA'] = data['Close'].ewm(span=short_window, adjust=False).mean()
@@ -32,6 +33,7 @@ def generate_signals(data):
     # Sell signal: MACD crosses below Signal line
     data.loc[data['MACD'] < data['Signal_Line'], 'Signal'] = -1
 
+    data.dropna(subset=['Close'], inplace=True)
     return data
 
 # Function to backtest the trading strategy
@@ -66,8 +68,8 @@ def backtest_strategy(data):
 
 
 # Define stock symbol and date range
-ticker_symbol = 'QQQ'
-start_date = '2024-01-22'
+ticker_symbol = 'TQQQ'
+start_date = '2024-01-25'
 end_date = '2024-01-26'
 
 # Fetch historical stock data
@@ -84,12 +86,37 @@ print(f"Initial Balance: ${initial_balance:.2f}")
 print(f"Final Balance: ${final_balance:.2f}")
 
 # Plotting the stock prices and signals
-plt.figure(figsize=(12, 6))
-plt.plot(stock_data_with_signals['Close'], label='Stock Price', linewidth=1)
-plt.scatter(stock_data_with_signals.index[stock_data_with_signals['Signal'] == 1], stock_data_with_signals['Close'][stock_data_with_signals['Signal'] == 1], marker='^', color='g', label='Buy Signal')
-plt.scatter(stock_data_with_signals.index[stock_data_with_signals['Signal'] == -1], stock_data_with_signals['Close'][stock_data_with_signals['Signal'] == -1], marker='v', color='r', label='Sell Signal')
-plt.title(f'{ticker_symbol} Stock Price with MACD Signals')
-plt.xlabel('Date')
-plt.ylabel('Stock Price')
-plt.legend()
+# plt.figure(figsize=(12, 6))
+#
+# plt.plot(stock_data_with_signals['Close'], label='Stock Price', linewidth=1)
+# plt.scatter(stock_data_with_signals.index[stock_data_with_signals['Signal'] == 1], stock_data_with_signals['Close'][stock_data_with_signals['Signal'] == 1], marker='^', color='g', label='Buy Signal')
+# plt.scatter(stock_data_with_signals.index[stock_data_with_signals['Signal'] == -1], stock_data_with_signals['Close'][stock_data_with_signals['Signal'] == -1], marker='v', color='r', label='Sell Signal')
+# plt.title(f'{ticker_symbol} Stock Price with MACD Signals')
+# plt.xlabel('Date')
+# plt.ylabel('Stock Price')
+# plt.show()
+
+class MyFormatter:
+    def __init__(self, dates, fmt='%Y-%m-%d'):
+        self.dates = dates
+        self.fmt = fmt
+
+    def __call__(self, x, pos=0):
+        'Return the label for time x at position pos'
+        ind = int(np.round(x))
+        if ind >= len(self.dates) or ind < 0:
+            return ''
+
+        return pd.to_datetime(self.dates[ind]).strftime(self.fmt)
+
+
+r = stock_data_with_signals.to_records()
+formatter = MyFormatter(r.Datetime)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.xaxis.set_major_formatter(formatter)
+ax.plot(np.arange(len(r)), r.Close, linewidth=1)
+ax.scatter(np.where(r.Signal == 1)[0], r.Close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
+ax.scatter(np.where(r.Signal == -1)[0], r.Close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
+fig.autofmt_xdate()
 plt.show()
