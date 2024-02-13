@@ -64,7 +64,9 @@ def backtest_strategy(data):
     # Calculate final balance
     final_balance = balance + (shares_held * data['Close'].iloc[-1])
 
-    return initial_balance, final_balance
+    # Print results
+    print(f"Initial Balance: ${initial_balance:.2f}")
+    print(f"Final Balance: ${final_balance:.2f}")
 
 
 def draw_signals(signals):
@@ -94,24 +96,19 @@ def draw_signals(signals):
 
 
 # Define stock symbol and date range
-ticker = 'AMZN'
+ticker = 'META'
 
-start_date = '2024-02-09'
-end_date = '2024-02-10'
-trade_interval = "15m"
+start_date = '2024-02-12'  # str, dt, int
+end_date = '2024-02-13'
+intraday = "15m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 
 # Fetch historical stock data
-stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
-stock_data.to_csv(f'./stock_data/{ticker}.csv')
-# Generate signals
-stock_data_with_signals = generate_signals(stock_data)
-
-# Backtest the strategy
-initial_balance, final_balance = backtest_strategy(stock_data_with_signals)
-
-# Print results
-print(f"Initial Balance: ${initial_balance:.2f}")
-print(f"Final Balance: ${final_balance:.2f}")
-
-draw_signals(stock_data_with_signals)
-
+# stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
+stock_data = yf.Ticker(ticker).history(interval=intraday, start=start_date, end=end_date)
+if not stock_data.empty:
+    stock_data.to_csv(f'./stock_data/{ticker}.csv')
+    # Generate signals
+    stock_data_with_signals = generate_signals(stock_data)
+    # Backtest the strategy
+    backtest_strategy(stock_data_with_signals)
+    draw_signals(stock_data_with_signals)
