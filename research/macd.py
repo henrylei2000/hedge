@@ -1,12 +1,9 @@
+from datetime import datetime, timedelta
 import pandas as pd
 import yfinance as yf
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Function to get historical stock data from Yahoo Finance
-def get_stock_data(ticker, start_date, end_date):
-    stock_data = yf.download(ticker, interval="5m", start=start_date, end=end_date)
-    return stock_data
 
 # Function to calculate MACD and generate buy/sell signals
 def generate_signals(data):
@@ -35,6 +32,7 @@ def generate_signals(data):
 
     data.dropna(subset=['Close'], inplace=True)
     return data
+
 
 # Function to backtest the trading strategy
 def backtest_strategy(data):
@@ -69,14 +67,42 @@ def backtest_strategy(data):
     return initial_balance, final_balance
 
 
+def draw_signals(signals):
+    class MyFormatter:
+        def __init__(self, dates, fmt='%Y-%m-%d'):
+            self.dates = dates
+            self.fmt = fmt
+
+        def __call__(self, x, pos=0):
+            'Return the label for time x at position pos'
+            ind = int(np.round(x))
+            if ind >= len(self.dates) or ind < 0:
+                return ''
+
+            return pd.to_datetime(self.dates[ind]).strftime(self.fmt)
+
+    r = signals.to_records()
+    formatter = MyFormatter(r.Datetime)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.xaxis.set_major_formatter(formatter)
+    ax.plot(np.arange(len(r)), r.Close, linewidth=1)
+    ax.scatter(np.where(r.Signal == 1)[0], r.Close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
+    ax.scatter(np.where(r.Signal == -1)[0], r.Close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
+    fig.autofmt_xdate()
+    plt.show()
+
+
 # Define stock symbol and date range
-ticker_symbol = 'NFLX'
-start_date = '2024-01-25'
-end_date = '2024-01-26'
+ticker = 'AMZN'
+
+start_date = '2024-02-09'
+end_date = '2024-02-10'
+trade_interval = "15m"
 
 # Fetch historical stock data
-stock_data = get_stock_data(ticker_symbol, start_date, end_date)
-stock_data.to_csv(f'./stock_data/{ticker_symbol}.csv')
+stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
+stock_data.to_csv(f'./stock_data/{ticker}.csv')
 # Generate signals
 stock_data_with_signals = generate_signals(stock_data)
 
@@ -87,38 +113,5 @@ initial_balance, final_balance = backtest_strategy(stock_data_with_signals)
 print(f"Initial Balance: ${initial_balance:.2f}")
 print(f"Final Balance: ${final_balance:.2f}")
 
-# Plotting the stock prices and signals
-# plt.figure(figsize=(12, 6))
-#
-# plt.plot(stock_data_with_signals['Close'], label='Stock Price', linewidth=1)
-# plt.scatter(stock_data_with_signals.index[stock_data_with_signals['Signal'] == 1], stock_data_with_signals['Close'][stock_data_with_signals['Signal'] == 1], marker='^', color='g', label='Buy Signal')
-# plt.scatter(stock_data_with_signals.index[stock_data_with_signals['Signal'] == -1], stock_data_with_signals['Close'][stock_data_with_signals['Signal'] == -1], marker='v', color='r', label='Sell Signal')
-# plt.title(f'{ticker_symbol} Stock Price with MACD Signals')
-# plt.xlabel('Date')
-# plt.ylabel('Stock Price')
-# plt.show()
+draw_signals(stock_data_with_signals)
 
-class MyFormatter:
-    def __init__(self, dates, fmt='%Y-%m-%d'):
-        self.dates = dates
-        self.fmt = fmt
-
-    def __call__(self, x, pos=0):
-        'Return the label for time x at position pos'
-        ind = int(np.round(x))
-        if ind >= len(self.dates) or ind < 0:
-            return ''
-
-        return pd.to_datetime(self.dates[ind]).strftime(self.fmt)
-
-
-r = stock_data_with_signals.to_records()
-formatter = MyFormatter(r.Datetime)
-
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.xaxis.set_major_formatter(formatter)
-ax.plot(np.arange(len(r)), r.Close, linewidth=1)
-ax.scatter(np.where(r.Signal == 1)[0], r.Close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
-ax.scatter(np.where(r.Signal == -1)[0], r.Close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
-fig.autofmt_xdate()
-plt.show()
