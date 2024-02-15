@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 
 # Function to calculate MACD and generate buy/sell signals
 def generate_signals(data):
-    short_window = 6
-    long_window = 12
-    signal_window = 5
+    short_window = 3
+    long_window = 6
+    signal_window = 2
 
     # Calculate short-term and long-term exponential moving averages
     data['Short_MA'] = data['Close'].ewm(span=short_window, adjust=False).mean()
@@ -58,15 +58,17 @@ def backtest_strategy(data):
             balance += row['Close'] * shares_held
             position -= row['Close'] * shares_held
             print(f"Sold at: ${row['Close']:.2f} x {shares_held}")
-            print(f" --------------- Trade {trades} ------------- Balance: ${balance:.2f}")
+            print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
             shares_held = 0
 
     # Calculate final balance
     final_balance = balance + (shares_held * data['Close'].iloc[-1])
 
     # Print results
-    print(f"Initial Balance: ${initial_balance:.2f}")
-    print(f"Final Balance: ${final_balance:.2f}")
+    print(f"Initial Balance: ${initial_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
+          f" ----------------- Daily PnL: ${final_balance - initial_balance:.2f}")
+
+    return final_balance - initial_balance
 
 
 def draw_signals(signals):
@@ -96,19 +98,26 @@ def draw_signals(signals):
 
 
 # Define stock symbol and date range
-ticker = 'META'
-
-start_date = '2024-02-12'  # str, dt, int
-end_date = '2024-02-13'
-intraday = "15m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
+ticker = 'ETH-USD'
+pnl = 0
+start_date = datetime.strptime('2024-02-01', '%Y-%m-%d')  # str, dt, int
+end_date = datetime.strptime('2024-02-15', '%Y-%m-%d')
+intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 
 # Fetch historical stock data
 # stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
-stock_data = yf.Ticker(ticker).history(interval=intraday, start=start_date, end=end_date)
-if not stock_data.empty:
-    stock_data.to_csv(f'./stock_data/{ticker}.csv')
-    # Generate signals
-    stock_data_with_signals = generate_signals(stock_data)
-    # Backtest the strategy
-    backtest_strategy(stock_data_with_signals)
-    draw_signals(stock_data_with_signals)
+
+while start_date < end_date:
+    one_day = start_date + timedelta(days=1)
+    stock_data = yf.Ticker(ticker).history(interval=intraday, start=start_date, end=one_day)
+    if not stock_data.empty:
+        stock_data.to_csv(f'./stock_data/{ticker}.csv')
+        # Generate signals
+        stock_data_with_signals = generate_signals(stock_data)
+        # Backtest the strategy
+        pnl += backtest_strategy(stock_data_with_signals)
+        #draw_signals(stock_data_with_signals)
+
+    start_date = one_day
+
+print(f" --------------- PnL {pnl:.2f} ------------- ")
