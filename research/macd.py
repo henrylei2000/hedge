@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from collections import deque
 import pandas as pd
 import yfinance as yf
 import numpy as np
@@ -41,7 +42,7 @@ def backtest_strategy(data):
     position = 0
     shares_held = 0
     trades = 0
-    first_sell_signal_occurred = False  # Flag to track the first sell signal
+    prev_signals = deque(maxlen=3)  # Keep track of the last 3 signals
 
     for index, row in data.iterrows():
         if row['Signal'] == 1 and balance > 0:
@@ -52,18 +53,18 @@ def backtest_strategy(data):
             shares_held += shares_bought
             if shares_bought:
                 print(f"Bought at: ${row['Close']:.2f} x {shares_bought}")
-            first_sell_signal_occurred = False
-        elif row['Signal'] == -1 and shares_held > 0:
+
+        elif row['Signal'] == -1 and shares_held > 0 and sum(prev_signals) < 2:
             # Sell signal
-            if first_sell_signal_occurred:
-                trades += 1
-                balance += row['Close'] * shares_held
-                position -= row['Close'] * shares_held
-                print(f"Sold at: ${row['Close']:.2f} x {shares_held}")
-                print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
-                shares_held = 0
-            else:
-                first_sell_signal_occurred = True
+            trades += 1
+            balance += row['Close'] * shares_held
+            position -= row['Close'] * shares_held
+            print(f"Sold at: ${row['Close']:.2f} x {shares_held}")
+            print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
+            shares_held = 0
+
+        prev_signals.append(row['Signal'])
+        print(prev_signals)
 
     # Calculate final balance
     final_balance = balance + (shares_held * data['Close'].iloc[-1])
@@ -92,7 +93,7 @@ def draw_signals(signals):
     r = signals.to_records()
     formatter = MyFormatter(r.Datetime)
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(18, 6))
     ax.xaxis.set_major_formatter(formatter)
     ax.plot(np.arange(len(r)), r.Close, linewidth=1)
     ax.scatter(np.where(r.Signal == 1)[0], r.Close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
@@ -102,10 +103,10 @@ def draw_signals(signals):
 
 
 # Define stock symbol and date range
-ticker = 'TQQQ'
+ticker = 'SOXL'
 pnl = 0
-start_date = datetime.strptime('2024-01-16', '%Y-%m-%d')  # str, dt, int
-end_date = datetime.strptime('2024-02-15', '%Y-%m-%d')
+start_date = '2023-12-18'  # str, dt, int
+end_date = '2024-02-16'
 intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 
 # Fetch historical stock data
