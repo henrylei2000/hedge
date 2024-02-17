@@ -47,7 +47,7 @@ def backtest_strategy(data):
 
     for index, row in data.iterrows():
         signal = row['Signal']
-        if row['Signal'] == 1 and balance > 0:
+        if row['Signal'] == 1 and balance > 0 and len(prev_signals) == 4 and prev_signals[-1] != -10 and prev_signals[-1] == 1:
             # Buy signal
             shares_bought = balance // row['Close']
             position += row['Close'] * shares_bought
@@ -57,7 +57,7 @@ def backtest_strategy(data):
                 signal = 10
                 print(f"Bought at: ${row['Close']:.2f} x {shares_bought}")
 
-        elif row['Signal'] == -1 and shares_held > 0:
+        elif row['Signal'] == -1 and shares_held > 0 and prev_signals[-1] != 10 and prev_signals[-1] == -1:
             # Sell signal
             signal = -10
             trades += 1
@@ -69,16 +69,17 @@ def backtest_strategy(data):
 
         updated_signals.append(signal)
         prev_signals.append(signal)
-        print(prev_signals)
 
     # Calculate final balance
     final_balance = balance + (shares_held * data['Close'].iloc[-1])
-
+    pnl_once = final_balance - initial_balance
     # Print results
     print(f"Initial Balance: ${initial_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
-          f"\n----------------- PnL: ${final_balance - initial_balance:.2f}")
+          f"\n----------------- PnL: ${pnl_once:.2f}")
 
     data['Signal'] = updated_signals
+
+    return pnl_once
 
 
 def draw_signals(signals):
@@ -109,21 +110,47 @@ def draw_signals(signals):
     plt.show()
 
 
+def trade(interval, start, end):
+
+    profit = 0
+    # Fetch historical stock data
+    # stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
+    stock_data = yf.Ticker(ticker).history(interval=interval, start=start, end=end)
+    if not stock_data.empty:
+        stock_data.to_csv(f'./stock_data/{ticker}.csv')
+        # Generate signals
+        stock_data_with_signals = generate_signals(stock_data)
+        # Backtest the strategy
+        pnl_daily = backtest_strategy(stock_data_with_signals)
+        # draw_signals(stock_data_with_signals)
+
+    return profit
+
+
 # Define stock symbol and date range
 ticker = 'SOXL'
 pnl = 0
-start_date = '2024-02-16'  # str, dt, int
-end_date = '2024-02-17'
+start = '2024-01-17'  # str, dt, int
+end = '2024-02-18'
 intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
+mode = "reset"  # daily (without reset), batch, reset (with a reset balance daily)
 
-# Fetch historical stock data
-# stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
+if mode == "reset":
+    # Convert start and end dates to datetime objects
+    start_date = datetime.strptime(start, '%Y-%m-%d')
+    end_date = datetime.strptime(end, '%Y-%m-%d')
 
-stock_data = yf.Ticker(ticker).history(interval=intraday, start=start_date, end=end_date)
-if not stock_data.empty:
-    stock_data.to_csv(f'./stock_data/{ticker}.csv')
-    # Generate signals
-    stock_data_with_signals = generate_signals(stock_data)
-    # Backtest the strategy
-    backtest_strategy(stock_data_with_signals)
-    draw_signals(stock_data_with_signals)
+    # Initialize a variable to hold the current date
+    current_date = start_date
+
+    # Loop over dates
+    while current_date <= end_date:
+        next_date = current_date + timedelta(days=1)
+        pnl += trade(intraday, current_date, next_date)
+        current_date += timedelta(days=1)
+
+    print(f"\n****** PnL ****** {pnl:.2f}")
+else:
+    trade(intraday, start, end)
+
+
