@@ -36,8 +36,8 @@ def generate_signals(data):
 
 
 # Function to backtest the trading strategy
-def backtest_strategy(data):
-    initial_balance = 10000
+def backtest_strategy(data, seed):
+    initial_balance = seed
     balance = initial_balance
     position = 0
     shares_held = 0
@@ -110,7 +110,7 @@ def draw_signals(signals):
     plt.show()
 
 
-def trade(interval, start, end):
+def trade(interval, start, end, seed):
 
     profit = 0
     # Fetch historical stock data
@@ -121,7 +121,7 @@ def trade(interval, start, end):
         # Generate signals
         stock_data_with_signals = generate_signals(stock_data)
         # Backtest the strategy
-        pnl_daily = backtest_strategy(stock_data_with_signals)
+        profit = backtest_strategy(stock_data_with_signals, seed)
         # draw_signals(stock_data_with_signals)
 
     return profit
@@ -133,9 +133,10 @@ pnl = 0
 start = '2024-01-17'  # str, dt, int
 end = '2024-02-18'
 intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
-mode = "reset"  # daily (without reset), batch, reset (with a reset balance daily)
+seed = 10000
+mode = "daily"  # daily (without reset), batch, reset (with a reset balance daily)
 
-if mode == "reset":
+if mode == "reset" or mode == "daily":
     # Convert start and end dates to datetime objects
     start_date = datetime.strptime(start, '%Y-%m-%d')
     end_date = datetime.strptime(end, '%Y-%m-%d')
@@ -146,11 +147,14 @@ if mode == "reset":
     # Loop over dates
     while current_date <= end_date:
         next_date = current_date + timedelta(days=1)
-        pnl += trade(intraday, current_date, next_date)
+        if mode == "reset":
+            pnl += trade(intraday, current_date, next_date, seed)
+        elif mode == "daily":
+            pnl += trade(intraday, current_date, next_date, seed + pnl)
         current_date += timedelta(days=1)
 
     print(f"\n****** PnL ****** {pnl:.2f}")
 else:
-    trade(intraday, start, end)
+    trade(intraday, start, end, seed)
 
 
