@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # Function to calculate MACD and generate buy/sell signals
 def generate_signals(data):
     short_window = 3
-    long_window = 6
+    long_window = 7
     signal_window = 2
 
     # Calculate short-term and long-term exponential moving averages
@@ -36,8 +36,7 @@ def generate_signals(data):
 
 
 # Function to backtest the trading strategy
-def backtest_strategy(data, seed):
-    initial_balance = seed
+def backtest_strategy(data, initial_balance):
     balance = initial_balance
     position = 0
     shares_held = 0
@@ -70,16 +69,15 @@ def backtest_strategy(data, seed):
         updated_signals.append(signal)
         prev_signals.append(signal)
 
-    # Calculate final balance
-    final_balance = balance + (shares_held * data['Close'].iloc[-1])
-    pnl_once = final_balance - initial_balance
-    # Print results
-    print(f"Initial Balance: ${initial_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
-          f"\n----------------- PnL: ${pnl_once:.2f}")
-
     data['Signal'] = updated_signals
 
-    return pnl_once
+    # Calculate final balance
+    final_balance = balance + (shares_held * data['Close'].iloc[-1])
+    # Print results
+    print(f"Initial Balance: ${initial_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
+          f"\n----------------- PnL: ${final_balance - initial_balance:.2f}")
+
+    return final_balance - initial_balance
 
 
 def draw_signals(signals):
@@ -122,19 +120,19 @@ def trade(interval, start, end, seed):
         stock_data_with_signals = generate_signals(stock_data)
         # Backtest the strategy
         profit = backtest_strategy(stock_data_with_signals, seed)
-        # draw_signals(stock_data_with_signals)
+        draw_signals(stock_data_with_signals)
 
     return profit
 
 
 # Define stock symbol and date range
-ticker = 'SOXL'
+ticker = 'TQQQ'
 pnl = 0
-start = '2024-01-17'  # str, dt, int
-end = '2024-02-18'
+start = '2024-02-16'  # str, dt, int
+end = '2024-02-17'
 intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 seed = 10000
-mode = "daily"  # daily (without reset), batch, reset (with a reset balance daily)
+mode = "batch"  # daily (without reset), batch, reset (with a reset balance daily)
 
 if mode == "reset" or mode == "daily":
     # Convert start and end dates to datetime objects
