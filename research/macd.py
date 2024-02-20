@@ -46,7 +46,7 @@ def backtest_strategy(data, initial_balance):
 
     for index, row in data.iterrows():
         signal = row['Signal']
-        if row['Signal'] == 1 and balance > 0 and len(prev_signals) == 4 and prev_signals[-1] != -10 and prev_signals[-1] == 1:
+        if row['Signal'] == 1 and balance > 0 and len(prev_signals) == 4 and prev_signals[-1] != -10 and prev_signals[-1] != -1:
             # Buy signal
             shares_bought = balance // row['Close']
             position += row['Close'] * shares_bought
@@ -56,7 +56,7 @@ def backtest_strategy(data, initial_balance):
                 signal = 10
                 print(f"Bought at: ${row['Close']:.2f} x {shares_bought}")
 
-        elif row['Signal'] == -1 and shares_held > 0 and prev_signals[-1] != 10 and prev_signals[-1] == -1:
+        elif row['Signal'] == -1 and shares_held > 0 and prev_signals[-1] != 10 and prev_signals[-1] != 1:
             # Sell signal
             signal = -10
             trades += 1
@@ -126,13 +126,19 @@ def trade(interval, start, end, seed):
 
 
 # Define stock symbol and date range
-ticker = 'TQQQ'
+"""
+Crypto performs better with immediate reaction: 2m, and no double check
+Index performs better with moderate response: 5m and double check
+Daily mode performs better in a bearish trend, while batch in a bullish trend
+"""
+
+ticker = 'ETH-USD'
 pnl = 0
-start = '2024-02-16'  # str, dt, int
-end = '2024-02-17'
-intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
+start = '2024-02-07'  # str, dt, int
+end = '2024-02-14'
+intraday = "2m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 seed = 10000
-mode = "batch"  # daily (without reset), batch, reset (with a reset balance daily)
+mode = "daily"  # daily (without reset), batch, reset (with a reset balance daily)
 
 if mode == "reset" or mode == "daily":
     # Convert start and end dates to datetime objects
