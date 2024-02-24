@@ -10,9 +10,7 @@ import configparser
 
 # Function to calculate MACD and generate buy/sell signals
 def generate_signals(data):
-    short_window = 3
-    long_window = 7
-    signal_window = 2
+    short_window, long_window, signal_window = 3, 7, 2
 
     # Calculate short-term and long-term exponential moving averages
     data['Short_MA'] = data['close'].ewm(span=short_window, adjust=False).mean()
@@ -116,9 +114,9 @@ def get_stock_data(ticker, interval, start, end, source='alpaca'):
     # Fetch historical stock data
     if source == 'yahoo':
         stock_data = yf.Ticker(ticker).history(interval=interval, start=start, end=end)
-        stock_data = stock_data.rename_axis('Datetime')
-        stock_data = stock_data.rename(columns={'close': 'close'})
-        print(stock_data.shape[0])
+        stock_data.rename_axis('timestamp', inplace=True)
+        stock_data.rename(columns={'Close': 'close'}, inplace=True)
+
     else:
         # Load Alpaca API credentials from configuration file
         config = configparser.ConfigParser()
@@ -132,13 +130,19 @@ def get_stock_data(ticker, interval, start, end, source='alpaca'):
         api = tradeapi.REST(api_key, secret_key, api_version='v2')
 
         # Convert start and end dates to RFC3339 format
-        start_str = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
-        end_str = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
-        start_str = '2024-02-21T09:30:00-05:00'
-        end_str = '2024-02-22T16:00:00-05:00'
+        # start_str = start.strftime('%Y-%m-%dT%H:%M:%SZ')
+        # end_str = end.strftime('%Y-%m-%dT%H:%M:%SZ')
+        start_str = '2023-11-06T09:15:00-05:00'
+        end_str = '2023-11-06T15:55:00-05:00'
         print(start_str)
         # Retrieve stock price data from Alpaca
         stock_data = api.get_bars(ticker, '5Min', start=start_str, end=end_str).df
+
+        # Convert timestamp index to Eastern Timezone (EST)
+        stock_data.index = stock_data.index.tz_convert('US/Eastern')
+
+        # Filter rows between 9:30am and 4:00pm EST
+        stock_data = stock_data.between_time('9:25', '15:55')
 
     return stock_data
 
@@ -165,11 +169,11 @@ Daily mode performs better in a bearish trend, while batch in a bullish trend
 
 ticker = 'TQQQ'
 pnl = 0
-start = '2024-02-22'  # str, dt, int
+start = '2023-12-27'  # str, dt, int
 end = '2024-02-23'
 intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 seed = 10000
-mode = "daily"  # daily (without reset), batch, reset (with a reset balance daily)
+mode = "batch"  # daily (without reset), batch, reset (with a reset balance daily)
 
 if mode == "reset" or mode == "daily":
     # Convert start and end dates to datetime objects
@@ -182,14 +186,16 @@ if mode == "reset" or mode == "daily":
     # Loop over dates
     while current_date < end_date:
         next_date = current_date + timedelta(days=1)
-        if mode == "reset":
-            pnl += trade(get_stock_data(ticker, intraday, current_date, next_date), seed)
-        elif mode == "daily":
-            pnl += trade(get_stock_data(ticker, intraday, current_date, next_date), seed + pnl)
+        data = get_stock_data(ticker, intraday, current_date, next_date)
+        if data.any and mode == "reset":
+            pnl += trade(data, seed)
+        elif data.any and mode == "daily":
+            pnl += trade(data, seed + pnl)
         current_date += timedelta(days=1)
 
     print(f"\n****** PnL ****** {pnl:.2f}")
 else:
-    trade(get_stock_data(ticker, intraday, start, end), seed)
+    data = get_stock_data(ticker, intraday, start, end)
+    trade(data, seed)
 
 
