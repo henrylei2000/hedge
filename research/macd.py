@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
 from collections import deque
-import pandas as pd
 import yfinance as yf
 import numpy as np
 import matplotlib.pyplot as plt
+import alpaca_trade_api as tradeapi
+import pandas as pd
+import configparser
 
 
 # Function to calculate MACD and generate buy/sell signals
@@ -13,8 +15,8 @@ def generate_signals(data):
     signal_window = 2
 
     # Calculate short-term and long-term exponential moving averages
-    data['Short_MA'] = data['Close'].ewm(span=short_window, adjust=False).mean()
-    data['Long_MA'] = data['Close'].ewm(span=long_window, adjust=False).mean()
+    data['Short_MA'] = data['close'].ewm(span=short_window, adjust=False).mean()
+    data['Long_MA'] = data['close'].ewm(span=long_window, adjust=False).mean()
 
     # Calculate MACD line
     data['MACD'] = data['Short_MA'] - data['Long_MA']
@@ -31,7 +33,7 @@ def generate_signals(data):
     # Sell signal: MACD crosses below Signal line
     data.loc[data['MACD'] < data['Signal_Line'], 'Signal'] = -1
 
-    data.dropna(subset=['Close'], inplace=True)
+    data.dropna(subset=['close'], inplace=True)
     return data
 
 
@@ -46,23 +48,23 @@ def backtest_strategy(data, initial_balance):
 
     for index, row in data.iterrows():
         signal = row['Signal']
-        if row['Signal'] == 1 and balance > 0 and len(prev_signals) == 4 and prev_signals[-1] != -10 and prev_signals[-1] != -1:
+        if row['Signal'] == 1 and balance > 0 and prev_signals[-1] != -10 and prev_signals[-1] != -1:
             # Buy signal
-            shares_bought = balance // row['Close']
-            position += row['Close'] * shares_bought
-            balance -= row['Close'] * shares_bought
+            shares_bought = balance // row['close']
+            position += row['close'] * shares_bought
+            balance -= row['close'] * shares_bought
             shares_held += shares_bought
             if shares_bought:
                 signal = 10
-                print(f"Bought at: ${row['Close']:.2f} x {shares_bought}")
+                print(f"Bought at: ${row['close']:.2f} x {shares_bought}")
 
         elif row['Signal'] == -1 and shares_held > 0 and prev_signals[-1] != 10 and prev_signals[-1] != 1:
             # Sell signal
             signal = -10
             trades += 1
-            balance += row['Close'] * shares_held
-            position -= row['Close'] * shares_held
-            print(f"Sold at: ${row['Close']:.2f} x {shares_held}")
+            balance += row['close'] * shares_held
+            position -= row['close'] * shares_held
+            print(f"Sold at: ${row['close']:.2f} x {shares_held}")
             print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
             shares_held = 0
 
@@ -72,7 +74,7 @@ def backtest_strategy(data, initial_balance):
     data['Signal'] = updated_signals
 
     # Calculate final balance
-    final_balance = balance + (shares_held * data['Close'].iloc[-1])
+    final_balance = balance + (shares_held * data['close'].iloc[-1])
     # Print results
     print(f"Initial Balance: ${initial_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
           f"\n----------------- PnL: ${final_balance - initial_balance:.2f}")
@@ -95,25 +97,54 @@ def draw_signals(signals):
             return pd.to_datetime(self.dates[ind]).strftime(self.fmt)
 
     r = signals.to_records()
-    formatter = MyFormatter(r.Datetime)
+    formatter = MyFormatter(r.timestamp)
 
-    fig, ax = plt.subplots(figsize=(18, 6))
+    fig, ax = plt.subplots(figsize=(16, 6))
     ax.xaxis.set_major_formatter(formatter)
-    ax.plot(np.arange(len(r)), r.Close, linewidth=1)
-    ax.scatter(np.where(r.Signal == 1)[0], r.Close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
-    ax.scatter(np.where(r.Signal == -1)[0], r.Close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
-    ax.scatter(np.where(r.Signal == 10)[0], r.Close[r.Signal == 10], marker='o', color='g', label='Sell Signal')
-    ax.scatter(np.where(r.Signal == -10)[0], r.Close[r.Signal == -10], marker='o', color='r', label='Sell Signal')
+    ax.plot(np.arange(len(r)), r.close, linewidth=1)
+    ax.scatter(np.where(r.Signal == 1)[0], r.close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
+    ax.scatter(np.where(r.Signal == -1)[0], r.close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
+    ax.scatter(np.where(r.Signal == 10)[0], r.close[r.Signal == 10], marker='o', color='g', label='Sell Signal')
+    ax.scatter(np.where(r.Signal == -10)[0], r.close[r.Signal == -10], marker='o', color='r', label='Sell Signal')
     fig.autofmt_xdate()
+    fig.tight_layout()
     plt.show()
 
 
-def trade(interval, start, end, seed):
+def get_stock_data(ticker, interval, start, end, source='alpaca'):
 
-    profit = 0
     # Fetch historical stock data
-    # stock_data = yf.download(ticker, interval=trade_interval, start=start_date, end=end_date)
-    stock_data = yf.Ticker(ticker).history(interval=interval, start=start, end=end)
+    if source == 'yahoo':
+        stock_data = yf.Ticker(ticker).history(interval=interval, start=start, end=end)
+        stock_data = stock_data.rename_axis('Datetime')
+        stock_data = stock_data.rename(columns={'close': 'close'})
+        print(stock_data.shape[0])
+    else:
+        # Load Alpaca API credentials from configuration file
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+
+        # Access configuration values
+        api_key = config.get('settings', 'API_KEY')
+        secret_key = config.get('settings', 'SECRET_KEY')
+
+        # Initialize Alpaca API
+        api = tradeapi.REST(api_key, secret_key, api_version='v2')
+
+        # Convert start and end dates to RFC3339 format
+        start_str = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+        end_str = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+        start_str = '2024-02-21T09:30:00-05:00'
+        end_str = '2024-02-22T16:00:00-05:00'
+        print(start_str)
+        # Retrieve stock price data from Alpaca
+        stock_data = api.get_bars(ticker, '5Min', start=start_str, end=end_str).df
+
+    return stock_data
+
+
+def trade(stock_data, seed):
+    profit = 0
     if not stock_data.empty:
         stock_data.to_csv(f'./stock_data/{ticker}.csv')
         # Generate signals
@@ -132,11 +163,11 @@ Index performs better with moderate response: 5m and double check
 Daily mode performs better in a bearish trend, while batch in a bullish trend
 """
 
-ticker = 'ETH-USD'
+ticker = 'TQQQ'
 pnl = 0
-start = '2024-02-07'  # str, dt, int
-end = '2024-02-14'
-intraday = "2m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
+start = '2024-02-22'  # str, dt, int
+end = '2024-02-23'
+intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 seed = 10000
 mode = "daily"  # daily (without reset), batch, reset (with a reset balance daily)
 
@@ -149,16 +180,16 @@ if mode == "reset" or mode == "daily":
     current_date = start_date
 
     # Loop over dates
-    while current_date <= end_date:
+    while current_date < end_date:
         next_date = current_date + timedelta(days=1)
         if mode == "reset":
-            pnl += trade(intraday, current_date, next_date, seed)
+            pnl += trade(get_stock_data(ticker, intraday, current_date, next_date), seed)
         elif mode == "daily":
-            pnl += trade(intraday, current_date, next_date, seed + pnl)
+            pnl += trade(get_stock_data(ticker, intraday, current_date, next_date), seed + pnl)
         current_date += timedelta(days=1)
 
     print(f"\n****** PnL ****** {pnl:.2f}")
 else:
-    trade(intraday, start, end, seed)
+    trade(get_stock_data(ticker, intraday, start, end), seed)
 
 
