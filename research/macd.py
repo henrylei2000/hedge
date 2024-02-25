@@ -18,7 +18,6 @@ def generate_signals(data):
 
     # Calculate MACD line
     data['MACD'] = data['Short_MA'] - data['Long_MA']
-
     # Calculate Signal line
     data['Signal_Line'] = data['MACD'].ewm(span=signal_window, adjust=False).mean()
 
@@ -32,6 +31,7 @@ def generate_signals(data):
     data.loc[data['MACD'] < data['Signal_Line'], 'Signal'] = -1
 
     data.dropna(subset=['close'], inplace=True)
+
     return data
 
 
@@ -41,12 +41,33 @@ def backtest_strategy(data, initial_balance):
     position = 0
     shares_held = 0
     trades = 0
-    prev_signals = deque(maxlen=4)  # Keep track of the last 4 signals
+    prev_signals = deque(maxlen=6)  # Keep track of the last 4 signals
     updated_signals = []  # Store updated signals
 
     for index, row in data.iterrows():
+        prev_bought = len(updated_signals) and updated_signals[-1] == 10
+        prev_sold = len(updated_signals) and updated_signals[-1] == -10
+        prev_bullish = len(updated_signals) and updated_signals[-1] == 1
+        prev_bearish = len(updated_signals) and updated_signals[-1] == -1
+        macd_strength = 100 * (row['MACD'] - row['Signal_Line'])
+        macd_buy = len(prev_signals) > 4 and macd_strength < 0 and macd_strength < 1.1 * min(prev_signals)
+        macd_sell = len(prev_signals) > 1 and macd_strength > 1.25 * max(prev_signals)
+
+        print(f"-----{macd_strength:.2f}-----sell: {macd_sell:.1f} ---- buy: {macd_buy:.1f}")
+
         signal = row['Signal']
-        if row['Signal'] == 1 and balance > 0 and prev_signals[-1] != -10 and prev_signals[-1] != -1:
+        if shares_held > 0 and (signal == -1 and not (prev_bought or prev_bullish or macd_buy) or macd_sell):
+            # Sell signal
+            signal = -10
+            trades += 1
+            balance += row['close'] * shares_held
+            position -= row['close'] * shares_held
+            print(f"Sold at: ${row['close']:.2f} x {shares_held}")
+            print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
+            print(f"----------------- {row['MACD']}")
+            shares_held = 0
+
+        elif balance > 0 and len(prev_signals) > 1 and (signal == 1 and not (prev_sold or prev_bearish or macd_sell) or macd_buy):
             # Buy signal
             shares_bought = balance // row['close']
             position += row['close'] * shares_bought
@@ -56,18 +77,8 @@ def backtest_strategy(data, initial_balance):
                 signal = 10
                 print(f"Bought at: ${row['close']:.2f} x {shares_bought}")
 
-        elif row['Signal'] == -1 and shares_held > 0 and prev_signals[-1] != 10 and prev_signals[-1] != 1:
-            # Sell signal
-            signal = -10
-            trades += 1
-            balance += row['close'] * shares_held
-            position -= row['close'] * shares_held
-            print(f"Sold at: ${row['close']:.2f} x {shares_held}")
-            print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
-            shares_held = 0
-
         updated_signals.append(signal)
-        prev_signals.append(signal)
+        prev_signals.append(macd_strength)
 
     data['Signal'] = updated_signals
 
@@ -102,8 +113,10 @@ def draw_signals(signals):
     ax.plot(np.arange(len(r)), r.close, linewidth=1)
     ax.scatter(np.where(r.Signal == 1)[0], r.close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
     ax.scatter(np.where(r.Signal == -1)[0], r.close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
-    ax.scatter(np.where(r.Signal == 10)[0], r.close[r.Signal == 10], marker='o', color='g', label='Sell Signal')
+    ax.scatter(np.where(r.Signal == 10)[0], r.close[r.Signal == 10], marker='o', color='g', label='Buy Signal')
     ax.scatter(np.where(r.Signal == -10)[0], r.close[r.Signal == -10], marker='o', color='r', label='Sell Signal')
+    # for i, (x, y) in enumerate(zip(np.where(r.Signal != 0)[0], r.close[r.Signal != 0])):
+    #    ax.text(x, y, f"{100 * (r.MACD[i+1] - r.Signal_Line[i+1]):.2f}", fontsize=8, ha='right', va='bottom')
     fig.autofmt_xdate()
     fig.tight_layout()
     plt.show()
@@ -132,11 +145,11 @@ def get_stock_data(ticker, interval, start, end, source='alpaca'):
         # Convert start and end dates to RFC3339 format
         # start_str = start.strftime('%Y-%m-%dT%H:%M:%SZ')
         # end_str = end.strftime('%Y-%m-%dT%H:%M:%SZ')
-        start_str = '2023-11-06T09:15:00-05:00'
-        end_str = '2023-11-06T15:55:00-05:00'
+        start_str = '2023-08-25T09:15:00-05:00'
+        end_str = '2024-02-24T11:05:00-05:00'
         print(start_str)
         # Retrieve stock price data from Alpaca
-        stock_data = api.get_bars(ticker, '5Min', start=start_str, end=end_str).df
+        stock_data = api.get_bars(ticker, '1Min', start=start_str, end=end_str).df
 
         # Convert timestamp index to Eastern Timezone (EST)
         stock_data.index = stock_data.index.tz_convert('US/Eastern')
@@ -161,12 +174,6 @@ def trade(stock_data, seed):
 
 
 # Define stock symbol and date range
-"""
-Crypto performs better with immediate reaction: 2m, and no double check
-Index performs better with moderate response: 5m and double check
-Daily mode performs better in a bearish trend, while batch in a bullish trend
-"""
-
 ticker = 'TQQQ'
 pnl = 0
 start = '2023-12-27'  # str, dt, int
