@@ -115,8 +115,8 @@ def draw_signals(signals):
     ax.scatter(np.where(r.Signal == -1)[0], r.close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
     ax.scatter(np.where(r.Signal == 10)[0], r.close[r.Signal == 10], marker='o', color='g', label='Buy Signal')
     ax.scatter(np.where(r.Signal == -10)[0], r.close[r.Signal == -10], marker='o', color='r', label='Sell Signal')
-    # for i, (x, y) in enumerate(zip(np.where(r.Signal != 0)[0], r.close[r.Signal != 0])):
-    #    ax.text(x, y, f"{100 * (r.MACD[i+1] - r.Signal_Line[i+1]):.2f}", fontsize=8, ha='right', va='bottom')
+    for i, (x, y) in enumerate(zip(np.where(r.Signal != 0)[0], r.close[r.Signal != 0])):
+       ax.text(x, y, f"{100 * (r.MACD[i+1] - r.Signal_Line[i+1]):.2f}", fontsize=8, ha='right', va='bottom')
     fig.autofmt_xdate()
     fig.tight_layout()
     plt.show()
@@ -145,8 +145,8 @@ def get_stock_data(ticker, interval, start, end, source='alpaca'):
         # Convert start and end dates to RFC3339 format
         # start_str = start.strftime('%Y-%m-%dT%H:%M:%SZ')
         # end_str = end.strftime('%Y-%m-%dT%H:%M:%SZ')
-        start_str = '2023-08-25T09:15:00-05:00'
-        end_str = '2024-02-24T11:05:00-05:00'
+        start_str = '2023-10-27T09:15:00-05:00'
+        end_str = '2023-10-27T11:05:00-05:00'
         print(start_str)
         # Retrieve stock price data from Alpaca
         stock_data = api.get_bars(ticker, '1Min', start=start_str, end=end_str).df
