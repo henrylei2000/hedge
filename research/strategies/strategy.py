@@ -1,13 +1,7 @@
-from datetime import datetime, timedelta
-from collections import deque
-import yfinance as yf
 import numpy as np
-import matplotlib.pyplot as plt
-import alpaca_trade_api as tradeapi
 import pandas as pd
-import configparser
-
-import numpy as np
+from collections import deque
+import matplotlib.pyplot as plt
 
 
 class Strategy:
@@ -30,48 +24,43 @@ class Strategy:
 
     def trade(self):
         balance = self.init_balance
-        position = 0
         shares_held = 0
         trades = 0
-        prev_signals = deque(maxlen=10)  # Keep track of the last 4 signals
-        updated_signals = []  # Store updated signals
-
+        positions = []  # Store updated signals
+        if 'position' not in self.data.columns:
+            self.data['position'] = self.data['signal']
         for index, row in self.data.iterrows():
-            signal = row['Signal']
-            if shares_held > 0 and signal == -1:
+            position = 0
+            signal = row['signal']
+            if shares_held > 0 and row['position'] == -1:
                 # Sell signal
-                signal = -10
+                position = -1
                 trades += 1
                 balance += row['close'] * shares_held
-                position -= row['close'] * shares_held
                 print(f"Sold at: ${row['close']:.2f} x {shares_held}")
                 print(f"Trade {trades} ------------- Balance: ${balance:.2f}")
-                print(f"----------------- {row['MACD']}")
                 shares_held = 0
 
-            elif balance > 0 and signal == 1:
+            elif balance > 0 and row['position'] == 1:
                 # Buy signal
                 shares_bought = balance // row['close']
-                position += row['close'] * shares_bought
                 balance -= row['close'] * shares_bought
                 shares_held += shares_bought
                 if shares_bought:
                     print(f"share bought: {shares_bought:.2f}")
-                    signal = 10
-                    print(f"Bought at: ${row['close']:.2f} x {shares_bought}")
+                    position = 1
+                    print(f"Bought at: ${row['close']:.2f} x {shares_bought}  --- {row['macd_momentum']*100:.3f}")
 
-            updated_signals.append(signal)
-            prev_signals.append(signal)
+            positions.append(position)
 
-        self.data['Signal'] = updated_signals
+        self.data['position'] = positions
 
         # Calculate final balance
         final_balance = balance + (shares_held * self.data['close'].iloc[-1])
         # Print results
-        print(f"Initial Balance: ${self.init_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
-              f"\n----------------- PnL: ${final_balance - self.init_balance:.2f}")
-
         self.pnl = final_balance - self.init_balance
+        print(f"Initial Balance: ${self.init_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
+              f"\n----------------- PnL: ${self.pnl:.2f}")
 
     def plot(self):
         class MyFormatter:
@@ -93,13 +82,14 @@ class Strategy:
         fig, ax = plt.subplots(figsize=(20, 6))
         ax.xaxis.set_major_formatter(formatter)
         ax.plot(np.arange(len(r)), r.close, linewidth=1)
-        ax.scatter(np.where(r.Signal == 1)[0], r.close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
-        ax.scatter(np.where(r.Signal == -1)[0], r.close[r.Signal == -1], marker='v', color='r', label='Sell Signal')
-        ax.scatter(np.where(r.Signal == 10)[0], r.close[r.Signal == 10], marker='o', color='g', label='Buy Signal')
-        ax.scatter(np.where(r.Signal == -10)[0], r.close[r.Signal == -10], marker='o', color='r', label='Sell Signal')
-        for i, (x, y) in enumerate(zip(np.where(r.Signal != 0)[0], r.close[r.Signal != 0])):
-            ax.text(x, y, f"{100 * (r.MACD[i + 1] - r.Signal_Line[i + 1]):.2f}({r.MACD[i + 1] * 100:.3f})", fontsize=7,
-                    ha='right', va='bottom')
+        ax.scatter(np.where(r.signal == 1)[0], r.close[r.signal == 1], marker='^', color='g', label='Buy Signal')
+        ax.scatter(np.where(r.signal == -1)[0], r.close[r.signal == -1], marker='v', color='r', label='Sell Signal')
+        ax.scatter(np.where(r.position == 1)[0], r.close[r.position == 1], marker='o', color='g', alpha=.5, s=120, label='Buy')
+        ax.scatter(np.where(r.position == -1)[0], r.close[r.position == -1], marker='o', color='r', alpha=.5, s=120, label='Sell')
+        for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
+            if i < len(r.macd_momentum) - 1:
+                ax.text(x, y, f"{r.macd_momentum[i+1] * 1000:.2f}", fontsize=7,
+                        ha='right', va='bottom')
         fig.autofmt_xdate()
         fig.tight_layout()
         plt.show()
