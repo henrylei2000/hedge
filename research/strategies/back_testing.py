@@ -26,19 +26,21 @@ def download_from_alpaca(symbol):
     api = tradeapi.REST(api_key, secret_key, api_version='v2')
 
     # Convert start and end dates to RFC3339 format
-    # start_str = start.strftime('%Y-%m-%dT%H:%M:%SZ')
-    # end_str = end.strftime('%Y-%m-%dT%H:%M:%SZ')
-    start_str = '2023-10-27T09:15:00-05:00'
-    end_str = '2023-10-27T10:45:00-05:00'
-    print(start_str)
+    start_str = '2023-10-27'
+    end_str = '2023-10-27'
+
+    # Format start and end times for the filter
+    start_time = pd.Timestamp(start_str + "T09:30:00", tz='America/New_York').isoformat()
+    end_time = pd.Timestamp(end_str + "T16:00:00", tz='America/New_York').isoformat()  # Market closes at 4:00pm EST/EDT
+
     # Retrieve stock price data from Alpaca
-    data = api.get_bars(symbol, '1Min', start=start_str, end=end_str).df
+    data = api.get_bars(symbol, '1Min', start=start_time, end=end_time).df
 
     # Convert timestamp index to Eastern Timezone (EST)
     data.index = data.index.tz_convert('US/Eastern')
 
     # Filter rows between 9:30am and 4:00pm EST
-    data = data.between_time('9:30', '15:55')
+    data = data.between_time('9:35', '15:55')
 
     return data
 
