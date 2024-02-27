@@ -7,6 +7,66 @@ import alpaca_trade_api as tradeapi
 import pandas as pd
 import configparser
 
+import numpy as np
+
+
+def analyze_macd_derivative(macd_values):
+    """
+    Analyze the derivative of MACD values and determine significance.
+
+    Parameters:
+    - macd_values (list or numpy array): MACD values.
+
+    Returns:
+    - derivative (list): First-order finite difference of MACD values.
+    - significance (str): Significance of the derivative (increasing, decreasing, or stable).
+    """
+    derivative = [macd_values[i] - macd_values[i-1] for i in range(1, len(macd_values))]
+
+    if all(derivative_val > 0 for derivative_val in derivative):
+        significance = "increasing"
+    elif all(derivative_val < 0 for derivative_val in derivative):
+        significance = "decreasing"
+    else:
+        significance = "stable"
+
+    return derivative, significance
+
+# Example MACD values
+macd_values = [-8.372, -3.641, -4.047, -5.025, -2.672, -1.328, 0.215]
+
+# Analyze the derivative
+derivative, significance = analyze_macd_derivative(macd_values)
+print("MACD Derivative:", derivative)
+print("Significance:", significance)
+
+
+def identify_outliers(data, current, percentile_threshold=0.15):
+    """
+    Identify outliers in the data array based on percentile thresholds.
+
+    Parameters:
+    - data (list or numpy array): Input data array.
+    - percentile_threshold (float): Percentile threshold for identifying outliers.
+                                    Default is 0.15 (15%).
+
+    Returns:
+    - outliers (list): List of outlier indices.
+    """
+    # Convert data to numpy array if it's not already
+    data = np.array(data)
+
+    # Calculate percentile thresholds
+    positive_threshold = np.percentile(data, 100 - percentile_threshold * 100)
+    negative_threshold = np.percentile(data, percentile_threshold * 100)
+
+    if current > positive_threshold:
+        return 'top'
+    elif current < negative_threshold:
+        return 'bottom'
+    else:
+        return 'meh'
+
 
 # Function to calculate MACD and generate buy/sell signals
 def generate_signals(data):
@@ -41,22 +101,12 @@ def backtest_strategy(data, initial_balance):
     position = 0
     shares_held = 0
     trades = 0
-    prev_signals = deque(maxlen=7)  # Keep track of the last 4 signals
+    prev_signals = deque(maxlen=10)  # Keep track of the last 4 signals
     updated_signals = []  # Store updated signals
 
     for index, row in data.iterrows():
-        prev_bought = len(updated_signals) and updated_signals[-1] == 10
-        prev_sold = len(updated_signals) and updated_signals[-1] == -10
-        prev_bullish = len(updated_signals) and updated_signals[-1] == 1
-        prev_bearish = len(updated_signals) and updated_signals[-1] == -1
-        macd_strength = 100 * (row['MACD'] - row['Signal_Line'])
-        macd_buy = len(prev_signals) > 3 and macd_strength < 0 and macd_strength < 1.1 * min(prev_signals)
-        macd_sell = len(prev_signals) > 1 and macd_strength > 1.25 * max(prev_signals)
-
-        print(f"-----{macd_strength:.2f} -----sell: {macd_sell:.1f} ---- buy: {macd_buy:.1f}")
-
         signal = row['Signal']
-        if shares_held > 0 and (False or macd_sell):
+        if shares_held > 0 and signal == -1:
             # Sell signal
             signal = -10
             trades += 1
@@ -67,7 +117,7 @@ def backtest_strategy(data, initial_balance):
             print(f"----------------- {row['MACD']}")
             shares_held = 0
 
-        elif balance > 0 and len(prev_signals) > 1 and (False or macd_buy):
+        elif balance > 0 and signal == 1:
             # Buy signal
             shares_bought = balance // row['close']
             position += row['close'] * shares_bought
@@ -79,7 +129,7 @@ def backtest_strategy(data, initial_balance):
                 print(f"Bought at: ${row['close']:.2f} x {shares_bought}")
 
         updated_signals.append(signal)
-        prev_signals.append(macd_strength)
+        prev_signals.append(signal)
 
     data['Signal'] = updated_signals
 
@@ -109,7 +159,7 @@ def draw_signals(signals):
     r = signals.to_records()
     formatter = MyFormatter(r.timestamp)
 
-    fig, ax = plt.subplots(figsize=(16, 6))
+    fig, ax = plt.subplots(figsize=(20, 6))
     ax.xaxis.set_major_formatter(formatter)
     ax.plot(np.arange(len(r)), r.close, linewidth=1)
     ax.scatter(np.where(r.Signal == 1)[0], r.close[r.Signal == 1], marker='^', color='g', label='Buy Signal')
@@ -147,7 +197,7 @@ def get_stock_data(ticker, interval, start, end, source='alpaca'):
         # start_str = start.strftime('%Y-%m-%dT%H:%M:%SZ')
         # end_str = end.strftime('%Y-%m-%dT%H:%M:%SZ')
         start_str = '2023-10-27T09:15:00-05:00'
-        end_str = '2023-10-27T09:45:00-05:00'
+        end_str = '2023-10-27T10:45:00-05:00'
         print(start_str)
         # Retrieve stock price data from Alpaca
         stock_data = api.get_bars(ticker, '1Min', start=start_str, end=end_str).df
@@ -156,7 +206,7 @@ def get_stock_data(ticker, interval, start, end, source='alpaca'):
         stock_data.index = stock_data.index.tz_convert('US/Eastern')
 
         # Filter rows between 9:30am and 4:00pm EST
-        stock_data = stock_data.between_time('9:25', '15:55')
+        stock_data = stock_data.between_time('9:30', '15:55')
 
     return stock_data
 
@@ -177,8 +227,8 @@ def trade(stock_data, seed):
 # Define stock symbol and date range
 ticker = 'TQQQ'
 pnl = 0
-start = '2023-12-27'  # str, dt, int
-end = '2024-02-23'
+start = '2024-02-21'  # str, dt, int
+end = '2024-02-22'
 intraday = "5m"  # 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 seed = 10000
 mode = "batch"  # daily (without reset), batch, reset (with a reset balance daily)
@@ -205,5 +255,3 @@ if mode == "reset" or mode == "daily":
 else:
     data = get_stock_data(ticker, intraday, start, end)
     trade(data, seed)
-
-
