@@ -88,8 +88,7 @@ class Strategy:
         ax.scatter(np.where(r.position == -1)[0], r.close[r.position == -1], marker='o', color='r', alpha=.5, s=120, label='Sell')
         for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
             if i < len(r.macd_momentum) - 1:
-                ax.text(x, y, f"{r.macd_momentum[i+1] * 1000:.2f}", fontsize=7,
-                        ha='right', va='bottom')
+                ax.text(x, y, f"{r.macd_momentum[i+1] * 1000:.2f}", fontsize=7, ha='right', va='bottom')
         fig.autofmt_xdate()
         fig.tight_layout()
         plt.show()
