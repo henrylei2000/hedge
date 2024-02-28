@@ -3,55 +3,9 @@ from collections import deque
 
 
 class MACDStrategy(Strategy):
-    def macd_momentum(self):
-        self.macd_simple()
-        data = self.data
-        prev_signals = deque(maxlen=5)  # Keep track of the last 5 signals
-        positions = []  # Store updated signals
-        data['macd_momentum'] = data['macd_strength'].diff()
-        data.dropna(subset=['macd_momentum'], inplace=True)
-        for index, row in data.iterrows():
-            position = 0
-            signal = row['signal']
-            if signal == -1:
-                # Sell signal
-                if len(prev_signals) > 1 and row['macd_momentum'] < 0 and row['macd_momentum'] < prev_signals[-1]:
-                    position = -1 if positions[-1] != 1 else 0
-                if len(prev_signals) > 1 and 0 > row['macd_momentum'] > prev_signals[-1] > prev_signals[-2]:
-                    position = 1 if positions[-1] != -1 else 0
-            elif signal == 1:
-                # Buy signal
-                if len(prev_signals) > 1 and row['macd_momentum'] > prev_signals[-1] and 0 > prev_signals[-1] > prev_signals[-2] > 0:
-                    position = 1 if positions[-1] != -1 else 0
-                if len(prev_signals) > 1 and 0 < row['macd_momentum'] < prev_signals[-1] < prev_signals[-2]:
-                    position = -1 if positions[-1] != 1 else 0
-
-            positions.append(position)
-            prev_signals.append(row['macd_momentum'])
-
-        data['position'] = positions
-
-    def macd_derivatives(self, roc_window=3):
-        self.macd_simple()
-        data = self.data
-        # Calculate the first derivative of MACD
-        data['macd_derivative'] = data['macd'].diff()
-        # Calculate the rate of change (ROC) of MACD derivative
-        data['macd_derivative_roc'] = data['macd_derivative'].diff(roc_window) / roc_window
-        # Initialize Signal column with zeros
-        data['signal'] = 0
-
-        # Generate buy (1) and sell (-1) signals based on momentum reflected by ROC
-        data.loc[(data['macd_derivative'] > 0) & (
-                    data['macd_derivative_roc'] > 0), 'signal'] = 1  # Buy signal with increasing momentum
-        data.loc[(data['macd_derivative'] < 0) & (
-                    data['macd_derivative_roc'] < 0), 'signal'] = -1  # Sell signal with decreasing momentum
-
-        # Drop intermediate columns
-        data.dropna(subset=['macd_derivative', 'macd_derivative_roc'], inplace=True)
 
     def macd_simple(self):
-        short_window, long_window, signal_window = 5, 10, 3
+        short_window, long_window, signal_window = 9, 26, 6   # 3, 7, 2
         data = self.data
         # Calculate short-term and long-term exponential moving averages
         data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
@@ -73,5 +27,32 @@ class MACDStrategy(Strategy):
 
         data.dropna(subset=['close', 'macd', 'macd_strength', 'signal_line'], inplace=True)
 
+    def macd_derivatives(self):
+        self.macd_simple()
+        data = self.data
+        prev_signals = deque(maxlen=5)  # Keep track of the last 5 signals
+        positions = []  # Store updated signals
+
+        # Calculate the first derivative of MACD
+        data['macd_derivative'] = data['macd'].diff()
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        data.dropna(subset=['macd_derivative'], inplace=True)
+
+        for index, row in data.iterrows():
+            position = 0
+            if len(prev_signals) > 1 and row['macd_derivative'] + prev_signals[-1] > 0 > row['macd'] and row['signal_line'] < 0:
+                position = 1
+
+            if len(prev_signals) > 1 and row['macd_derivative'] + prev_signals[-1] < 0 < row['macd'] and row['signal_line'] > 0:
+                position = -1
+
+            positions.append(position)
+            prev_signals.append(row['position'])
+
+        data['position'] = positions
+
     def signal(self):
-        self.macd_momentum()
+        self.macd_derivatives()
