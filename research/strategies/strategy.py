@@ -94,8 +94,8 @@ class Strategy:
                 position = -1
                 trades += 1
                 balance += row['close'] * shares_held
-                print(f"Sold at: ${row['close']:.2f} x {shares_held}")
-                print(f"Trade {trades} ------------- Balance: ${balance:.2f} @ {row}")
+                print(f"Sold at: ${row['close']:.2f} x {shares_held}  @{index}")
+                print(f"Trade {trades} ------------- Balance: ${balance:.2f} [macd {row['macd']*100:.3f}]")
                 shares_held = 0
 
             elif balance > 0 and row['position'] == 1:
@@ -106,7 +106,7 @@ class Strategy:
                 if shares_bought:
                     print(f"share bought: {shares_bought:.2f}")
                     position = 1
-                    print(f"Bought at: ${row['close']:.2f} x {shares_bought}")
+                    print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd']*100:.3f}]")
 
             positions.append(position)
 
