@@ -43,14 +43,14 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            if len(prev_signals) > 1 and row['macd_derivative'] + prev_signals[-1] > 0 > row['macd'] and row['signal_line'] < 0:
+            if len(prev_signals) > 1 and row['macd_derivative'] > 0 > row['macd'] > row['signal_line'] and prev_signals[-1][0] < prev_signals[-1][1]:
                 position = 1
 
-            if len(prev_signals) > 1 and row['macd_derivative'] + prev_signals[-1] < 0 < row['macd'] and row['signal_line'] > 0:
+            if len(prev_signals) > 1 and row['macd_derivative'] < 0 < row['macd'] < row['signal_line'] and prev_signals[-1][0] > prev_signals[-1][1]:
                 position = -1
 
             positions.append(position)
-            prev_signals.append(row['position'])
+            prev_signals.append((row['macd'], row['signal_line']))
 
         data['position'] = positions
 

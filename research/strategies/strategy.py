@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import alpaca_trade_api as tradeapi
+import finnhub
+import time
 import configparser
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
@@ -16,18 +18,19 @@ class Strategy:
 
     def backtest(self):
         if self.download():
-            self.sanitize()
-            self.signal()
-            self.trade()
-            self.find_tops_bottoms()
-            # self.train()
-            self.plot()
+            # self.sanitize()
+            # self.signal()
+            # self.trade()
+            # self.find_tops_bottoms()
+            # # self.train()
+            # self.plot()
+            return
         else:
             print("No data found, please verify symbol and date range.")
 
-    def download(self, api="alpaca"):
-        start_str = '2024-02-26'
-        end_str = '2024-02-26'
+    def download(self, api="finn"):
+        start_str = '2024-02-29'
+        end_str = '2024-03-01'
 
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
@@ -38,6 +41,17 @@ class Strategy:
                 self.data = data
             else:
                 return False
+
+        if api == 'finn':
+            finnhub_client = finnhub.Client(api_key="cngd829r01qq9hn8u3igcngd829r01qq9hn8u3j0")
+            start_time = pd.Timestamp(start_str + "T09:15:00", tz='America/New_York').timestamp()
+            end_time = pd.Timestamp(end_str + "T16:01:00", tz='America/New_York').timestamp()
+
+            for i in range(100):
+                # Stock candles
+                print(finnhub_client.quote('TQQQ'))
+                time.sleep(30)
+
 
         elif api == 'alpaca':
             # Load Alpaca API credentials from configuration file
@@ -64,7 +78,7 @@ class Strategy:
                 data.index = data.index.tz_convert('US/Eastern')
 
                 # Filter rows between 9:30am and 4:00pm EST
-                data = data.between_time('9:25', '16:00')
+                data = data.between_time('9:15', '16:00')
                 if not data.empty:
                     self.data = data
                 else:
@@ -88,7 +102,7 @@ class Strategy:
         if 'position' not in self.data.columns:
             self.data['position'] = self.data['signal']
         for index, row in self.data.iterrows():
-            position = 0
+            # position = 0
             if shares_held > 0 and row['position'] == -1:
                 # Sell signal
                 position = -1
@@ -108,9 +122,9 @@ class Strategy:
                     position = 1
                     print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd']*100:.3f}]")
 
-            positions.append(position)
+            # positions.append(position)
 
-        self.data['position'] = positions
+        # self.data['position'] = positions
 
         # Calculate final balance
         final_balance = balance + (shares_held * self.data['close'].iloc[-1])
