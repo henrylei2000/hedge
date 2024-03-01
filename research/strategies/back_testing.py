@@ -1,6 +1,5 @@
 from macd_strategy import MACDStrategy
 
-
 if __name__ == "__main__":
     # Download stock data
     stock = "TQQQ"

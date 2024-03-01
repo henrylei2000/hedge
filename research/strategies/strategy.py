@@ -12,20 +12,21 @@ class Strategy:
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
+        self.num_buckets = 1
 
     def backtest(self):
         if self.download():
             self.sanitize()
             self.signal()
-            self.trade()
+            self.bucket_trade()
             self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
 
-    def download(self, api="alpaca"):
+    def download(self, api="yahoo"):
         start_str = '2024-02-29 9:30'
-        end_str = '2024-02-29 15:00'
+        end_str = '2024-02-29 11:01'
         start_time = pd.Timestamp(start_str, tz='America/New_York').tz_convert('UTC')
         end_time = pd.Timestamp(end_str, tz='America/New_York').tz_convert('UTC')
 
@@ -111,40 +112,55 @@ class Strategy:
         print(f"Initial Balance: ${self.init_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
               f"\n----------------- PnL: ${self.pnl:.2f}")
 
-    def bucket_trade(stock_data, initial_balance=10000):
-        # Initial setup
-        num_buckets = 3
-        bucket_value = initial_balance / num_buckets
-        buckets_in_use = 0  # Tracks how many buckets are currently invested
-        balance = initial_balance
-        shares_held = 0  # Total shares held
-
+    def bucket_trade(self):
+        initial_balance = self.init_balance
+        num_buckets = self.num_buckets  # 4
+        initial_bucket_value = initial_balance / num_buckets
+        buckets = [{'in_use': False, 'shares': 0, 'buy_price': 0, 'bucket_value': initial_bucket_value} for _ in
+                   range(num_buckets)]
+        total_balance = initial_balance  # Updated to track total balance across all buckets
+        if 'position' not in self.data.columns:
+            self.data['position'] = self.data['signal']
+        stock_data = self.data
         for i, row in stock_data.iterrows():
             price = row['close']  # Assuming the 'close' column has the stock price
             position = row['position']
 
-            # Buy signal and we have buckets available
-            if position == 1 and buckets_in_use < num_buckets:
-                # Calculate how many shares to buy with one bucket
-                shares_to_buy = bucket_value / price
-                shares_held += shares_to_buy
-                buckets_in_use += 1
-                balance -= bucket_value
+            if position == 1:  # Buy signal
+                for bucket in buckets:
+                    if not bucket['in_use']:
+                        bucket['in_use'] = True
+                        bucket['shares'] = bucket['bucket_value'] / price
+                        bucket['buy_price'] = price
+                        break  # Exit after finding the first available bucket
 
-            # Sell signal and we have shares to sell
-            elif position == -1 and shares_held > 0 and buckets_in_use > 0:
-                # Assume we sell shares bought with one bucket (evenly distributing shares across buckets)
-                shares_to_sell = shares_held / buckets_in_use
-                balance += shares_to_sell * price
-                shares_held -= shares_to_sell
-                buckets_in_use -= 1
+            elif position == -1:  # Sell signal
+                for bucket in buckets:
+                    if bucket['in_use']:
+                        # Calculate the value after selling shares
+                        sell_value = bucket['shares'] * price
+                        # Calculate PnL for this bucket
+                        pnl = sell_value - bucket['bucket_value']
+                        total_balance += pnl  # Update total balance
+                        # Reset bucket for the next trade
+                        bucket['in_use'] = False
+                        bucket['shares'] = 0
+                        bucket['buy_price'] = 0
+                        bucket['bucket_value'] = sell_value  # Update bucket value with the result of the trade
+                        break  # Assume one sell signal sells the shares from one bucket only
 
-        # Final balance after selling any remaining shares at the last price
-        if shares_held > 0:
-            balance += shares_held * stock_data.iloc[-1]['close']
-            shares_held = 0
+        # Calculate the final balance by adding up the remaining bucket values
+        final_balance = sum(bucket['bucket_value'] for bucket in buckets if not bucket['in_use']) + \
+                        sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
+        total_pnl = final_balance - initial_balance
+        self.pnl = total_pnl
+        return total_pnl
 
-        return balance, shares_held
+    # Example usage
+    # Assuming stock_data is your DataFrame and it contains 'position' and 'close' columns
+    # stock_data = pd.DataFrame({'close': [100, 105, 103, 108, 110], 'position': [0, 1, 0, -1, 0]})
+    # total_pnl = trade(stock_data)
+    # print(f"Total PnL: {total_pnl}")
 
     def plot(self):
         class MyFormatter:
@@ -173,8 +189,7 @@ class Strategy:
         ax.scatter(np.where(r.position == -1)[0], r.close[r.position == -1], marker='o', color='r', alpha=.5, s=120,
                    label='Sell')
         for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
-            if i < len(r.close) - 1:
-                ax.text(x, y, f"{r.close[i + 1] * 1:.2f}", fontsize=7, ha='right', va='bottom')
+            ax.text(x, y, f"{r.close[i]:.2f}", fontsize=7, ha='right', va='bottom')
         fig.autofmt_xdate()
         fig.tight_layout()
         plt.show()
