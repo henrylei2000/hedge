@@ -2,11 +2,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import alpaca_trade_api as tradeapi
-import finnhub
-import time
 import configparser
 import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
 
 
 class Strategy:
@@ -18,23 +15,23 @@ class Strategy:
 
     def backtest(self):
         if self.download():
-            # self.sanitize()
-            # self.signal()
-            # self.trade()
-            # self.find_tops_bottoms()
-            # # self.train()
-            # self.plot()
+            self.sanitize()
+            self.signal()
+            self.trade()
+            self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
 
-    def download(self, api="finn"):
-        start_str = '2024-02-29'
-        end_str = '2024-03-01'
+    def download(self, api="alpaca"):
+        start_str = '2024-02-29 9:30'
+        end_str = '2024-02-29 15:00'
+        start_time = pd.Timestamp(start_str, tz='America/New_York').tz_convert('UTC')
+        end_time = pd.Timestamp(end_str, tz='America/New_York').tz_convert('UTC')
 
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
-            data = yf.download(self.symbol, interval='1m', start=start_str, end=end_str)
+            data = yf.download(self.symbol, interval='1m', start=start_time, end=end_time)
             if not data.empty:
                 data.rename_axis('timestamp', inplace=True)
                 data.rename(columns={'Close': 'close'}, inplace=True)
@@ -42,43 +39,24 @@ class Strategy:
             else:
                 return False
 
-        if api == 'finn':
-            finnhub_client = finnhub.Client(api_key="cngd829r01qq9hn8u3igcngd829r01qq9hn8u3j0")
-            start_time = pd.Timestamp(start_str + "T09:15:00", tz='America/New_York').timestamp()
-            end_time = pd.Timestamp(end_str + "T16:01:00", tz='America/New_York').timestamp()
-
-            for i in range(100):
-                # Stock candles
-                print(finnhub_client.quote('TQQQ'))
-                time.sleep(30)
-
-
         elif api == 'alpaca':
             # Load Alpaca API credentials from configuration file
             config = configparser.ConfigParser()
             config.read('config.ini')
-
             # Access configuration values
             api_key = config.get('settings', 'API_KEY')
             secret_key = config.get('settings', 'SECRET_KEY')
-
             # Initialize Alpaca API
             api = tradeapi.REST(api_key, secret_key, api_version='v2')
 
-            # Format start and end times for the filter
-            start_time = pd.Timestamp(start_str + "T09:15:00", tz='America/New_York').isoformat()
-            end_time = pd.Timestamp(end_str + "T16:01:00",
-                                    tz='America/New_York').isoformat()  # Market closes at 4:00pm EST/EDT
-
             # Retrieve stock price data from Alpaca
-            data = api.get_bars(self.symbol, '1Min', start=start_time, end=end_time).df
+            data = api.get_bars(self.symbol, '1Min', start=start_time.isoformat(), end=end_time.isoformat()).df
 
             if not data.empty:
                 # Convert timestamp index to Eastern Timezone (EST)
                 data.index = data.index.tz_convert('US/Eastern')
-
                 # Filter rows between 9:30am and 4:00pm EST
-                data = data.between_time('9:15', '16:00')
+                data = data.between_time('9:30', '16:00')
                 if not data.empty:
                     self.data = data
                 else:
@@ -133,6 +111,41 @@ class Strategy:
         print(f"Initial Balance: ${self.init_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
               f"\n----------------- PnL: ${self.pnl:.2f}")
 
+    def bucket_trade(stock_data, initial_balance=10000):
+        # Initial setup
+        num_buckets = 3
+        bucket_value = initial_balance / num_buckets
+        buckets_in_use = 0  # Tracks how many buckets are currently invested
+        balance = initial_balance
+        shares_held = 0  # Total shares held
+
+        for i, row in stock_data.iterrows():
+            price = row['close']  # Assuming the 'close' column has the stock price
+            position = row['position']
+
+            # Buy signal and we have buckets available
+            if position == 1 and buckets_in_use < num_buckets:
+                # Calculate how many shares to buy with one bucket
+                shares_to_buy = bucket_value / price
+                shares_held += shares_to_buy
+                buckets_in_use += 1
+                balance -= bucket_value
+
+            # Sell signal and we have shares to sell
+            elif position == -1 and shares_held > 0 and buckets_in_use > 0:
+                # Assume we sell shares bought with one bucket (evenly distributing shares across buckets)
+                shares_to_sell = shares_held / buckets_in_use
+                balance += shares_to_sell * price
+                shares_held -= shares_to_sell
+                buckets_in_use -= 1
+
+        # Final balance after selling any remaining shares at the last price
+        if shares_held > 0:
+            balance += shares_held * stock_data.iloc[-1]['close']
+            shares_held = 0
+
+        return balance, shares_held
+
     def plot(self):
         class MyFormatter:
             def __init__(self, dates, fmt='%Y-%m-%d'):
@@ -166,52 +179,3 @@ class Strategy:
         fig.tight_layout()
         plt.show()
 
-    def find_tops_bottoms(self):
-        data = self.data
-
-        # Find peaks (tops) and valleys (bottoms)
-        peaks, _ = find_peaks(data['close'], prominence=0.1)  # Adjust prominence as needed
-        valleys, _ = find_peaks(-data['close'], prominence=0.1)  # Adjust prominence as needed
-
-        # Get the corresponding prices
-        data['abnormality'] = 0
-
-        # Set abnormality values for peaks and valleys
-        data.loc[data.index[peaks], 'abnormality'] = 1
-        data.loc[data.index[valleys], 'abnormality'] = -1
-
-        data.to_csv(f'./{self.symbol}.csv')
-
-    def train(self):
-        import pandas as pd
-        from sklearn.model_selection import TimeSeriesSplit
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.metrics import classification_report
-
-        data = self.data
-        # Features (X) and target variable (y)
-        X = data[['close', 'macd', 'signal_line']]
-        y = data['abnormality']
-
-        # Time Series Split
-        tscv = TimeSeriesSplit(n_splits=2)
-
-        # Iterate through time series splits
-        for train_index, test_index in tscv.split(X):
-            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-            y_train, y_test = y.iloc[train_index], y.iloc[test_index]
-
-            # Train the model
-            model = RandomForestClassifier(random_state=42)
-            model.fit(X_train, y_train)
-
-            # Make predictions
-            y_pred = model.predict(X_test)
-
-            report = classification_report(y_test, y_pred, output_dict=True, labels=np.unique(y_pred))
-            print(report)
-
-            current = pd.DataFrame(self.data.iloc[-6]).transpose()
-            print(current)
-            prediction = model.predict(current[['close', 'macd', 'signal_line']])
-            print("Predicted class label:", prediction)
