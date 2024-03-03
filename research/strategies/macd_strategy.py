@@ -27,7 +27,7 @@ class MACDStrategy(Strategy):
 
         data.dropna(subset=['close', 'macd', 'macd_strength', 'signal_line'], inplace=True)
 
-    def macd_derivatives(self):
+    def macd_cross_line(self):
         self.macd_simple()
         data = self.data
         prev_signals = deque(maxlen=5)  # Keep track of the last 5 signals
@@ -51,6 +51,34 @@ class MACDStrategy(Strategy):
 
             positions.append(position)
             prev_signals.append((row['macd'], row['signal_line']))
+
+        data['position'] = positions
+
+    def macd_derivatives(self):
+        self.macd_simple()
+        data = self.data
+        prev_signals = deque(maxlen=5)  # Keep track of the last 5 signals
+        positions = []  # Store updated signals
+
+        # Calculate the first derivative of MACD
+        data['macd_derivative'] = data['macd'].diff()
+        data['signal_line_derivative'] = data['signal_line'].diff()
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        data.dropna(subset=['macd_derivative'], inplace=True)
+
+        for index, row in data.iterrows():
+            position = 0
+            if len(prev_signals) > 1 and row['signal_line_derivative'] > row['macd_derivative'] > 0 and prev_signals[-1][0] > prev_signals[-1][1]:
+                position = -1
+
+            if len(prev_signals) > 1 and row['signal_line_derivative'] < row['macd_derivative'] < 0 and prev_signals[-1][0] < prev_signals[-1][1]:
+                position = 1
+
+            positions.append(position)
+            prev_signals.append((row['macd_derivative'], row['signal_line_derivative']))
 
         data['position'] = positions
 

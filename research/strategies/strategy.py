@@ -12,7 +12,7 @@ class Strategy:
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
-        self.num_buckets = 1
+        self.num_buckets = 4
 
     def backtest(self):
         if self.download():
@@ -25,8 +25,8 @@ class Strategy:
             print("No data found, please verify symbol and date range.")
 
     def download(self, api="yahoo"):
-        start_str = '2024-02-29 9:30'
-        end_str = '2024-02-29 11:01'
+        start_str = '2024-02-29 11:01'
+        end_str = '2024-02-29 14:00'
         start_time = pd.Timestamp(start_str, tz='America/New_York').tz_convert('UTC')
         end_time = pd.Timestamp(end_str, tz='America/New_York').tz_convert('UTC')
 
@@ -132,6 +132,7 @@ class Strategy:
                         bucket['in_use'] = True
                         bucket['shares'] = bucket['bucket_value'] / price
                         bucket['buy_price'] = price
+                        print(f"Bought at: ${price:.2f} x {bucket['shares']}  @{i}")
                         break  # Exit after finding the first available bucket
 
             elif position == -1:  # Sell signal
@@ -147,6 +148,7 @@ class Strategy:
                         bucket['shares'] = 0
                         bucket['buy_price'] = 0
                         bucket['bucket_value'] = sell_value  # Update bucket value with the result of the trade
+                        print(f"Sold at: ${price:.2f} x {bucket['shares']}  @{i}")
                         break  # Assume one sell signal sells the shares from one bucket only
 
         # Calculate the final balance by adding up the remaining bucket values
