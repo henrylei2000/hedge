@@ -2,7 +2,7 @@ from strategy import Strategy
 from collections import deque
 
 
-def detect_significance(historical_data, new_point, boundary_ratio=0.2):
+def detect_significance(historical_data, new_point, boundary_ratio=0.25):
     # Calculate the minimum and maximum values within the recent window
     if not len(historical_data):
         return False, False, False, False
@@ -13,10 +13,6 @@ def detect_significance(historical_data, new_point, boundary_ratio=0.2):
     value_range = max_value - min_value
     boundary_threshold = value_range * boundary_ratio
 
-    # Calculate the thresholds for minimum and maximum boundaries
-    upper_boundary = max_value - boundary_threshold
-    lower_boundary = min_value + boundary_threshold
-
     # Check if the new point is approaching the minimum or maximum boundary
     approaching_min_boundary = new_point <= (min_value + boundary_threshold)
     approaching_max_boundary = new_point >= (max_value - boundary_threshold)
@@ -25,7 +21,7 @@ def detect_significance(historical_data, new_point, boundary_ratio=0.2):
     exceeding_min_boundary = new_point < min_value
     exceeding_max_boundary = new_point > max_value
 
-    return approaching_min_boundary or exceeding_min_boundary, approaching_max_boundary or exceeding_max_boundary, exceeding_min_boundary, exceeding_max_boundary
+    return approaching_min_boundary, approaching_max_boundary, exceeding_min_boundary, exceeding_max_boundary
 
 
 class MACDStrategy(Strategy):
@@ -87,7 +83,7 @@ class MACDStrategy(Strategy):
         prev_signal_line_derivatives = deque(maxlen=30)
         prev_strength_2nd_derivative = deque(maxlen=30)
         prev_macd_strength = deque(maxlen=30)
-        wait = 5
+        wait = 3
         positions = []  # Store updated signals
 
         # Calculate the first derivative of MACD
@@ -106,18 +102,16 @@ class MACDStrategy(Strategy):
             strength, macd_derivative, signal_line_derivative = row['macd'] - row['signal_line'], row['macd_derivative'], row['signal_line_derivative']
             strength_2nd_derivative = row['strength_2nd_derivative']
 
-            if sum(1 for val in list(prev_macd_derivatives)[-wait:] if val < 0) == wait:
-                wait += wait
-                print(wait)
+            if len(prev_macd_derivatives) >= wait:
+                significance = detect_significance(prev_macd_strength, row['macd_strength'], 0.1)
 
-            significance = detect_significance(prev_macd_strength, row['macd_strength'], 0.1)
+                if macd_derivative > prev_macd_derivatives[-1] > 0 and signal_line_derivative > prev_signal_line_derivatives[-1] > 0:
+                    if strength_2nd_derivative < prev_strength_2nd_derivative[-1] and strength_2nd_derivative < 0 and significance[1]:
+                        position = -1
 
-            if len(prev_macd_derivatives) >= wait and strength > 0 and macd_derivative > prev_macd_derivatives[-1] > 0 and signal_line_derivative > prev_signal_line_derivatives[-1] > 0:
-                if strength_2nd_derivative < prev_strength_2nd_derivative[-1] and significance[1]:
-                    position = -1
-
-            if len(prev_macd_derivatives) >= wait and strength < 0 and prev_macd_derivatives[-1] < macd_derivative < 0 and prev_signal_line_derivatives[-1] < signal_line_derivative < 0 and prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0 and significance[0]:
-                position = 1
+                if prev_macd_derivatives[-1] < macd_derivative < 0 and prev_signal_line_derivatives[-1] < signal_line_derivative < 0:
+                    if prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0 and significance[0]:
+                        position = 1
 
             positions.append(position)
             prev_macd_derivatives.append(row['macd_derivative'])

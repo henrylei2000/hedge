@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 
 
 class Strategy:
-    def __init__(self, symbol='TSLA'):
+    def __init__(self, symbol='LABU'):
         self.symbol = symbol
-        self.start = pd.Timestamp('2024-02-28 9:30', tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp('2024-02-28 16:00', tz='America/New_York').tz_convert('UTC')
+        self.start = pd.Timestamp('2024-03-05 9:30', tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp('2024-03-05 16:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
