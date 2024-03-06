@@ -105,13 +105,18 @@ class MACDStrategy(Strategy):
             if len(prev_macd_derivatives) >= wait:
                 significance = detect_significance(prev_macd_strength, row['macd_strength'], 0.1)
 
-                if macd_derivative > prev_macd_derivatives[-1] > 0 and signal_line_derivative > prev_signal_line_derivatives[-1] > 0:
-                    if strength_2nd_derivative < prev_strength_2nd_derivative[-1] and strength_2nd_derivative < 0 and significance[1]:
-                        position = -1
+                if significance[1]:
+                    print(f"{row['close']:.3f} @{index} {significance}")
+                    if prev_macd_derivatives[-1] > macd_derivative > 0:
+                        if prev_signal_line_derivatives[-1] > signal_line_derivative > 0:
+                            if strength_2nd_derivative < prev_strength_2nd_derivative[-1] and strength_2nd_derivative < 0:
+                                position = -1
 
-                if prev_macd_derivatives[-1] < macd_derivative < 0 and prev_signal_line_derivatives[-1] < signal_line_derivative < 0:
-                    if prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0 and significance[0]:
-                        position = 1
+                if significance[0]:
+                    if prev_macd_derivatives[-1] < macd_derivative and prev_macd_derivatives[-1] < 0:
+                        if prev_signal_line_derivatives[-1] < 0 and signal_line_derivative < 0:
+                            if prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0:
+                                position = 1
 
             positions.append(position)
             prev_macd_derivatives.append(row['macd_derivative'])
@@ -121,7 +126,7 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-        # data.to_csv(f"{self.symbol}.csv")
+        data.to_csv(f"{self.symbol}.csv")
 
     def signal(self):
         self.macd_derivatives()
