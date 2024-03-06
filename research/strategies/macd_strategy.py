@@ -112,11 +112,9 @@ class MACDStrategy(Strategy):
 
             significance = detect_significance(prev_macd_strength, row['macd_strength'], 0.1)
 
-            if len(prev_macd_derivatives) >= wait and strength > 0 and macd_derivative > prev_macd_derivatives[-1] > 0 and signal_line_derivative > prev_signal_line_derivatives[-1] > 0 and strength_2nd_derivative < prev_strength_2nd_derivative[-1] and significance[1]:
-                position = -1
-
-            if sum(1 for val in list(prev_macd_strength) if val > 0) == 30:
-                position = -1
+            if len(prev_macd_derivatives) >= wait and strength > 0 and macd_derivative > prev_macd_derivatives[-1] > 0 and signal_line_derivative > prev_signal_line_derivatives[-1] > 0:
+                if strength_2nd_derivative < prev_strength_2nd_derivative[-1] and significance[1]:
+                    position = -1
 
             if len(prev_macd_derivatives) >= wait and strength < 0 and prev_macd_derivatives[-1] < macd_derivative < 0 and prev_signal_line_derivatives[-1] < signal_line_derivative < 0 and prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0 and significance[0]:
                 position = 1

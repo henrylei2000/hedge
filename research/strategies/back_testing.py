@@ -2,10 +2,9 @@ from macd_strategy import MACDStrategy
 
 
 def back_test():
-    # Download stock data
-    stock = "TSLA"
+
     # Backtest MACD strategy
-    macd_strategy = MACDStrategy(stock)
+    macd_strategy = MACDStrategy()
     macd_strategy.backtest()
     print(f"------- Total PnL Performance ------------ {macd_strategy.pnl:.2f}")
 
