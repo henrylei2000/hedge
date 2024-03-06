@@ -8,11 +8,13 @@ import matplotlib.pyplot as plt
 
 class Strategy:
     def __init__(self, symbol):
-        self.symbol = symbol
+        self.symbol = 'TSLA'  # symbol
+        self.start = pd.Timestamp('2024-02-28 09:30', tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp('2024-02-28 16:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
-        self.num_buckets = 2
+        self.num_buckets = 4
 
     def backtest(self):
         if self.download():
@@ -25,14 +27,10 @@ class Strategy:
             print("No data found, please verify symbol and date range.")
 
     def download(self, api="yahoo"):
-        start_str = '2024-02-26 09:30'
-        end_str = '2024-02-26 12:00'
-        start_time = pd.Timestamp(start_str, tz='America/New_York').tz_convert('UTC')
-        end_time = pd.Timestamp(end_str, tz='America/New_York').tz_convert('UTC')
 
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
-            data = yf.download(self.symbol, interval='1m', start=start_time, end=end_time)
+            data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
             if not data.empty:
                 data.rename_axis('timestamp', inplace=True)
                 data.rename(columns={'Close': 'close'}, inplace=True)
@@ -51,7 +49,7 @@ class Strategy:
             api = tradeapi.REST(api_key, secret_key, api_version='v2')
 
             # Retrieve stock price data from Alpaca
-            data = api.get_bars(self.symbol, '1Min', start=start_time.isoformat(), end=end_time.isoformat()).df
+            data = api.get_bars(self.symbol, '1Min', start=self.start.isoformat(), end=self.end.isoformat()).df
 
             if not data.empty:
                 # Convert timestamp index to Eastern Timezone (EST)
@@ -132,14 +130,14 @@ class Strategy:
                         bucket['in_use'] = True
                         bucket['shares'] = bucket['bucket_value'] / price
                         bucket['buy_price'] = price
-                        print(f"BUY  ${price:.2f} x {bucket['shares']}  @{i}")
+                        print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         break  # Exit after finding the first available bucket
 
             elif position == -1:  # Sell signal
                 for bucket in buckets:
                     if bucket['in_use']:
                         # Calculate the value after selling shares
-                        print(f"SELL ${price:.2f} x {bucket['shares']}  @{i}")
+                        print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         sell_value = bucket['shares'] * price
                         # Calculate PnL for this bucket
                         pnl = sell_value - bucket['bucket_value']

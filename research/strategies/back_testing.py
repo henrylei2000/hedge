@@ -3,7 +3,7 @@ from macd_strategy import MACDStrategy
 
 def back_test():
     # Download stock data
-    stock = "TQQQ"
+    stock = "TSLA"
     # Backtest MACD strategy
     macd_strategy = MACDStrategy(stock)
     macd_strategy.backtest()

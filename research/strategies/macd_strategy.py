@@ -2,6 +2,32 @@ from strategy import Strategy
 from collections import deque
 
 
+def detect_significance(historical_data, new_point, boundary_ratio=0.2):
+    # Calculate the minimum and maximum values within the recent window
+    if not len(historical_data):
+        return False, False, False, False
+    min_value = min(historical_data)
+    max_value = max(historical_data)
+
+    # Calculate the boundary threshold based on the ratio and range of values
+    value_range = max_value - min_value
+    boundary_threshold = value_range * boundary_ratio
+
+    # Calculate the thresholds for minimum and maximum boundaries
+    upper_boundary = max_value - boundary_threshold
+    lower_boundary = min_value + boundary_threshold
+
+    # Check if the new point is approaching the minimum or maximum boundary
+    approaching_min_boundary = new_point <= (min_value + boundary_threshold)
+    approaching_max_boundary = new_point >= (max_value - boundary_threshold)
+
+    # Also check if it's exceeding boundaries
+    exceeding_min_boundary = new_point < min_value
+    exceeding_max_boundary = new_point > max_value
+
+    return approaching_min_boundary or exceeding_min_boundary, approaching_max_boundary or exceeding_max_boundary, exceeding_min_boundary, exceeding_max_boundary
+
+
 class MACDStrategy(Strategy):
 
     def macd_simple(self):
@@ -57,7 +83,11 @@ class MACDStrategy(Strategy):
     def macd_derivatives(self):
         self.macd_simple()
         data = self.data
-        prev_signals = deque(maxlen=5)  # Keep track of the last 5 signals
+        prev_macd_derivatives = deque(maxlen=30)  # Keep track of the last 30 signals
+        prev_signal_line_derivatives = deque(maxlen=30)
+        prev_strength_2nd_derivative = deque(maxlen=30)
+        prev_macd_strength = deque(maxlen=30)
+        wait = 5
         positions = []  # Store updated signals
 
         # Calculate the first derivative of MACD
@@ -72,34 +102,34 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            """
-            1) start to accelerate upward in a rising trend - BUY
-            2) start to decelerate downward in a dropping trend - BUY
-            3) start to accelerate downward in a dropping trend - SELL
-            4) start to decelerate upward in a rising trend - SELL
-            """
 
-            strength_momentum, decelerate_drop, convergency = False, False, False
-            dropping = row['macd_derivative'] < 0 and row['signal_line_derivative'] < 0 or row['macd_derivative'] < row['signal_line_derivative']
-            rising = row['macd_derivative'] > row['signal_line_derivative'] > 0
-            if len(prev_signals) > 1:
-                strength_momentum = row['strength_2nd_derivative'] > 0 and row['strength_2nd_derivative'] > prev_signals[-1][2]
-                decelerate_drop = prev_signals[-1][0] < row['macd_derivative'] < row['signal_line_derivative'] < prev_signals[-1][1]
-                converging = abs(row['macd_derivative'] - row['signal_line_derivative']) < abs(prev_signals[-1][0] - prev_signals[-1][1]) or (row['macd_derivative'] - row['signal_line_derivative']) * (prev_signals[-1][0] - prev_signals[-1][1]) < 0
+            strength, macd_derivative, signal_line_derivative = row['macd'] - row['signal_line'], row['macd_derivative'], row['signal_line_derivative']
+            strength_2nd_derivative = row['strength_2nd_derivative']
 
-            # 2) start to decelerate downward in a dropping trend - BUY
-            if strength_momentum and dropping and converging:
-                position = 1
+            if sum(1 for val in list(prev_macd_derivatives)[-wait:] if val < 0) == wait:
+                wait += wait
+                print(wait)
 
-            if strength_momentum and rising and not converging:
-                position = 1
-            if len(prev_signals) > 1 and row['signal_line_derivative'] > row['macd_derivative'] > 0 and prev_signals[-1][0] > prev_signals[-1][1]:
+            significance = detect_significance(prev_macd_strength, row['macd_strength'], 0.1)
+
+            if len(prev_macd_derivatives) >= wait and strength > 0 and macd_derivative > prev_macd_derivatives[-1] > 0 and signal_line_derivative > prev_signal_line_derivatives[-1] > 0 and strength_2nd_derivative < prev_strength_2nd_derivative[-1] and significance[1]:
                 position = -1
 
+            if sum(1 for val in list(prev_macd_strength) if val > 0) == 30:
+                position = -1
+
+            if len(prev_macd_derivatives) >= wait and strength < 0 and prev_macd_derivatives[-1] < macd_derivative < 0 and prev_signal_line_derivatives[-1] < signal_line_derivative < 0 and prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0 and significance[0]:
+                position = 1
+
             positions.append(position)
-            prev_signals.append((row['macd_derivative'], row['signal_line_derivative'], row['strength_2nd_derivative']))
+            prev_macd_derivatives.append(row['macd_derivative'])
+            prev_signal_line_derivatives.append(row['signal_line_derivative'])
+            prev_strength_2nd_derivative.append(row['strength_2nd_derivative'])
+            prev_macd_strength.append(row['macd_strength'])
 
         data['position'] = positions
+
+        # data.to_csv(f"{self.symbol}.csv")
 
     def signal(self):
         self.macd_derivatives()
