@@ -108,7 +108,7 @@ class Strategy:
         # Print results
         self.pnl = final_balance - self.init_balance
         print(f"Initial Balance: ${self.init_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
-              f"\n----------------- PnL: ${self.pnl:.2f}")
+              f"\n-------{self.symbol}---------- PnL: ${self.pnl:.2f}")
 
     def bucket_trade(self):
         initial_balance = self.init_balance

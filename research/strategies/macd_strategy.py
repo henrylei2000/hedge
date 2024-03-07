@@ -65,11 +65,12 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            if len(prev_signals) > 1 and row['macd_derivative'] > 0 > row['macd'] > row['signal_line'] and prev_signals[-1][0] < prev_signals[-1][1]:
-                position = 1
+            if len(prev_signals) > 1:
+                if row['macd_derivative'] > 0 > row['macd'] > row['signal_line'] and prev_signals[-1][0] < prev_signals[-1][1]:
+                    position = 1
 
-            if len(prev_signals) > 1 and row['macd_derivative'] < 0 < row['macd'] < row['signal_line'] and prev_signals[-1][0] > prev_signals[-1][1]:
-                position = -1
+                if row['macd_derivative'] < 0 < row['macd'] < row['signal_line'] and prev_signals[-1][0] > prev_signals[-1][1]:
+                    position = -1
 
             positions.append(position)
             prev_signals.append((row['macd'], row['signal_line']))
@@ -100,7 +101,6 @@ class MACDStrategy(Strategy):
             position = 0
 
             strength, macd_derivative, signal_line_derivative = row['macd'] - row['signal_line'], row['macd_derivative'], row['signal_line_derivative']
-            strength_2nd_derivative = row['strength_2nd_derivative']
 
             if len(prev_macd_derivatives) >= wait:
                 significance = detect_significance(prev_macd_strength, row['macd_strength'], 0.1)
@@ -109,14 +109,12 @@ class MACDStrategy(Strategy):
                     print(f"{row['close']:.3f} @{index} {significance}")
                     if prev_macd_derivatives[-1] > macd_derivative > 0:
                         if prev_signal_line_derivatives[-1] > signal_line_derivative > 0:
-                            if strength_2nd_derivative < prev_strength_2nd_derivative[-1] and strength_2nd_derivative < 0:
-                                position = -1
+                            position = -1
 
                 if significance[0]:
                     if prev_macd_derivatives[-1] < macd_derivative and prev_macd_derivatives[-1] < 0:
                         if prev_signal_line_derivatives[-1] < 0 and signal_line_derivative < 0:
-                            if prev_strength_2nd_derivative[-1] < strength_2nd_derivative and strength_2nd_derivative > 0:
-                                position = 1
+                            position = 1
 
             positions.append(position)
             prev_macd_derivatives.append(row['macd_derivative'])
