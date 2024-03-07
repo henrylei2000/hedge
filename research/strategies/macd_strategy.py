@@ -114,7 +114,7 @@ class MACDStrategy(Strategy):
                 if significance[0]:
                     if prev_macd_derivatives[-1] < macd_derivative and prev_macd_derivatives[-1] < 0:
                         if prev_signal_line_derivatives[-1] < 0 and signal_line_derivative < 0:
-                            position = 1
+                                position = 1
 
             positions.append(position)
             prev_macd_derivatives.append(row['macd_derivative'])

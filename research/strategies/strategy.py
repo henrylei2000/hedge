@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 
 
 class Strategy:
-    def __init__(self, symbol='TSLA'):
+    def __init__(self, symbol='TQQQ'):
         self.symbol = symbol
         self.start = pd.Timestamp('2024-03-06 9:30', tz='America/New_York').tz_convert('UTC')
         self.end = pd.Timestamp('2024-03-06 16:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
-        self.num_buckets = 4
+        self.num_buckets = 2
 
     def backtest(self):
         if self.download():
