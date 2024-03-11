@@ -6,8 +6,6 @@ def back_test():
     # Backtest MACD strategy
     macd_strategy = MACDStrategy()
     macd_strategy.backtest()
-    print(f"---{macd_strategy.symbol}----- Total PnL Performance ------------ {macd_strategy.pnl:.2f}")
-
 
 
 import smtplib

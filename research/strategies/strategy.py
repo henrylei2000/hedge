@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 class Strategy:
     def __init__(self, symbol='TQQQ'):
         self.symbol = symbol
-        self.start = pd.Timestamp('2024-03-06 9:30', tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp('2024-03-06 16:00', tz='America/New_York').tz_convert('UTC')
+        self.start = pd.Timestamp('2024-03-04 09:30', tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp('2024-03-04 12:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
@@ -33,7 +33,7 @@ class Strategy:
             data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
             if not data.empty:
                 data.rename_axis('timestamp', inplace=True)
-                data.rename(columns={'Close': 'close'}, inplace=True)
+                data.rename(columns={'Adj Close': 'close'}, inplace=True)
                 self.data = data
             else:
                 return False
@@ -154,6 +154,7 @@ class Strategy:
                         sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
+        print(f"---{self.symbol}----- Total PnL Performance ------------ {self.pnl:.2f}")
         return total_pnl
 
     # Example usage
