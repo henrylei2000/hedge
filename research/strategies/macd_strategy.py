@@ -81,9 +81,8 @@ class MACDStrategy(Strategy):
     def macd_derivatives(self):
         self.macd_simple()
         data = self.data
-        prev_macd_derivatives = deque(maxlen=26)  # Keep track of the last 30 signals
-        prev_signal_line_derivatives = deque(maxlen=26)
-        prev_macd_strength = deque(maxlen=26)
+        prev_macd_derivatives = deque(maxlen=3)  # Keep track of the last 30 signals
+        prev_macd_strength = deque(maxlen=3)
         wait = 3
         positions = []  # Store updated signals
 
@@ -102,21 +101,21 @@ class MACDStrategy(Strategy):
             strength, macd_derivative, signal_line_derivative = row['macd'] - row['signal_line'], row['macd_derivative'], row['signal_line_derivative']
 
             if len(prev_macd_derivatives) >= wait:
-                significance = self.detect_significance(index, 'macd_strength')
+                significance = self.detect_significance(index, 'close')
+                strength_significance = self.detect_significance(index, 'macd_strength')
 
                 if significance[1]:
-                    print(f"PEAK {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} > {macd_derivative:.3f} > 0 and {prev_signal_line_derivatives[-1]:.3f} > {signal_line_derivative:.3f} > 0")
+                    print(f"PEAK {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} > {macd_derivative:.3f} > 0")
                     if prev_macd_derivatives[-1] > macd_derivative > 0:
                         position = -1
 
                 if significance[0]:
-                    print(f"VALLEY {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} < {macd_derivative:.3f} < 0 and {prev_signal_line_derivatives[-1]:.3f} < {signal_line_derivative:.3f} < 0")
+                    print(f"VALLEY {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} < {macd_derivative:.3f} < 0")
                     if prev_macd_derivatives[-1] < macd_derivative < 0:
                         position = 1
 
             positions.append(position)
             prev_macd_derivatives.append(row['macd_derivative'])
-            prev_signal_line_derivatives.append(row['signal_line_derivative'])
             prev_macd_strength.append(row['macd_strength'])
 
         data['position'] = positions
