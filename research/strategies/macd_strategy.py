@@ -82,6 +82,7 @@ class MACDStrategy(Strategy):
         self.macd_simple()
         data = self.data
         prev_macd_derivatives = deque(maxlen=3)  # Keep track of the last 30 signals
+        prev_signal_line_derivatives = deque(maxlen=3)
         prev_macd_strength = deque(maxlen=3)
         wait = 3
         positions = []  # Store updated signals
@@ -116,6 +117,7 @@ class MACDStrategy(Strategy):
 
             positions.append(position)
             prev_macd_derivatives.append(row['macd_derivative'])
+            prev_signal_line_derivatives.append(row['signal_line_derivative'])
             prev_macd_strength.append(row['macd_strength'])
 
         data['position'] = positions

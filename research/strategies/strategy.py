@@ -10,7 +10,7 @@ class Strategy:
     def __init__(self, symbol='TQQQ'):
         self.symbol = symbol
         self.start = pd.Timestamp('2024-03-11 09:30', tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp('2024-03-11 12:00', tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp('2024-03-11 16:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.pnl = 0.00
         self.init_balance = 10000
