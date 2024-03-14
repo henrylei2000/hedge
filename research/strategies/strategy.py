@@ -7,14 +7,17 @@ import matplotlib.pyplot as plt
 
 
 class Strategy:
-    def __init__(self, symbol='TQQQ'):
+    def __init__(self, symbol='TQQQ'):  # QQQ, SPY, DIA
         self.symbol = symbol
-        self.start = pd.Timestamp('2024-03-11 09:30', tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp('2024-03-11 16:00', tz='America/New_York').tz_convert('UTC')
+        self.start = pd.Timestamp('2024-03-07 09:30', tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp('2024-03-07 16:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
+        self.qqq = None
+        self.spy = None
+        self.dia = None
         self.pnl = 0.00
         self.init_balance = 10000
-        self.num_buckets = 2
+        self.num_buckets = 8
 
     def backtest(self):
         if self.download():
@@ -30,13 +33,16 @@ class Strategy:
 
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
-            data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
-            if not data.empty:
-                data.rename_axis('timestamp', inplace=True)
-                data.rename(columns={'Adj Close': 'close'}, inplace=True)
-                self.data = data
-            else:
-                return False
+            self.data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
+            self.qqq = yf.download('QQQ', interval='1m', start=self.start, end=self.end)
+            self.spy = yf.download('SPY', interval='1m', start=self.start, end=self.end)
+            self.dia = yf.download('DIA', interval='1m', start=self.start, end=self.end)
+            for data in [self.data, self.qqq, self.spy, self.dia]:
+                if not data.empty:
+                    data.rename_axis('timestamp', inplace=True)
+                    data.rename(columns={'Adj Close': 'close'}, inplace=True)
+                else:
+                    return False
 
         elif api == 'alpaca':
             # Load Alpaca API credentials from configuration file
