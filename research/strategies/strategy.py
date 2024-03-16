@@ -10,14 +10,14 @@ class Strategy:
     def __init__(self, symbol='TQQQ'):  # QQQ, SPY, DIA
         self.symbol = symbol
         self.start = pd.Timestamp('2024-03-07 09:30', tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp('2024-03-07 16:00', tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp('2024-03-07 12:00', tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.qqq = None
         self.spy = None
         self.dia = None
         self.pnl = 0.00
         self.init_balance = 10000
-        self.num_buckets = 8
+        self.num_buckets = 4
 
     def backtest(self):
         if self.download():
@@ -186,7 +186,7 @@ class Strategy:
         r = self.data.to_records()
         formatter = MyFormatter(r.timestamp)
 
-        fig, ax = plt.subplots(figsize=(24, 6))
+        fig, ax = plt.subplots(figsize=(18, 6))
         ax.xaxis.set_major_formatter(formatter)
         ax.plot(np.arange(len(r)), r.close, linewidth=1)
         ax.scatter(np.where(r.signal == 1)[0], r.close[r.signal == 1], marker='^', color='g', label='Buy Signal')

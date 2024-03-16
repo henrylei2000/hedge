@@ -3,12 +3,13 @@ from collections import deque
 
 
 class MACDStrategy(Strategy):
-    def detect_significance(self, index, column, window=26, boundary_ratio=0.25):
+    def detect_significance(self, index, column, window=26, boundary_ratio=0.25, min_value=None, max_value=None):
         # Calculate the minimum and maximum values within the recent window
         recent_rows = self.data.loc[:index].tail(window+1)[:-1]
         current_row = self.data.loc[index]
         if not len(self.data):
             return False, False, False, False
+
         min_value = recent_rows[column].min()
         max_value = recent_rows[column].max()
 
@@ -51,9 +52,9 @@ class MACDStrategy(Strategy):
             # Sell signal: MACD crosses below Signal line
             data.loc[data['macd'] < data['signal_line'], 'signal'] = -1
 
-            data.dropna(subset=['close', 'macd', 'macd_strength', 'signal_line'], inplace=True)
+            data.dropna(subset=['close', 'macd', 'macd_derivative', 'macd_strength', 'signal_line'], inplace=True)
 
-    def macd_cross_line(self):
+    def macd_strength(self):
         self.macd_simple()
         data = self.data
         prev_signals = deque(maxlen=5)  # Keep track of the last 5 signals
@@ -61,8 +62,6 @@ class MACDStrategy(Strategy):
 
         # Initialize Signal column with zeros
         data['position'] = 0
-
-        data.dropna(subset=['macd_derivative'], inplace=True)
 
         for index, row in data.iterrows():
             position = 0
@@ -85,7 +84,7 @@ class MACDStrategy(Strategy):
         prev_signal_line_derivatives = deque(maxlen=3)
         prev_macd_strength = deque(maxlen=3)
         wait = 3
-        scale = 1.2
+        scale = 2
         positions = []  # Store updated signals
 
         # Calculate the first derivative of MACD
@@ -93,8 +92,6 @@ class MACDStrategy(Strategy):
 
         # Initialize Signal column with zeros
         data['position'] = 0
-
-        data.dropna(subset=['macd_derivative'], inplace=True)
 
         for index, row in data.iterrows():
             position = 0
@@ -131,9 +128,9 @@ class MACDStrategy(Strategy):
         self.macd_simple()
         data = self.data
         prev_macd_derivatives = deque(maxlen=3)  # Keep track of the last 30 signals
-        prev_signal_line_derivatives = deque(maxlen=3)
+        prev_macd = deque(maxlen=3)
         prev_macd_strength = deque(maxlen=3)
-        wait = 3
+        wait = 5
         scale = 1
         positions = []  # Store updated signals
 
@@ -143,15 +140,14 @@ class MACDStrategy(Strategy):
         # Initialize Signal column with zeros
         data['position'] = 0
 
-        data.dropna(subset=['macd_derivative'], inplace=True)
-
         for index, row in data.iterrows():
             position = 0
-            strength, macd_derivative, signal_line_derivative = row['macd'] - row['signal_line'], row['macd_derivative'], row['signal_line_derivative']
+            macd, strength, macd_derivative, signal_line_derivative = row['macd'], row['macd'] - row['signal_line'], row['macd_derivative'], row['signal_line_derivative']
 
-            if len(prev_macd_derivatives) >= wait:
+            if len(data.loc[:index]) >= wait:
+
                 significance = self.detect_significance(index, 'close')
-                strength_significance = self.detect_significance(index, 'macd_strength')
+                strength_significance = self.detect_significance(index, 'macd')
 
                 if significance[1] or strength_significance[1]:
                     print(f"PEAK {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} > {macd_derivative:.3f} > 0")
@@ -164,9 +160,40 @@ class MACDStrategy(Strategy):
                         position = 1
 
             positions.append(position)
+            prev_macd.append(row['macd'])
             prev_macd_derivatives.append(row['macd_derivative'])
-            prev_signal_line_derivatives.append(row['signal_line_derivative'])
             prev_macd_strength.append(row['macd_strength'])
+
+        data['position'] = positions
+
+        data.to_csv(f"{self.symbol}.csv")
+
+    def macd_zero_crossing(self):
+        self.macd_simple()
+        data = self.data
+        prev_macd = deque(maxlen=3)  # Keep track of the last 30 signals
+        max_cross_up, max_cross_down = 0, 0
+        wait = 3
+        scale = 1
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        for index, row in data.iterrows():
+            position = 0
+            macd = row['macd']
+
+            if len(prev_macd) >= wait:
+
+                if prev_macd[-1] > 0 > macd * scale:
+                    position = -1
+
+                if prev_macd[-1] < 0 < macd * scale:
+                    position = 1
+
+            positions.append(position)
+            prev_macd.append(row['macd'])
 
         data['position'] = positions
 
