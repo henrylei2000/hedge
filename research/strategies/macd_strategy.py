@@ -3,16 +3,25 @@ from collections import deque
 
 
 class MACDStrategy(Strategy):
-    def detect_significance(self, index, column, window=26, boundary_ratio=0.25, min_value=None, max_value=None):
+
+    def detect_significance(self, index, column, window=30, boundary_ratio=0.1):
         # Calculate the minimum and maximum values within the recent window
         recent_rows = self.data.loc[:index].tail(window+1)[:-1]
         current_row = self.data.loc[index]
         if not len(self.data):
             return False, False, False, False
 
-        min_value = recent_rows[column].min()
-        max_value = recent_rows[column].max()
-
+        if self.macd_zero < 0:
+            max_value = current_row[column]
+            min_value = min(-abs(recent_rows[column].max() * 0.75), recent_rows[column].min())
+        elif self.macd_zero > 0:
+            min_value = current_row[column]
+            max_value = max(abs(recent_rows[column].min() * 0.75), recent_rows[column].max())
+        else:
+            min_value = recent_rows[column].min()
+            max_value = recent_rows[column].max()
+        # min_value = recent_rows[column].min()
+        # max_value = recent_rows[column].max()
         new_point = current_row[column]
         # Calculate the boundary threshold based on the ratio and range of values
         value_range = max_value - min_value
@@ -30,7 +39,10 @@ class MACDStrategy(Strategy):
 
     def macd_simple(self):
         short_window, long_window, signal_window = 9, 26, 6   # 3, 7, 2
-        for data in [self.data, self.qqq, self.spy, self.dia]:
+        dataset = [self.data]
+        if self.reference:
+            dataset += [self.qqq, self.spy, self.dia]
+        for data in dataset:
             # Calculate short-term and long-term exponential moving averages
             data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
             data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
@@ -146,16 +158,21 @@ class MACDStrategy(Strategy):
 
             if len(data.loc[:index]) >= wait:
 
+                if prev_macd[-1] < 0 < macd:  # cross up
+                    self.macd_zero = 1
+                elif prev_macd[-1] > 0 > macd:  # cross down
+                    self.macd_zero = -1
+
                 significance = self.detect_significance(index, 'close')
                 strength_significance = self.detect_significance(index, 'macd')
 
                 if significance[1] or strength_significance[1]:
-                    print(f"PEAK {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} > {macd_derivative:.3f} > 0")
+                    # print(f"PEAK {self.macd_zero} {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} > {macd_derivative:.3f} > 0")
                     if prev_macd_derivatives[-1] > macd_derivative * scale > 0:
                         position = -1
 
                 if significance[0] or strength_significance[0]:
-                    print(f"VALLEY {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} < {macd_derivative:.3f} < 0")
+                    # print(f"VALLEY {self.macd_zero} {row['close']:.2f} @{index} {significance} {prev_macd_derivatives[-1]:.3f} < {macd_derivative:.3f} < 0")
                     if prev_macd_derivatives[-1] < macd_derivative * scale < 0:
                         position = 1
 
@@ -166,7 +183,7 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-        data.to_csv(f"{self.symbol}.csv")
+        # data.to_csv(f"{self.symbol}.csv")
 
     def macd_zero_crossing(self):
         self.macd_simple()

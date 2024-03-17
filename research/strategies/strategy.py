@@ -4,18 +4,21 @@ import yfinance as yf
 import alpaca_trade_api as tradeapi
 import configparser
 import matplotlib.pyplot as plt
+import sys
 
 
 class Strategy:
-    def __init__(self, symbol='TQQQ'):  # QQQ, SPY, DIA
+    def __init__(self, symbol='TQQQ', open='2024-03-01 09:30', close='2024-03-01 16:00'):  # QQQ, SPY, DIA
         self.symbol = symbol
-        self.start = pd.Timestamp('2024-03-07 09:30', tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp('2024-03-07 12:00', tz='America/New_York').tz_convert('UTC')
+        self.reference = False
+        self.start = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
         self.data = None
         self.qqq = None
         self.spy = None
         self.dia = None
         self.pnl = 0.00
+        self.macd_zero = 0
         self.init_balance = 10000
         self.num_buckets = 4
 
@@ -24,7 +27,7 @@ class Strategy:
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            self.plot()
+            # self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
@@ -34,10 +37,13 @@ class Strategy:
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
             self.data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
-            self.qqq = yf.download('QQQ', interval='1m', start=self.start, end=self.end)
-            self.spy = yf.download('SPY', interval='1m', start=self.start, end=self.end)
-            self.dia = yf.download('DIA', interval='1m', start=self.start, end=self.end)
-            for data in [self.data, self.qqq, self.spy, self.dia]:
+            dataset = [self.data]
+            if self.reference:
+                self.qqq = yf.download('QQQ', interval='1m', start=self.start, end=self.end)
+                self.spy = yf.download('SPY', interval='1m', start=self.start, end=self.end)
+                self.dia = yf.download('DIA', interval='1m', start=self.start, end=self.end)
+                dataset += [self.qqq, self.spy, self.dia]
+            for data in [self.data]:
                 if not data.empty:
                     data.rename_axis('timestamp', inplace=True)
                     data.rename(columns={'Adj Close': 'close'}, inplace=True)
@@ -136,14 +142,14 @@ class Strategy:
                         bucket['in_use'] = True
                         bucket['shares'] = bucket['bucket_value'] / price
                         bucket['buy_price'] = price
-                        print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        # print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         break  # Exit after finding the first available bucket
 
             elif position == -1:  # Sell signal
                 for bucket in buckets:
                     if bucket['in_use']:
                         # Calculate the value after selling shares
-                        print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        # print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         sell_value = bucket['shares'] * price
                         # Calculate PnL for this bucket
                         pnl = sell_value - bucket['bucket_value']

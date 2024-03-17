@@ -1,5 +1,35 @@
 from macd_strategy import MACDStrategy
+import alpaca_trade_api as tradeapi
+import configparser
 
+def get_dates():
+    # Load Alpaca API credentials from configuration file
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    # Access configuration values
+    api_key = config.get('settings', 'API_KEY')
+    secret_key = config.get('settings', 'SECRET_KEY')
+    # Initialize Alpaca API
+    api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
+
+    # Define the start and end dates for the market calendar you want to retrieve
+    start_date = '2024-02-20'
+    end_date = '2024-03-16'
+
+    # Get the market calendar
+    calendar = api.get_calendar(start=start_date, end=end_date)
+
+    # Print the market calendar details
+    performance = 0.0
+    for day in calendar:
+
+        for symbol in ['TQQQ', 'SQQQ']:
+            macd_strategy = MACDStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
+            macd_strategy.backtest()
+            print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {macd_strategy.pnl}")
+            performance += macd_strategy.pnl
+
+    print(f"------------ TOTAL ------------------- {performance}")
 
 def back_test():
 
@@ -65,4 +95,5 @@ def email_test():
 
 # Example usage
 if __name__ == "__main__":
-    back_test()
+    # back_test()
+    get_dates()
