@@ -20,19 +20,19 @@ class Strategy:
         self.pnl = 0.00
         self.macd_zero = 0
         self.init_balance = 10000
-        self.num_buckets = 4
+        self.num_buckets = 1
 
     def backtest(self):
         if self.download():
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            # self.plot()
+            self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
 
-    def download(self, api="yahoo"):
+    def download(self, api="alpaca"):
 
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
@@ -46,7 +46,7 @@ class Strategy:
             for data in [self.data]:
                 if not data.empty:
                     data.rename_axis('timestamp', inplace=True)
-                    data.rename(columns={'Adj Close': 'close'}, inplace=True)
+                    data.rename(columns={'Close': 'close'}, inplace=True)
                 else:
                     return False
 
@@ -67,7 +67,7 @@ class Strategy:
                 # Convert timestamp index to Eastern Timezone (EST)
                 data.index = data.index.tz_convert('US/Eastern')
                 # Filter rows between 9:30am and 4:00pm EST
-                data = data.between_time('9:30', '16:00')
+                data = data.between_time('9:30', '15:59')
                 if not data.empty:
                     self.data = data
                 else:
@@ -142,14 +142,14 @@ class Strategy:
                         bucket['in_use'] = True
                         bucket['shares'] = bucket['bucket_value'] / price
                         bucket['buy_price'] = price
-                        # print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         break  # Exit after finding the first available bucket
 
             elif position == -1:  # Sell signal
                 for bucket in buckets:
                     if bucket['in_use']:
                         # Calculate the value after selling shares
-                        # print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         sell_value = bucket['shares'] * price
                         # Calculate PnL for this bucket
                         pnl = sell_value - bucket['bucket_value']
@@ -166,7 +166,7 @@ class Strategy:
                         sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
-        print(f"---{self.symbol}----- Total PnL Performance ------------ {self.pnl:.2f}")
+        # print(f"---{self.symbol}----- Total PnL Performance ------------ {self.pnl:.2f}")
         return total_pnl
 
     # Example usage
