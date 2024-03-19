@@ -27,7 +27,7 @@ class Strategy:
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            self.plot()
+            # self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
@@ -142,14 +142,14 @@ class Strategy:
                         bucket['in_use'] = True
                         bucket['shares'] = bucket['bucket_value'] / price
                         bucket['buy_price'] = price
-                        print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        # print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         break  # Exit after finding the first available bucket
 
             elif position == -1:  # Sell signal
                 for bucket in buckets:
                     if bucket['in_use']:
                         # Calculate the value after selling shares
-                        print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        # print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
                         sell_value = bucket['shares'] * price
                         # Calculate PnL for this bucket
                         pnl = sell_value - bucket['bucket_value']

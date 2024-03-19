@@ -166,19 +166,20 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            macd = row['strength']
+            macd = row['rolling_macd_derivative']
 
             if len(prev_macd) >= wait:
 
                 if prev_macd[-1] > 0 > macd:
-                    position = -1
+                    if row['macd'] < 0:
+                        position = -1
 
                 if prev_macd[-1] < 0 < macd:
-                    print(f"macd {macd} @{index}")
-                    position = 1
+                    if row['macd'] > 0:
+                        position = 1
 
             positions.append(position)
-            prev_macd.append(row['strength'])
+            prev_macd.append(row['rolling_macd_derivative'])
 
         data['position'] = positions
 
