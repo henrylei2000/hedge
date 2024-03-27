@@ -1,5 +1,6 @@
 from strategy import Strategy
 from collections import deque
+from scipy.signal import find_peaks
 
 
 class MACDStrategy(Strategy):
@@ -11,15 +12,6 @@ class MACDStrategy(Strategy):
         if not len(self.data):
             return False, False, False, False
 
-        if self.macd_zero < 0:
-            max_value = current_row[column]
-            min_value = min(-abs(recent_rows[column].max() * 0.75), recent_rows[column].min())
-        elif self.macd_zero > 0:
-            min_value = current_row[column]
-            max_value = max(abs(recent_rows[column].min() * 0.75), recent_rows[column].max())
-        else:
-            min_value = recent_rows[column].min()
-            max_value = recent_rows[column].max()
         min_value = recent_rows[column].min()
         max_value = recent_rows[column].max()
         new_point = current_row[column]
@@ -31,11 +23,14 @@ class MACDStrategy(Strategy):
         approaching_min_boundary = new_point <= (min_value + boundary_threshold)
         approaching_max_boundary = new_point >= (max_value - boundary_threshold)
 
-        # Also check if it's exceeding boundaries
-        exceeding_min_boundary = new_point < min_value
-        exceeding_max_boundary = new_point > max_value
+        # Find peaks (tops) and valleys (bottoms)
+        peaks, _ = find_peaks(recent_rows[column], prominence=boundary_ratio)  # Adjust prominence as needed
+        valleys, _ = find_peaks(-recent_rows[column], prominence=boundary_ratio)  # Adjust prominence as needed
 
-        return approaching_min_boundary, approaching_max_boundary, exceeding_min_boundary, exceeding_max_boundary
+        tops = recent_rows.iloc[peaks]
+        bottoms = recent_rows.iloc[valleys]
+
+        return approaching_min_boundary, approaching_max_boundary
 
     def macd_simple(self):
         short_window, long_window, signal_window = 19, 39, 9   # 3, 7, 2
@@ -52,16 +47,24 @@ class MACDStrategy(Strategy):
             # Calculate Signal line
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
+            data['rolling_strength'] = data['strength'].ewm(span=5, adjust=False).mean()
             data['rolling_macd'] = data['macd'].rolling(window=5).mean()
+
+            data['momentum'] = data['macd'] - data['strength']
+
             # Calculate the first derivative of MACD
             data['macd_derivative'] = data['macd'].diff()
             data['rolling_macd_derivative'] = data['macd_derivative'].rolling(window=5).mean()
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=10).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=10).mean()
 
+            delta = data['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=5).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=5).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
+            data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
+            # Calculate the first derivative of MACD
+            data['rsi_derivative'] = data['rsi'].diff()
+            data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
 
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
@@ -74,7 +77,9 @@ class MACDStrategy(Strategy):
 
             data.dropna(subset=['close', 'macd', 'macd_derivative', 'rolling_macd', 'signal_line', 'rsi'], inplace=True)
 
-    def macd_derivatives_with_reference(self):
+            data.to_csv(f"{self.symbol}.csv")
+
+    def significance_reference(self):
         self.macd_simple()
         data = self.data
         prev_macd_derivatives = deque(maxlen=3)  # Keep track of the last 30 signals
@@ -116,12 +121,13 @@ class MACDStrategy(Strategy):
 
         data.to_csv(f"{self.symbol}.csv")
 
-    def macd_derivatives(self):
+    def significance(self):
         self.macd_simple()
         data = self.data
         prev_macd_derivatives = deque(maxlen=3)  # Keep track of the last 30 signals
         prev_macd = deque(maxlen=3)
         prev_strength = deque(maxlen=3)
+        prev_rsi = deque(maxlen=3)
         positions = []  # Store updated signals
 
         # Initialize Signal column with zeros
@@ -129,35 +135,28 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            macd, rsi, macd_derivative, strength = row['macd'], row['rsi'], row['macd_derivative'], row['strength']
-
-            if len(prev_macd) > 1:
-                if prev_macd[-1] < 0 < macd:  # cross up
-                    self.macd_zero = 1
-                elif prev_macd[-1] > 0 > macd:  # cross down
-                    self.macd_zero = -1
-
-                price_significance = self.detect_significance(index, 'macd')
-                rsi_significance = self.detect_significance(index, 'rsi')
-
-                if price_significance[1] and rsi < 35 and macd < 0:
-                    position = -1
-
-                if price_significance[0] and rsi > 65 and macd > 0:
+            macd, rsi, macd_derivative, strength = row['rolling_macd'], row['rolling_rsi'], row['macd_derivative'], row['rolling_strength']
+            significance = self.detect_significance(index, 'momentum')
+            price_significance = self.detect_significance(index, 'close')
+            if len(prev_strength):
+                if significance[0] and price_significance[0]:
                     position = 1
+                if significance[1] and price_significance[1]:
+                    position = -1
 
             positions.append(position)
             prev_macd.append(macd)
             prev_strength.append(strength)
+            prev_rsi.append(rsi)
             prev_macd_derivatives.append(macd_derivative)
 
         data['position'] = positions
-        # data.to_csv(f"{self.symbol}.csv")
+        data.to_csv(f"{self.symbol}.csv")
 
-    def macd_zero_crossing(self):
+    def zero_crossing(self):
         self.macd_simple()
         data = self.data
-        prev_macd = deque(maxlen=3)  # Keep track of the last 30 signals
+        previous = deque(maxlen=3)  # Keep track of the last 30 signals
         wait = 1
         positions = []  # Store updated signals
 
@@ -166,24 +165,25 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            macd = row['rolling_macd_derivative']
+            current = row['momentum']
 
-            if len(prev_macd) >= wait:
+            if len(previous) == 0:
+                if current > 0:
+                    position = 1
+            else:
 
-                if prev_macd[-1] > 0 > macd:
-                    if row['macd'] < 0:
-                        position = -1
+                if previous[-1] > 0 > current:
+                    position = -1
 
-                if prev_macd[-1] < 0 < macd:
-                    if row['macd'] > 0:
-                        position = 1
+                if previous[-1] < 0 < current:
+                    position = 1
 
             positions.append(position)
-            prev_macd.append(row['rolling_macd_derivative'])
+            previous.append(current)
 
         data['position'] = positions
 
         data.to_csv(f"{self.symbol}.csv")
 
     def signal(self):
-        self.macd_zero_crossing()
+        self.significance()
