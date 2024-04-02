@@ -5,6 +5,38 @@ from scipy.signal import find_peaks
 
 class MACDStrategy(Strategy):
 
+    # Function to calculate wave sums
+    def wave_sums(self, column):
+        # Initialize variables
+        wave_sums = []
+        current_wave_sum = 0
+        current_wave_sign = None
+
+        # Sample DataFrame with alternating positive and negative values
+        # import pandas as pd
+        # data = pd.DataFrame({'values': [-1, -3, 2, -1, -5, -4, 2, 3, 4, 6, 4, 1, -1, -6, -3, -4, -2]})
+        # column = 'values'
+        # Iterate through DataFrame rows
+        for index, row in self.data.iterrows():
+            value = row[column]
+
+            # Check if the current value has the same sign as the previous value
+            if current_wave_sign is None or (current_wave_sign > 0) == (value > 0):
+                # Accumulate value within the current wave
+                current_wave_sum += value
+            else:
+                # Start a new wave
+                wave_sums.append(current_wave_sum)
+                current_wave_sum = value
+
+            # Update the current wave sign
+            current_wave_sign = value > 0
+
+        # Append the last wave sum
+        wave_sums.append(current_wave_sum)
+
+        return wave_sums
+
     def detect_significance(self, index, column, window=39, boundary_ratio=0.1):
         # Calculate the minimum and maximum values within the recent window
         recent_rows = self.data.loc[:index].tail(window+1)[:-1]
@@ -165,7 +197,7 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            current = row['momentum']
+            current = row['strength']
 
             if len(previous) == 0:
                 if current > 0:
@@ -186,4 +218,7 @@ class MACDStrategy(Strategy):
         data.to_csv(f"{self.symbol}.csv")
 
     def signal(self):
-        self.significance()
+        self.zero_crossing()
+        waves = self.wave_sums('strength')
+        print(waves)
+        print(sum(waves), len(waves))
