@@ -6,7 +6,9 @@ from scipy.signal import find_peaks
 class MACDStrategy(Strategy):
 
     # Function to calculate wave sums
-    def wave_sums(self, column):
+    def wave_sums(self, column, index):
+        recent_rows = self.data.loc[:index]
+
         # Initialize variables
         wave_sums = []
         current_wave_sum = 0
@@ -17,7 +19,7 @@ class MACDStrategy(Strategy):
         # data = pd.DataFrame({'values': [-1, -3, 2, -1, -5, -4, 2, 3, 4, 6, 4, 1, -1, -6, -3, -4, -2]})
         # column = 'values'
         # Iterate through DataFrame rows
-        for index, row in self.data.iterrows():
+        for index, row in recent_rows.iterrows():
             value = row[column]
 
             # Check if the current value has the same sign as the previous value
@@ -34,7 +36,6 @@ class MACDStrategy(Strategy):
 
         # Append the last wave sum
         wave_sums.append(current_wave_sum)
-
         return wave_sums
 
     def detect_significance(self, index, column, window=39, boundary_ratio=0.1):
@@ -199,11 +200,7 @@ class MACDStrategy(Strategy):
             position = 0
             current = row['strength']
 
-            if len(previous) == 0:
-                if current > 0:
-                    position = 1
-            else:
-
+            if len(previous) > 0:
                 if previous[-1] > 0 > current:
                     position = -1
 
@@ -217,19 +214,32 @@ class MACDStrategy(Strategy):
 
         data.to_csv(f"{self.symbol}.csv")
 
+    def wave(self):
+        self.macd_simple()
+        data = self.data
+        previous = deque(maxlen=4)  # Keep track of the last 30 signals
+        wait = 1
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        for index, row in data.iterrows():
+            position = 0
+            current = row['strength']
+            waves = self.wave_sums('strength', index)
+            if len(previous) > 1:
+                if len(waves) > 1 and abs(waves[-1]) > 0.618 * abs(waves[-2]) and waves[-1] > 0:
+                    if previous[-2] > previous[-1] > current > 0:
+                        position = -1
+                if len(waves) > 1 and abs(waves[-1]) > 0.618 * abs(waves[-2]) and waves[-1] < 0:
+                    if previous[-2] < previous[-1] < current < 0:
+                        position = 1
+
+            positions.append(position)
+            previous.append(current)
+
+        data['position'] = positions
+
     def signal(self):
-        self.significance()
-        waves = self.wave_sums('strength')
-        print(waves)
-
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(10, 6))
-        plt.bar(range(len(waves)), waves, color='skyblue')
-        plt.xlabel('Index')
-        plt.ylabel('Value')
-        plt.title(f"{self.symbol} Bar Chart")
-        plt.show()
-
-
-        print(sum(waves), len(waves))
+        self.zero_crossing()
