@@ -168,7 +168,7 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
             macd, rsi, macd_derivative, strength = row['rolling_macd'], row['rolling_rsi'], row['macd_derivative'], row['rolling_strength']
-            significance = self.detect_significance(index, 'momentum')
+            significance = self.detect_significance(index, 'rolling_macd')
             price_significance = self.detect_significance(index, 'close')
             if len(prev_strength):
                 if significance[0] and price_significance[0]:
@@ -218,7 +218,18 @@ class MACDStrategy(Strategy):
         data.to_csv(f"{self.symbol}.csv")
 
     def signal(self):
-        self.zero_crossing()
+        self.significance()
         waves = self.wave_sums('strength')
         print(waves)
+
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 6))
+        plt.bar(range(len(waves)), waves, color='skyblue')
+        plt.xlabel('Index')
+        plt.ylabel('Value')
+        plt.title(f"{self.symbol} Bar Chart")
+        plt.show()
+
+
         print(sum(waves), len(waves))

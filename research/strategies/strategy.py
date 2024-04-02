@@ -27,7 +27,7 @@ class Strategy:
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            # self.plot()
+            self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
@@ -204,6 +204,7 @@ class Strategy:
         for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
             ax.text(x, y, f"{r.close[i]:.2f}", fontsize=7, ha='right', va='bottom')
         fig.autofmt_xdate()
-        fig.tight_layout()
+        # fig.tight_layout()
+        plt.title(f"{self.symbol}")
         plt.show()
 
