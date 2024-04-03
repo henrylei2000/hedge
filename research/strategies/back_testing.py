@@ -13,8 +13,8 @@ def get_dates():
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
 
     # Define the start and end dates for the market calendar you want to retrieve
-    start_date = '2024-04-02'
-    end_date = '2024-04-02'
+    start_date = '2024-01-01'
+    end_date = '2024-01-31'
 
     # Get the market calendar
     calendar = api.get_calendar(start=start_date, end=end_date)
@@ -22,14 +22,15 @@ def get_dates():
     # Print the market calendar details
     performance = 0.0
     for day in calendar:
-        daily_pnl = 0
-        for symbol in ['TQQQ']:
+        daily_pnl, trades = 0, 0
+        for symbol in ['SOXL', 'SOXS']:
             macd_strategy = MACDStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
             macd_strategy.backtest()
-            print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {macd_strategy.pnl:.2f}")
+            print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {macd_strategy.pnl:.2f} ({macd_strategy.trades})")
             performance += macd_strategy.pnl
             daily_pnl += macd_strategy.pnl
-        print(f"-------------------------------------- {daily_pnl:.2f}")
+            trades += macd_strategy.trades
+        print(f"-------------------------------------- {daily_pnl:.2f} ({trades})")
     print(f"------------ TOTAL ------------------- {performance:.2f}")
 
 def back_test():

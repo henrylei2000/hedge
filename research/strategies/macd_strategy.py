@@ -198,14 +198,25 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
             current = row['strength']
+            waves = self.wave_sums('strength', index)
 
-            if len(previous) > 2:
-
-                if previous[-3] > previous[-2] > previous[-1] > current > 0:
-                    position = -1
-
-                if previous[-3] < previous[-2] < previous[-1] < current < 0:
-                    position = 1
+            if len(waves) > 1 and ((current > 0) == (waves[-1] > 0)) and len(previous) == 3:
+                # bullish, just proven
+                if waves[-1] > abs(waves[-2]) * 0.382 > 0:
+                    if current > previous[-1] > previous[-2] > 0:
+                        position = 1
+                # bearish, almost bottom
+                if waves[-1] < -abs(waves[-2]) * 0.618 < 0:
+                    if previous[-2] < previous[-1] < current < 0:
+                        position = 1
+                # bullish, almost top
+                if waves[-1] > abs(waves[-2]) * 0.618 > 0:
+                    if previous[-2] > previous[-1] > current > 0:
+                        position = -1
+                # bearish, just proven
+                if waves[-1] < -abs(waves[-2]) * 0.382 < 0:
+                    if current < previous[-1] < previous[-2] < 0:
+                        position = -1
 
             positions.append(position)
             previous.append(current)
@@ -239,6 +250,10 @@ class MACDStrategy(Strategy):
                 current_wave_sum, current_wave_length = value, 1
             current_wave_sign = value > 0
 
+        # Append the last wave sum if the last wave has more than 1 value
+        if current_wave_length > threshold:
+            wave_sums.append(current_wave_sum)
+
         # Merge consecutive wave sums with the same sign
         merged_wave_sums = []
         for wave_sum in wave_sums:
@@ -253,17 +268,17 @@ class MACDStrategy(Strategy):
         return merged_wave_sums
 
     def signal(self):
-        self.zero_crossing()
-        waves = self.wave_sums('strength', '2024-04-02 12:59')
-        print(waves)
-
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(10, 6))
-        plt.bar(range(len(waves)), waves, color='skyblue')
-        plt.xlabel('Index')
-        plt.ylabel('Value')
-        plt.title(f"{self.symbol} Bar Chart")
-        plt.show()
-
-        print(sum(waves), len(waves))
+        self.wave()
+        # waves = self.wave_sums('strength', '2024-03-26 12:59')
+        # print(waves)
+        #
+        # import matplotlib.pyplot as plt
+        #
+        # plt.figure(figsize=(10, 6))
+        # plt.bar(range(len(waves)), waves, color='skyblue')
+        # plt.xlabel('Index')
+        # plt.ylabel('Value')
+        # plt.title(f"{self.symbol} Bar Chart")
+        # plt.show()
+        #
+        # print(sum(waves), len(waves))

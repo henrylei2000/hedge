@@ -18,7 +18,7 @@ class Strategy:
         self.spy = None
         self.dia = None
         self.pnl = 0.00
-        self.macd_zero = 0
+        self.trades = 0
         self.init_balance = 10000
         self.num_buckets = 1
 
@@ -27,7 +27,7 @@ class Strategy:
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            self.plot()
+            # self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
@@ -143,6 +143,7 @@ class Strategy:
                         bucket['shares'] = bucket['bucket_value'] / price
                         bucket['buy_price'] = price
                         # print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
+                        self.trades += 1
                         break  # Exit after finding the first available bucket
 
             elif position == -1:  # Sell signal
