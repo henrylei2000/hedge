@@ -212,7 +212,13 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-    def wave_sums(self, column, threshold=9):
+    def wave_sums(self, column, index=None, threshold=9):
+
+        if not index:
+            data = self.data
+        else:
+            data = self.data.loc[:index]
+
         # Initialize variables
         wave_sums = []
         current_wave_sum = 0
@@ -220,7 +226,7 @@ class MACDStrategy(Strategy):
         current_wave_length = 0
 
         # Iterate through DataFrame rows
-        for _, row in self.data.iterrows():
+        for _, row in data.iterrows():
             value = row[column]
 
             # Update current wave state
@@ -248,7 +254,7 @@ class MACDStrategy(Strategy):
 
     def signal(self):
         self.zero_crossing()
-        waves = self.wave_sums('strength')
+        waves = self.wave_sums('strength', '2024-04-02 12:59')
         print(waves)
 
         import matplotlib.pyplot as plt
@@ -259,6 +265,5 @@ class MACDStrategy(Strategy):
         plt.ylabel('Value')
         plt.title(f"{self.symbol} Bar Chart")
         plt.show()
-
 
         print(sum(waves), len(waves))
