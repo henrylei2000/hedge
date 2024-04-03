@@ -5,39 +5,6 @@ from scipy.signal import find_peaks
 
 class MACDStrategy(Strategy):
 
-    # Function to calculate wave sums
-    def wave_sums(self, column, index):
-        recent_rows = self.data.loc[:index]
-
-        # Initialize variables
-        wave_sums = []
-        current_wave_sum = 0
-        current_wave_sign = None
-
-        # Sample DataFrame with alternating positive and negative values
-        # import pandas as pd
-        # data = pd.DataFrame({'values': [-1, -3, 2, -1, -5, -4, 2, 3, 4, 6, 4, 1, -1, -6, -3, -4, -2]})
-        # column = 'values'
-        # Iterate through DataFrame rows
-        for index, row in recent_rows.iterrows():
-            value = row[column]
-
-            # Check if the current value has the same sign as the previous value
-            if current_wave_sign is None or (current_wave_sign > 0) == (value > 0):
-                # Accumulate value within the current wave
-                current_wave_sum += value
-            else:
-                # Start a new wave
-                wave_sums.append(current_wave_sum)
-                current_wave_sum = value
-
-            # Update the current wave sign
-            current_wave_sign = value > 0
-
-        # Append the last wave sum
-        wave_sums.append(current_wave_sum)
-        return wave_sums
-
     def detect_significance(self, index, column, window=39, boundary_ratio=0.1):
         # Calculate the minimum and maximum values within the recent window
         recent_rows = self.data.loc[:index].tail(window+1)[:-1]
@@ -200,7 +167,11 @@ class MACDStrategy(Strategy):
             position = 0
             current = row['strength']
 
-            if len(previous) > 0:
+            if len(previous) == 0:
+                if current > 0:
+                    position = 1
+            else:
+
                 if previous[-1] > 0 > current:
                     position = -1
 
@@ -217,7 +188,7 @@ class MACDStrategy(Strategy):
     def wave(self):
         self.macd_simple()
         data = self.data
-        previous = deque(maxlen=4)  # Keep track of the last 30 signals
+        previous = deque(maxlen=3)  # Keep track of the last 30 signals
         wait = 1
         positions = []  # Store updated signals
 
@@ -227,19 +198,67 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
             current = row['strength']
-            waves = self.wave_sums('strength', index)
-            if len(previous) > 1:
-                if len(waves) > 1 and abs(waves[-1]) > 0.618 * abs(waves[-2]) and waves[-1] > 0:
-                    if previous[-2] > previous[-1] > current > 0:
-                        position = -1
-                if len(waves) > 1 and abs(waves[-1]) > 0.618 * abs(waves[-2]) and waves[-1] < 0:
-                    if previous[-2] < previous[-1] < current < 0:
-                        position = 1
+
+            if len(previous) > 2:
+
+                if previous[-3] > previous[-2] > previous[-1] > current > 0:
+                    position = -1
+
+                if previous[-3] < previous[-2] < previous[-1] < current < 0:
+                    position = 1
 
             positions.append(position)
             previous.append(current)
 
         data['position'] = positions
 
+    def wave_sums(self, column, threshold=9):
+        # Initialize variables
+        wave_sums = []
+        current_wave_sum = 0
+        current_wave_sign = None
+        current_wave_length = 0
+
+        # Iterate through DataFrame rows
+        for _, row in self.data.iterrows():
+            value = row[column]
+
+            # Update current wave state
+            if current_wave_sign is None or (current_wave_sign > 0) == (value > 0):
+                current_wave_sum += value
+                current_wave_length += 1
+            else:
+                if current_wave_length > threshold:
+                    wave_sums.append(current_wave_sum)
+                current_wave_sum, current_wave_length = value, 1
+            current_wave_sign = value > 0
+
+        # Merge consecutive wave sums with the same sign
+        merged_wave_sums = []
+        for wave_sum in wave_sums:
+            if not merged_wave_sums or (merged_wave_sums[-1] > 0) == (wave_sum > 0):
+                if merged_wave_sums:
+                    merged_wave_sums[-1] += wave_sum
+                else:
+                    merged_wave_sums.append(wave_sum)
+            else:
+                merged_wave_sums.append(wave_sum)
+
+        return merged_wave_sums
+
     def signal(self):
         self.zero_crossing()
+        waves = self.wave_sums('strength')
+        print(waves)
+
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 6))
+        plt.bar(range(len(waves)), waves, color='skyblue')
+        plt.xlabel('Index')
+        plt.ylabel('Value')
+        plt.title(f"{self.symbol} Bar Chart")
+        plt.show()
+
+
+        print(sum(waves), len(waves))
