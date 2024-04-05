@@ -1,9 +1,20 @@
 from strategy import Strategy
 from collections import deque
 from scipy.signal import find_peaks
+import numpy as np
 
 
 class MACDStrategy(Strategy):
+
+    def detect_abnormality(self, index, column, prominence=0.00618):
+        # Calculate the minimum and maximum values within the recent window
+        recent_rows = self.data.loc[:index]
+
+        # Find peaks (tops) and valleys (bottoms)
+        peaks, _ = find_peaks(recent_rows[column], prominence=prominence)  # Adjust prominence as needed
+        valleys, _ = find_peaks(-recent_rows[column], prominence=prominence)  # Adjust prominence as needed
+
+        return peaks, valleys
 
     def detect_significance(self, index, column, window=39, boundary_ratio=0.1):
         # Calculate the minimum and maximum values within the recent window
@@ -22,13 +33,6 @@ class MACDStrategy(Strategy):
         # Check if the new point is approaching the minimum or maximum boundary
         approaching_min_boundary = new_point <= (min_value + boundary_threshold)
         approaching_max_boundary = new_point >= (max_value - boundary_threshold)
-
-        # Find peaks (tops) and valleys (bottoms)
-        peaks, _ = find_peaks(recent_rows[column], prominence=boundary_ratio)  # Adjust prominence as needed
-        valleys, _ = find_peaks(-recent_rows[column], prominence=boundary_ratio)  # Adjust prominence as needed
-
-        tops = recent_rows.iloc[peaks]
-        bottoms = recent_rows.iloc[valleys]
 
         return approaching_min_boundary, approaching_max_boundary
 
@@ -49,8 +53,6 @@ class MACDStrategy(Strategy):
             data['strength'] = data['macd'] - data['signal_line']
             data['rolling_strength'] = data['strength'].ewm(span=5, adjust=False).mean()
             data['rolling_macd'] = data['macd'].rolling(window=5).mean()
-
-            data['momentum'] = data['macd'] - data['strength']
 
             # Calculate the first derivative of MACD
             data['macd_derivative'] = data['macd'].diff()
@@ -121,6 +123,86 @@ class MACDStrategy(Strategy):
 
         data.to_csv(f"{self.symbol}.csv")
 
+    import numpy as np
+
+    def linear_regression(self, index, column, window=9, step=2):
+        # Predefine x values
+        ordinal_index = self.data.index.get_loc(index)
+        indices = []
+        pos = None
+        recent_rows = self.data.loc[:index].tail(window * 2)
+
+        if ordinal_index < window * 2:
+            pos = ordinal_index // 2
+        else:
+            pos = window
+            # Start from the last index and iterate backwards with a step size of 2
+
+        for i in range(-(pos * 2) + 1, 0, step):
+            indices.append(i)
+        # Select the rows based on the calculated indices
+        selected_rows = recent_rows.iloc[indices]
+        x_values = np.array(indices)
+
+        # Initialize list to store y values
+        y_values = []
+
+        # Get the last 5 rows of the dataframe
+        # Iterate through the last 5 rows
+        for i, row in selected_rows.iterrows():
+            # Extract the 'close' price as y value
+            y = row[column]
+
+            # Append y value to the list
+            y_values.append(y)
+
+        # Convert list to numpy array
+        y_values = np.array(y_values)
+        # Perform linear regression
+        X = np.column_stack([x_values, np.ones(x_values.shape[0])])
+        coefficients = np.linalg.lstsq(X, y_values, rcond=None)[0]
+        # print(f"{column} {coefficients}")
+        return coefficients
+
+    # Example usage:
+    # Assuming df is your dataframe with 'close' column
+    # coefficients = linear_regression(df)
+    # print("a:", coefficients[0], "b:", coefficients[1])
+
+    def linear(self):
+        self.macd_simple()
+        data = self.data
+        positions = []  # Store updated signals
+        # Initialize Signal column with zeros
+        data['position'] = 0
+        prev_coef_gap = deque(maxlen=3)
+        price_coefs, price_bases, indicator_coefs, gaps = [], [], [], []
+        for index, row in data.iterrows():
+            position = 0
+            price_coef = self.linear_regression(index, 'close')
+            indicator_coef = self.linear_regression(index, 'macd')
+            gap = price_coef[0] - indicator_coef[0]
+            price_coefs.append(price_coef[0])
+            price_bases.append(price_coef[1])
+            indicator_coefs.append(indicator_coef[0])
+            gaps.append(gap)
+            if len(prev_coef_gap):
+                if gap > 0 > prev_coef_gap[-1]:
+                    position = 1
+                if gap < 0 < prev_coef_gap[-1]:
+                    position = -1
+
+            prev_coef_gap.append(gap)
+
+            positions.append(position)
+
+        data['position'] = positions
+        data['price_coefs'] = price_coefs
+        data['price_bases'] = price_bases
+        data['indicator_coefs'] = indicator_coefs
+        data['gaps'] = gaps
+        data.to_csv(f"{self.symbol}.csv")
+
     def significance(self):
         self.macd_simple()
         data = self.data
@@ -136,13 +218,24 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
             macd, rsi, macd_derivative, strength = row['rolling_macd'], row['rolling_rsi'], row['macd_derivative'], row['rolling_strength']
-            significance = self.detect_significance(index, 'rolling_macd')
+            # macd_significance = self.detect_significance(index, 'rolling_macd')
             price_significance = self.detect_significance(index, 'close')
-            if len(prev_strength):
-                if significance[0] and price_significance[0]:
-                    position = 1
-                if significance[1] and price_significance[1]:
-                    position = -1
+            if len(prev_macd) > 1:
+                if price_significance[0]:
+                    # bearish, almost bottom
+                    if prev_macd[-2] < prev_macd[-1] < macd < 0:
+                        position = 1
+                    # bearish, just proven
+                    if macd < prev_macd[-1] < prev_macd[-2] < 0:
+                        position = -1
+
+                if price_significance[1]:
+                    # bullish, just proven
+                    if macd > prev_macd[-1] > prev_macd[-2] > 0:
+                        position = 1
+                    # bullish, almost top
+                    if prev_macd[-2] > prev_macd[-1] > macd > 0:
+                        position = -1
 
             positions.append(position)
             prev_macd.append(macd)
@@ -165,7 +258,7 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            current = row['strength']
+            current = row['rolling_macd_derivative']
 
             if len(previous) == 0:
                 if current > 0:
@@ -197,25 +290,25 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            current = row['strength']
-            waves = self.wave_sums('strength', index)
+            current = row['rolling_macd']
+            waves = self.wave_sums('rolling_macd', index)
 
             if len(waves) > 1 and ((current > 0) == (waves[-1] > 0)) and len(previous) == 3:
                 # bullish, just proven
-                if waves[-1] > abs(waves[-2]) * 0.382 > 0:
-                    if current > previous[-1] > previous[-2] > 0:
+                if waves[-1] > 0:
+                    if current > previous[-1] > previous[-2]:
                         position = 1
                 # bearish, almost bottom
-                if waves[-1] < -abs(waves[-2]) * 0.618 < 0:
-                    if previous[-2] < previous[-1] < current < 0:
+                if waves[-1] < -abs(waves[-2]) * 0.618:
+                    if previous[-2] < previous[-1] < current:
                         position = 1
                 # bullish, almost top
-                if waves[-1] > abs(waves[-2]) * 0.618 > 0:
-                    if previous[-2] > previous[-1] > current > 0:
+                if waves[-1] > abs(waves[-2]) * 0.618:
+                    if previous[-2] > previous[-1] > current:
                         position = -1
                 # bearish, just proven
-                if waves[-1] < -abs(waves[-2]) * 0.382 < 0:
-                    if current < previous[-1] < previous[-2] < 0:
+                if waves[-1] < 0:
+                    if current < previous[-1] < previous[-2]:
                         position = -1
 
             positions.append(position)
@@ -267,8 +360,46 @@ class MACDStrategy(Strategy):
 
         return merged_wave_sums
 
+    def abnormality(self):
+        self.macd_simple()
+        data = self.data
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        previous_peaks = set()
+        previous_valleys = set()
+
+        for index, row in data.iterrows():
+            position = 0
+            current = row['rolling_macd']
+            peaks, valleys = self.detect_abnormality(index, 'macd_derivative')
+            ordinal_index = self.data.index.get_loc(index)
+            # Convert peaks and valleys to sets
+            peaks = set(peaks)
+            valleys = set(valleys)
+            # Print new peaks that haven't been seen before
+            new_peaks = peaks - previous_peaks
+            for peak in new_peaks:
+                # print(f"PEAK {data.iloc[peak]['close']:.2f} {peaks} - {peak}, @{index} [{ordinal_index}, {row['close']:.2f}]")
+                position = -1
+
+            # Print new valleys that haven't been seen before
+            new_valleys = valleys - previous_valleys
+            for valley in new_valleys:
+                # print(f"VALLEY {data.iloc[valley]['close']:.2f} {valleys} - {valley}, @{index} [{ordinal_index}, {row['close']:.2f}]")
+                position = 1
+            # Update previous peaks and valleys
+            previous_peaks.update(new_peaks)
+            previous_valleys.update(new_valleys)
+
+            positions.append(position)
+
+        data['position'] = positions
+
     def signal(self):
-        self.wave()
+        self.abnormality()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
