@@ -6,16 +6,6 @@ import numpy as np
 
 class MACDStrategy(Strategy):
 
-    def detect_abnormality(self, index, column, prominence=0.00618):
-        # Calculate the minimum and maximum values within the recent window
-        recent_rows = self.data.loc[:index]
-
-        # Find peaks (tops) and valleys (bottoms)
-        peaks, _ = find_peaks(recent_rows[column], prominence=prominence)  # Adjust prominence as needed
-        valleys, _ = find_peaks(-recent_rows[column], prominence=prominence)  # Adjust prominence as needed
-
-        return peaks, valleys
-
     def detect_significance(self, index, column, window=39, boundary_ratio=0.1):
         # Calculate the minimum and maximum values within the recent window
         recent_rows = self.data.loc[:index].tail(window+1)[:-1]
@@ -125,20 +115,20 @@ class MACDStrategy(Strategy):
 
     import numpy as np
 
-    def linear_regression(self, index, column, window=9, step=2):
+    def linear_regression(self, index, column, window=9, step=1):
         # Predefine x values
         ordinal_index = self.data.index.get_loc(index)
         indices = []
         pos = None
-        recent_rows = self.data.loc[:index].tail(window * 2)
+        recent_rows = self.data.loc[:index].tail(window * step)
 
-        if ordinal_index < window * 2:
-            pos = ordinal_index // 2
+        if ordinal_index < window * step:
+            pos = ordinal_index // step
         else:
             pos = window
             # Start from the last index and iterate backwards with a step size of 2
 
-        for i in range(-(pos * 2) + 1, 0, step):
+        for i in range(-(pos * step) + 1, 0, step):
             indices.append(i)
         # Select the rows based on the calculated indices
         selected_rows = recent_rows.iloc[indices]
@@ -164,10 +154,19 @@ class MACDStrategy(Strategy):
         # print(f"{column} {coefficients}")
         return coefficients
 
-    # Example usage:
-    # Assuming df is your dataframe with 'close' column
-    # coefficients = linear_regression(df)
-    # print("a:", coefficients[0], "b:", coefficients[1])
+    def macd_coefs(self):
+        short_window, long_window, signal_window = 19, 39, 9  # 3, 7, 2
+        data = self.data
+        # Initialize Signal column with zeros
+        data['coefficient_macd'] = 0
+        coefficient_macds = []
+        for index, row in data.iterrows():
+            short_coef = self.linear_regression(index, 'close', window=short_window)
+            long_coef = self.linear_regression(index, 'close', window=long_window)
+            # Calculate MACD line
+            coefficient_macd = short_coef - long_coef
+            coefficient_macds.append(coefficient_macd)
+        data['coefficient_macd'] = coefficient_macds
 
     def linear(self):
         self.macd_simple()
@@ -177,6 +176,7 @@ class MACDStrategy(Strategy):
         data['position'] = 0
         prev_coef_gap = deque(maxlen=3)
         price_coefs, price_bases, indicator_coefs, gaps = [], [], [], []
+
         for index, row in data.iterrows():
             position = 0
             price_coef = self.linear_regression(index, 'close')
@@ -186,14 +186,13 @@ class MACDStrategy(Strategy):
             price_bases.append(price_coef[1])
             indicator_coefs.append(indicator_coef[0])
             gaps.append(gap)
+
             if len(prev_coef_gap):
                 if gap > 0 > prev_coef_gap[-1]:
                     position = 1
                 if gap < 0 < prev_coef_gap[-1]:
                     position = -1
-
             prev_coef_gap.append(gap)
-
             positions.append(position)
 
         data['position'] = positions
@@ -258,7 +257,8 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            current = row['rolling_macd_derivative']
+
+            current = row['macd']
 
             if len(previous) == 0:
                 if current > 0:
@@ -360,6 +360,16 @@ class MACDStrategy(Strategy):
 
         return merged_wave_sums
 
+    def detect_abnormality(self, index, column, prominence=0.00382):
+        # Calculate the minimum and maximum values within the recent window
+        recent_rows = self.data.loc[:index]
+
+        # Find peaks (tops) and valleys (bottoms)
+        peaks, _ = find_peaks(recent_rows[column], prominence=prominence)  # Adjust prominence as needed
+        valleys, _ = find_peaks(-recent_rows[column], prominence=prominence)  # Adjust prominence as needed
+
+        return peaks, valleys
+
     def abnormality(self):
         self.macd_simple()
         data = self.data
@@ -374,7 +384,7 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
             current = row['rolling_macd']
-            peaks, valleys = self.detect_abnormality(index, 'macd_derivative')
+            peaks, valleys = self.detect_abnormality(index, 'strength')
             ordinal_index = self.data.index.get_loc(index)
             # Convert peaks and valleys to sets
             peaks = set(peaks)
@@ -383,13 +393,15 @@ class MACDStrategy(Strategy):
             new_peaks = peaks - previous_peaks
             for peak in new_peaks:
                 # print(f"PEAK {data.iloc[peak]['close']:.2f} {peaks} - {peak}, @{index} [{ordinal_index}, {row['close']:.2f}]")
-                position = -1
+                if ordinal_index - peak < 5:
+                    position = -1
 
             # Print new valleys that haven't been seen before
             new_valleys = valleys - previous_valleys
             for valley in new_valleys:
                 # print(f"VALLEY {data.iloc[valley]['close']:.2f} {valleys} - {valley}, @{index} [{ordinal_index}, {row['close']:.2f}]")
-                position = 1
+                if ordinal_index - valley < 5:
+                    position = 1
             # Update previous peaks and valleys
             previous_peaks.update(new_peaks)
             previous_valleys.update(new_valleys)
@@ -399,7 +411,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.abnormality()
+        self.zero_crossing()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #

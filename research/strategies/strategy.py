@@ -27,7 +27,7 @@ class Strategy:
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            self.plot()
+            # self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
@@ -169,12 +169,6 @@ class Strategy:
         self.pnl = total_pnl
         # print(f"---{self.symbol}----- Total PnL Performance ------------ {self.pnl:.2f}")
         return total_pnl
-
-    # Example usage
-    # Assuming stock_data is your DataFrame and it contains 'position' and 'close' columns
-    # stock_data = pd.DataFrame({'close': [100, 105, 103, 108, 110], 'position': [0, 1, 0, -1, 0]})
-    # total_pnl = trade(stock_data)
-    # print(f"Total PnL: {total_pnl}")
 
     def plot(self):
         class MyFormatter:
