@@ -49,8 +49,8 @@ class MACDStrategy(Strategy):
             data['rolling_macd_derivative'] = data['macd_derivative'].rolling(window=5).mean()
 
             delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=5).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=5).mean()
+            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
             data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
@@ -111,10 +111,6 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-        data.to_csv(f"{self.symbol}.csv")
-
-    import numpy as np
-
     def linear_regression(self, index, column, window=9, step=1):
         # Predefine x values
         ordinal_index = self.data.index.get_loc(index)
@@ -133,7 +129,6 @@ class MACDStrategy(Strategy):
         # Select the rows based on the calculated indices
         selected_rows = recent_rows.iloc[indices]
         x_values = np.array(indices)
-
         # Initialize list to store y values
         y_values = []
 
@@ -154,52 +149,32 @@ class MACDStrategy(Strategy):
         # print(f"{column} {coefficients}")
         return coefficients
 
-    def macd_coefs(self):
-        short_window, long_window, signal_window = 19, 39, 9  # 3, 7, 2
+    def macd_normalized(self):
         data = self.data
-        # Initialize Signal column with zeros
-        data['coefficient_macd'] = 0
-        coefficient_macds = []
+        data['normalized_macd'] = 0
+        rolling_window = deque(maxlen=3)
+        normalized_macds = []
         for index, row in data.iterrows():
-            short_coef = self.linear_regression(index, 'close', window=short_window)
-            long_coef = self.linear_regression(index, 'close', window=long_window)
-            # Calculate MACD line
-            coefficient_macd = short_coef - long_coef
-            coefficient_macds.append(coefficient_macd)
-        data['coefficient_macd'] = coefficient_macds
+            recent_rows = self.data.loc[:index]
+            min_macd = recent_rows['macd'].min()
+            max_macd = recent_rows['macd'].max()
+            max_macd = max(-min_macd, max_macd)
+            min_macd = -max_macd
+            # Normalize each MACD value to the range [0, 120]
+            if max_macd != min_macd:
+                normalized_macd = (row['macd'] - min_macd) / (max_macd - min_macd) * 100
+            else:
+                normalized_macd = 50
 
-    def linear(self):
-        self.macd_simple()
-        data = self.data
-        positions = []  # Store updated signals
-        # Initialize Signal column with zeros
-        data['position'] = 0
-        prev_coef_gap = deque(maxlen=3)
-        price_coefs, price_bases, indicator_coefs, gaps = [], [], [], []
-
-        for index, row in data.iterrows():
-            position = 0
-            price_coef = self.linear_regression(index, 'close')
-            indicator_coef = self.linear_regression(index, 'macd')
-            gap = price_coef[0] - indicator_coef[0]
-            price_coefs.append(price_coef[0])
-            price_bases.append(price_coef[1])
-            indicator_coefs.append(indicator_coef[0])
-            gaps.append(gap)
-
-            if len(prev_coef_gap):
-                if gap > 0 > prev_coef_gap[-1]:
-                    position = 1
-                if gap < 0 < prev_coef_gap[-1]:
-                    position = -1
-            prev_coef_gap.append(gap)
-            positions.append(position)
-
-        data['position'] = positions
-        data['price_coefs'] = price_coefs
-        data['price_bases'] = price_bases
-        data['indicator_coefs'] = indicator_coefs
-        data['gaps'] = gaps
+            rolling_window.append(normalized_macd + row['rsi'])
+            rolling_mean = sum(rolling_window) / len(rolling_window)
+            normalized_macds.append(rolling_mean)
+            # close, macd = row['close'], row['macd']
+            # # print(recent_rows['rsi'].mean() - rsi_base, rsi_base)
+            # rsi_base = max(rsi_base, 1)
+            # roc = (recent_rows['rolling_rsi'].mean() - 50) / 50
+            # normalized_macds.append(macd + macd_base * roc * 6.18)
+        data['normalized_macd'] = normalized_macds
         data.to_csv(f"{self.symbol}.csv")
 
     def significance(self):
@@ -243,13 +218,37 @@ class MACDStrategy(Strategy):
             prev_macd_derivatives.append(macd_derivative)
 
         data['position'] = positions
-        data.to_csv(f"{self.symbol}.csv")
+
+    def macd_x_rsi(self):
+        self.macd_simple()
+        self.macd_normalized()
+        data = self.data
+        previous = deque(maxlen=3)  # Keep track of the last 30 signals
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        for index, row in data.iterrows():
+            position = 0
+            current = row['normalized_macd']
+            if len(previous):
+                if previous[-1] > 150 > current:
+                    position = -1
+
+                if previous[-1] < 50 < current:
+                    position = 1
+
+            positions.append(position)
+            previous.append(current)
+
+        data['position'] = positions
 
     def zero_crossing(self):
         self.macd_simple()
+        self.macd_normalized()
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
-        wait = 1
         positions = []  # Store updated signals
 
         # Initialize Signal column with zeros
@@ -260,23 +259,51 @@ class MACDStrategy(Strategy):
 
             current = row['macd']
 
-            if len(previous) == 0:
-                if current > 0:
-                    position = 1
-            else:
+            if len(previous):
 
                 if previous[-1] > 0 > current:
-                    position = -1
+                    position = 1
 
                 if previous[-1] < 0 < current:
-                    position = 1
+                    position = -1
 
             positions.append(position)
             previous.append(current)
 
         data['position'] = positions
 
-        data.to_csv(f"{self.symbol}.csv")
+    def rsi(self):
+        self.macd_simple()
+        data = self.data
+        previous = deque(maxlen=3)  # Keep track of the last 30 signals
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+
+        for index, row in data.iterrows():
+            position = 0
+
+            current = row['rsi']
+
+            if len(previous):
+
+                if previous[-1] > 75 > current and row['rolling_macd'] < 0:
+                    position = -1
+
+                if previous[-1] < 25 < current and row['rolling_macd'] > 0:
+                    position = 1
+
+                # if previous[-1] < 75 < current and row['rolling_macd'] > 0:
+                #     position = 1
+                #
+                # if previous[-1] > 25 > current and row['rolling_macd'] < 0:
+                #     position = -1
+
+            positions.append(position)
+            previous.append(current)
+
+        data['position'] = positions
 
     def wave(self):
         self.macd_simple()
@@ -411,7 +438,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.zero_crossing()
+        self.macd_x_rsi()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
