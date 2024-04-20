@@ -219,9 +219,43 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
+    def peaks_valleys(self):
+        peaks = []
+        valleys = []
+
+        # Extract RSI values from the DataFrame and convert to a list for faster access
+        rsi_values = self.data['rolling_rsi'].tolist()
+
+        # Iterate through RSI values (avoid the first two and last two entries to prevent index errors)
+        for i in range(2, len(rsi_values) - 2):
+            prev_rsi_1 = rsi_values[i - 2]
+            prev_rsi_2 = rsi_values[i - 1]
+            curr_rsi = rsi_values[i]
+            next_rsi_1 = rsi_values[i + 1]
+            next_rsi_2 = rsi_values[i + 2]
+
+            # Check for a peak
+            if (curr_rsi > prev_rsi_1 and curr_rsi > prev_rsi_2 and
+                    curr_rsi > next_rsi_1 and curr_rsi > next_rsi_2):
+                print(f'Peak deteced {curr_rsi}')
+                peaks.append(i)
+
+            # Check for a valley
+            elif (curr_rsi < prev_rsi_1 and curr_rsi < prev_rsi_2 and
+                  curr_rsi < next_rsi_1 and curr_rsi < next_rsi_2):
+                valleys.append(i)
+
+        print('----- PEAKS -------')
+        print(peaks)
+        print('----- VALLEYS -------')
+        print(valleys)
+        print('---------------------------')
+        return peaks, valleys
+
     def macd_x_rsi(self):
         self.macd_simple()
         self.macd_normalized()
+        self.peaks_valleys()
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
         positions = []  # Store updated signals
