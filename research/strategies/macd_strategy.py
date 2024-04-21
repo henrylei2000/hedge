@@ -271,7 +271,7 @@ class MACDStrategy(Strategy):
                         p1 = data.iloc[peaks[-1]]
                         p2 = data.iloc[peaks[-2]]
                         v1 = data.iloc[valleys[-1]]
-                        if p2['macd'] > v1['macd'] < p1['macd']:
+                        if p2['macd'] > v1['macd'] > p1['macd']:
                             position = -1
                 print(f'peak found --------- {peaks[-1]}')
             if len(valleys) > valleys_found:
