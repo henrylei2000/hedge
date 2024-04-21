@@ -27,7 +27,7 @@ class Strategy:
             self.sanitize()
             self.signal()
             self.bucket_trade()
-            # self.plot()
+            self.plot()
             return
         else:
             print("No data found, please verify symbol and date range.")
@@ -196,8 +196,8 @@ class Strategy:
                    label='Buy')
         ax.scatter(np.where(r.position == -1)[0], r.close[r.position == -1], marker='o', color='r', alpha=.5, s=120,
                    label='Sell')
-        for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
-            ax.text(x, y, f"{r.close[i]:.2f}", fontsize=7, ha='right', va='bottom')
+        # for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
+        #     ax.text(x, y, f"{r.close[i]:.2f}", fontsize=7, ha='right', va='bottom')
         fig.autofmt_xdate()
         # fig.tight_layout()
         plt.title(f"{self.symbol}")

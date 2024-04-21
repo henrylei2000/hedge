@@ -242,34 +242,34 @@ class MACDStrategy(Strategy):
             # Check for a peak
             if (curr_rsi > prev_rsi_1 and curr_rsi > prev_rsi_2 and
                     curr_rsi > next_rsi_1 and curr_rsi > next_rsi_2):
-                print(f'Peak deteced {curr_rsi}')
                 peaks.append(i)
 
             # Check for a valley
             elif (curr_rsi < prev_rsi_1 and curr_rsi < prev_rsi_2 and
                   curr_rsi < next_rsi_1 and curr_rsi < next_rsi_2):
                 valleys.append(i)
-
-        print('----- PEAKS -------')
-        print(peaks)
-        print('----- VALLEYS -------')
-        print(valleys)
-        print('---------------------------')
         return peaks, valleys
 
     def macd_x_rsi(self):
         self.macd_simple()
         self.macd_normalized()
-        self.peaks_valleys()
+
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
         positions = []  # Store updated signals
-
+        peaks_found, valleys_found = 0, 0
         # Initialize Signal column with zeros
         data['position'] = 0
 
         for index, row in data.iterrows():
             position = 0
+            peaks, valleys = self.peaks_valleys(index)
+            if len(peaks) > peaks_found:  # just found a new peak!
+                peaks_found += 1
+                print(f'peak found --------- {peaks[-1]}')
+            if len(valleys) > valleys_found:
+                valleys_found += 1
+                print(f'valley found --------- {valleys[-1]} @ {index}')
             current = row['normalized_macd']
             if len(previous):
                 if previous[-1] > 70 > current:
@@ -280,7 +280,8 @@ class MACDStrategy(Strategy):
 
             positions.append(position)
             previous.append(current)
-
+        print(f'{peaks_found} peaks found')
+        print(f'{valleys_found} valleys found')
         data['position'] = positions
 
     def zero_crossing(self):
