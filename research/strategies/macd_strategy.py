@@ -160,13 +160,13 @@ class MACDStrategy(Strategy):
             max_macd = recent_rows['macd'].max()
             max_macd = max(-min_macd, max_macd)
             min_macd = -max_macd
-            # Normalize each MACD value to the range [0, 120]
+            # Normalize each MACD value to the range [0, 100]
             if max_macd != min_macd:
                 normalized_macd = (row['macd'] - min_macd) / (max_macd - min_macd) * 100
             else:
                 normalized_macd = 50
 
-            rolling_window.append(normalized_macd + row['rsi'])
+            rolling_window.append(normalized_macd)
             rolling_mean = sum(rolling_window) / len(rolling_window)
             normalized_macds.append(rolling_mean)
             # close, macd = row['close'], row['macd']
@@ -219,12 +219,17 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-    def peaks_valleys(self):
+    def peaks_valleys(self, index=None):
         peaks = []
         valleys = []
 
         # Extract RSI values from the DataFrame and convert to a list for faster access
-        rsi_values = self.data['rolling_rsi'].tolist()
+        if not index:
+            data = self.data
+        else:
+            data = self.data.loc[:index]
+
+        rsi_values = data['rolling_rsi'].tolist()
 
         # Iterate through RSI values (avoid the first two and last two entries to prevent index errors)
         for i in range(2, len(rsi_values) - 2):
@@ -267,10 +272,10 @@ class MACDStrategy(Strategy):
             position = 0
             current = row['normalized_macd']
             if len(previous):
-                if previous[-1] > 150 > current:
+                if previous[-1] > 70 > current:
                     position = -1
 
-                if previous[-1] < 50 < current:
+                if previous[-1] < 30 < current:
                     position = 1
 
             positions.append(position)
