@@ -266,18 +266,25 @@ class MACDStrategy(Strategy):
             peaks, valleys = self.peaks_valleys(index)
             if len(peaks) > peaks_found:  # just found a new peak!
                 peaks_found += 1
+                if valleys_found > 0 and peaks_found > 1:
+                    if peaks[-1] > valleys[-1] > peaks[-2]:
+                        p1 = data.iloc[peaks[-1]]
+                        p2 = data.iloc[peaks[-2]]
+                        v1 = data.iloc[valleys[-1]]
+                        if p2['macd'] > v1['macd'] < p1['macd']:
+                            position = -1
                 print(f'peak found --------- {peaks[-1]}')
             if len(valleys) > valleys_found:
                 valleys_found += 1
                 print(f'valley found --------- {valleys[-1]} @ {index}')
+                if valleys_found > 1 and peaks_found > 0:
+                    if valleys[-1] > peaks[-1] > valleys[-2]:
+                        v1 = data.iloc[valleys[-1]]
+                        v2 = data.iloc[valleys[-2]]
+                        p1 = data.iloc[peaks[-1]]
+                        if v2['macd'] < p1['macd'] < v1['macd']:
+                            position = 1
             current = row['normalized_macd']
-            if len(previous):
-                if previous[-1] > 70 > current:
-                    position = -1
-
-                if previous[-1] < 30 < current:
-                    position = 1
-
             positions.append(position)
             previous.append(current)
         print(f'{peaks_found} peaks found')
