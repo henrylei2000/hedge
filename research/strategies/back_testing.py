@@ -2,6 +2,7 @@ from macd_strategy import MACDStrategy
 import alpaca_trade_api as tradeapi
 import configparser
 
+
 def get_dates():
     # Load Alpaca API credentials from configuration file
     config = configparser.ConfigParser()
@@ -13,8 +14,8 @@ def get_dates():
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
 
     # Define the start and end dates for the market calendar you want to retrieve
-    start_date = '2023-10-10'
-    end_date = '2023-10-10'
+    start_date = '2020-01-01'
+    end_date = '2020-12-31'
 
     # Get the market calendar
     calendar = api.get_calendar(start=start_date, end=end_date)
