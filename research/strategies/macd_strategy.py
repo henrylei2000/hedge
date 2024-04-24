@@ -219,7 +219,7 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-    def peaks_valleys(self, index=None):
+    def peaks_valleys(self, index=None, column="rolling_rsi"):
         peaks = []
         valleys = []
 
@@ -229,24 +229,24 @@ class MACDStrategy(Strategy):
         else:
             data = self.data.loc[:index]
 
-        rsi_values = data['rolling_rsi'].tolist()
+        values = data[column].tolist()
 
         # Iterate through RSI values (avoid the first two and last two entries to prevent index errors)
-        for i in range(2, len(rsi_values) - 2):
-            prev_rsi_1 = rsi_values[i - 2]
-            prev_rsi_2 = rsi_values[i - 1]
-            curr_rsi = rsi_values[i]
-            next_rsi_1 = rsi_values[i + 1]
-            next_rsi_2 = rsi_values[i + 2]
+        for i in range(2, len(values) - 2):
+            prev_1 = values[i - 2]
+            prev_2 = values[i - 1]
+            curr = values[i]
+            next_1 = values[i + 1]
+            next_2 = values[i + 2]
 
             # Check for a peak
-            if (curr_rsi > prev_rsi_1 and curr_rsi > prev_rsi_2 and
-                    curr_rsi > next_rsi_1 and curr_rsi > next_rsi_2):
+            if (curr > prev_1 and curr > prev_2 and
+                    curr > next_1 and curr > next_2):
                 peaks.append(i)
 
             # Check for a valley
-            elif (curr_rsi < prev_rsi_1 and curr_rsi < prev_rsi_2 and
-                  curr_rsi < next_rsi_1 and curr_rsi < next_rsi_2):
+            elif (curr < prev_1 and curr < prev_2 and
+                  curr < next_1 and curr < next_2):
                 valleys.append(i)
         return peaks, valleys
 
@@ -265,13 +265,14 @@ class MACDStrategy(Strategy):
             position = 0
             peaks, valleys = self.peaks_valleys(index)
             column = 'normalized_macd'
+            macd_peaks, macd_valleys = self.peaks_valleys(index, column)
             if len(peaks) > peaks_found:  # just found a new peak!
                 peaks_found += 1
                 if valleys_found > 1 and peaks_found > 1:
                     if peaks[-1] > valleys[-1] > peaks[-2]:
-                        p1 = data.iloc[peaks[-1] + 2]
-                        p2 = data.iloc[peaks[-2] + 2]
-                        v1 = data.iloc[valleys[-1] + 2]
+                        p1 = data.iloc[peaks[-1]]
+                        p2 = data.iloc[peaks[-2]]
+                        v1 = data.iloc[valleys[-1]]
                         if p2[column] > v1[column] > p1[column] and p1[column] < 50:
                             position = -1
 
@@ -279,9 +280,9 @@ class MACDStrategy(Strategy):
                 valleys_found += 1
                 if valleys_found > 1 and peaks_found > 1:
                     if valleys[-1] > peaks[-1] > valleys[-2]:
-                        v1 = data.iloc[valleys[-1] + 2]
-                        v2 = data.iloc[valleys[-2] + 2]
-                        p1 = data.iloc[peaks[-1] + 2]
+                        v1 = data.iloc[valleys[-1]]
+                        v2 = data.iloc[valleys[-2]]
+                        p1 = data.iloc[peaks[-1]]
                         if v2[column] < p1[column] < v1[column] and v1[column] > 50:
                             position = 1
             current = row['normalized_macd']
