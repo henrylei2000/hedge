@@ -250,6 +250,17 @@ class MACDStrategy(Strategy):
                 valleys.append(i)
         return peaks, valleys
 
+    def rsi_peak(self, peaks, current_top, previous_top):
+        for i in range(len(peaks)):
+            if previous_top < peaks[-i - 1] < current_top:
+                return peaks[-i - 1]
+
+    def rsi_valley(self, valleys, current_bottom, previous_bottom):
+        for i in range(len(valleys)):
+            if previous_bottom < valleys[-i - 1] < current_bottom:
+
+                return valleys[-i - 1]
+
     def macd_x_rsi(self):
         self.macd_simple()
         self.macd_normalized()
@@ -257,34 +268,33 @@ class MACDStrategy(Strategy):
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
         positions = []  # Store updated signals
-        peaks_found, valleys_found = 0, 0
+        tops_found, bottoms_found = 0, 0
         # Initialize Signal column with zeros
         data['position'] = 0
 
         for index, row in data.iterrows():
             position = 0
-            peaks, valleys = self.peaks_valleys(index)
+            peaks, valleys = self.peaks_valleys(index, 'rolling_rsi')
             column = 'macd'
-            macd_peaks, macd_valleys = self.peaks_valleys(index, column)
-            if len(peaks) > peaks_found:  # just found a new peak!
-                peaks_found += 1
-                if valleys_found > 1 and peaks_found > 1:
-                    if peaks[-1] > valleys[-1] > peaks[-2]:
-                        p1 = data.iloc[peaks[-1]]
-                        p2 = data.iloc[peaks[-2]]
-                        v1 = data.iloc[valleys[-1]]
-                        if p2[column] > v1[column] > p1[column] and p1[column] < 0:
-                            position = -1
+            tops, bottoms = self.peaks_valleys(index, 'macd')
+            if len(tops) > tops_found:  # just found a new top!
+                tops_found += 1
+                if len(tops) > 2 and len(bottoms) > 1 and len(peaks) > 1 and len(valleys) > 2:
+                    rsi_peak = self.rsi_peak(peaks, tops[-1], bottoms[-1])
+                    rsi_valley = self.rsi_peak(valleys, bottoms[-1], tops[-2])
+                    rsi_peak_2 = self.rsi_peak(peaks, tops[-2], bottoms[-2])
+                    if data.iloc[tops[-2]]['macd'] > 0 and data.iloc[tops[-1]]['macd'] < 0:
+                        position = -1
 
-            if len(valleys) > valleys_found:
-                valleys_found += 1
-                if valleys_found > 1 and peaks_found > 1:
-                    if valleys[-1] > peaks[-1] > valleys[-2]:
-                        v1 = data.iloc[valleys[-1]]
-                        v2 = data.iloc[valleys[-2]]
-                        p1 = data.iloc[peaks[-1]]
-                        if v2[column] < p1[column] < v1[column] and v1[column] > 0:
-                            position = 1
+            if len(bottoms) > bottoms_found:
+                bottoms_found += 1
+                if len(tops) > 1 and len(bottoms) > 2 and len(peaks) > 1 and len(valleys) > 2:
+                    rsi_valley = self.rsi_valley(valleys, bottoms[-1], tops[-1])
+                    rsi_peak = self.rsi_peak(peaks, tops[-1], bottoms[-2])
+                    rsi_valley_2 = self.rsi_valley(valleys, bottoms[-2], tops[-3])
+                    if data.iloc[bottoms[-2]]['macd'] < 0 and data.iloc[bottoms[-1]]['macd'] > 0:
+                        position = 1
+
             current = row['normalized_macd']
             positions.append(position)
             previous.append(current)
@@ -294,7 +304,7 @@ class MACDStrategy(Strategy):
         self.macd_simple()
         self.macd_normalized()
         data = self.data
-        previous = deque(maxlen=3)  # Keep track of the last 30 signals
+        previous = deque(maxlen=3)  # Keep track of the last 3 signals
         positions = []  # Store updated signals
 
         # Initialize Signal column with zeros
