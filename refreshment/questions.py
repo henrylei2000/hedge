@@ -67,3 +67,61 @@ def check_permutation(s1, s2):
 
 
 print(check_permutation('abcd', 'dbac'))
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def time_frac_diffusion_wave_equation(alpha, L, T, N, M):
+    """
+    Solves the time-fractional diffusion-wave equation using the Finite Difference Method.
+
+    Parameters:
+        alpha (float): Fractional order (0 < alpha < 1).
+        L (float): Length of the domain.
+        T (float): Total simulation time.
+        N (int): Number of spatial grid points.
+        M (int): Number of time steps.
+
+    Returns:
+        u (2D array): Solution matrix.
+    """
+    dx = L / N
+    dt = T / M
+
+    x = np.linspace(0, L, N)
+    u = np.zeros((M+1, N))
+
+    # Initial condition
+    u[0, :] = np.sin(np.pi * x)
+
+    for k in range(1, M+1):
+        for i in range(1, N-1):
+            u[k, i] = u[k-1, i] + (alpha * dt / dx**2) * (u[k-1, i+1] - 2*u[k-1, i] + u[k-1, i-1])
+
+    return u
+
+# Parameters
+alpha = 0.5  # Fractional order (0 < alpha < 1)
+L = 1.0  # Length of the domain
+T = 1.0  # Total simulation time
+N = 100  # Number of spatial grid points
+M = 1000  # Number of time steps
+
+# Solve the equation
+solution = time_frac_diffusion_wave_equation(alpha, L, T, N, M)
+
+# Filter out NaN or Inf values
+solution_filtered = np.where(np.isnan(solution) | np.isinf(solution), 0, solution)
+
+# Plotting
+plt.figure(figsize=(8, 6))
+plt.imshow(solution_filtered, extent=[0, L, 0, T], aspect='auto', cmap='hot', origin='lower')
+plt.colorbar(label='Temperature')
+plt.title('Time-Fractional Diffusion-Wave Equation')
+plt.xlabel('Position')
+plt.ylabel('Time')
+plt.show()
+
+
+

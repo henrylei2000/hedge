@@ -283,7 +283,7 @@ class MACDStrategy(Strategy):
                     rsi_peak = self.rsi_peak(peaks, tops[-1], bottoms[-1])
                     rsi_valley = self.rsi_peak(valleys, bottoms[-1], tops[-2])
                     rsi_peak_2 = self.rsi_peak(peaks, tops[-2], bottoms[-2])
-                    if data.iloc[tops[-2]]['macd'] > 0 and data.iloc[tops[-1]]['macd'] < 0:
+                    if data.iloc[tops[-2]]['macd'] > 0 > data.iloc[tops[-1]]['macd']:
                         position = -1
 
             if len(bottoms) > bottoms_found:
@@ -292,7 +292,7 @@ class MACDStrategy(Strategy):
                     rsi_valley = self.rsi_valley(valleys, bottoms[-1], tops[-1])
                     rsi_peak = self.rsi_peak(peaks, tops[-1], bottoms[-2])
                     rsi_valley_2 = self.rsi_valley(valleys, bottoms[-2], tops[-3])
-                    if data.iloc[bottoms[-2]]['macd'] < 0 and data.iloc[bottoms[-1]]['macd'] > 0:
+                    if data.iloc[bottoms[-2]]['macd'] < 0 < data.iloc[bottoms[-1]]['macd']:
                         position = 1
 
             current = row['normalized_macd']
