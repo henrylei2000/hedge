@@ -220,8 +220,6 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def peaks_valleys(self, index=None, column="rolling_rsi"):
-        peaks = []
-        valleys = []
 
         # Extract RSI values from the DataFrame and convert to a list for faster access
         if not index:
@@ -229,37 +227,25 @@ class MACDStrategy(Strategy):
         else:
             data = self.data.loc[:index]
 
+        # Initialize variables
+        result = []
         values = data[column].tolist()
 
-        # Iterate through RSI values (avoid the first two and last two entries to prevent index errors)
+        # First, detect all peaks and valleys
         for i in range(2, len(values) - 2):
-            prev_1 = values[i - 2]
-            prev_2 = values[i - 1]
-            curr = values[i]
-            next_1 = values[i + 1]
-            next_2 = values[i + 2]
+            # Read surrounding RSI values to determine peaks or valleys
+            prev_1, prev_2 = values[i - 2], values[i - 1]
+            curr_rsi = values[i]
+            next_1, next_2 = values[i + 1], values[i + 2]
 
             # Check for a peak
-            if (curr > prev_1 and curr > prev_2 and
-                    curr > next_1 and curr > next_2):
-                peaks.append(i)
-
+            if curr_rsi > max(prev_1, prev_2, next_1, next_2):
+                result.append((i, curr_rsi, 'peak'))
             # Check for a valley
-            elif (curr < prev_1 and curr < prev_2 and
-                  curr < next_1 and curr < next_2):
-                valleys.append(i)
-        return peaks, valleys
+            elif curr_rsi < min(prev_1, prev_2, next_1, next_2):
+                result.append((i, curr_rsi, 'valley'))
 
-    def rsi_peak(self, peaks, current_top, previous_top):
-        for i in range(len(peaks)):
-            if previous_top < peaks[-i - 1] < current_top:
-                return peaks[-i - 1]
-
-    def rsi_valley(self, valleys, current_bottom, previous_bottom):
-        for i in range(len(valleys)):
-            if previous_bottom < valleys[-i - 1] < current_bottom:
-
-                return valleys[-i - 1]
+        return result
 
     def macd_x_rsi(self):
         self.macd_simple()
@@ -274,26 +260,17 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            peaks, valleys = self.peaks_valleys(index, 'rolling_rsi')
-            column = 'macd'
-            tops, bottoms = self.peaks_valleys(index, 'macd')
-            if len(tops) > tops_found:  # just found a new top!
-                tops_found += 1
-                if len(tops) > 2 and len(bottoms) > 1 and len(peaks) > 1 and len(valleys) > 2:
-                    rsi_peak = self.rsi_peak(peaks, tops[-1], bottoms[-1])
-                    rsi_valley = self.rsi_peak(valleys, bottoms[-1], tops[-2])
-                    rsi_peak_2 = self.rsi_peak(peaks, tops[-2], bottoms[-2])
-                    if data.iloc[tops[-2]]['macd'] > 0 > data.iloc[tops[-1]]['macd']:
-                        position = -1
+            rsi = self.peaks_valleys(index, 'rolling_rsi')
+            macd = self.peaks_valleys(index, 'macd')
 
-            if len(bottoms) > bottoms_found:
-                bottoms_found += 1
-                if len(tops) > 1 and len(bottoms) > 2 and len(peaks) > 1 and len(valleys) > 2:
-                    rsi_valley = self.rsi_valley(valleys, bottoms[-1], tops[-1])
-                    rsi_peak = self.rsi_peak(peaks, tops[-1], bottoms[-2])
-                    rsi_valley_2 = self.rsi_valley(valleys, bottoms[-2], tops[-3])
-                    if data.iloc[bottoms[-2]]['macd'] < 0 < data.iloc[bottoms[-1]]['macd']:
-                        position = 1
+            # RSI Lifting MACD
+            # strength & velocity (interval between peaks and valleys)
+            if len(rsi):
+                if rsi[-1][1] < 30:  # just found a new top!
+                    position = -1
+
+                if rsi[-1][1] > 70:
+                    position = 1
 
             current = row['normalized_macd']
             positions.append(position)
