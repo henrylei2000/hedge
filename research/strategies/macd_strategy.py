@@ -260,7 +260,7 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            rsi = self.peaks_valleys(index, 'rolling_rsi')
+            rsi = self.peaks_valleys(index, 'rsi')
             macd = self.peaks_valleys(index, 'macd')
 
             # RSI Lifting MACD
@@ -275,6 +275,9 @@ class MACDStrategy(Strategy):
             current = row['normalized_macd']
             positions.append(position)
             previous.append(current)
+        print(rsi)
+        print('-------')
+        print(macd)
         data['position'] = positions
 
     def zero_crossing(self):
