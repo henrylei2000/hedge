@@ -275,9 +275,9 @@ class MACDStrategy(Strategy):
             current = row['normalized_macd']
             positions.append(position)
             previous.append(current)
-        print(rsi)
+        print(rsi[-8:])
         print('-------')
-        print(macd)
+        print(macd[-3:])
         data['position'] = positions
 
     def zero_crossing(self):
