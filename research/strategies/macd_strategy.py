@@ -273,8 +273,9 @@ class MACDStrategy(Strategy):
                             break
                         else:
                             causing_rsi.append((rsi_index, rsi_value, rsi_type))
-                print(causing_rsi)
-                print('-------------------------------------------------------')
+                            print(causing_rsi)
+                            print('-------------------------------------------------------')
+
             if len(rsi):
                 if rsi[-1][1] < 30:  # just found a new top!
                     position = -1
