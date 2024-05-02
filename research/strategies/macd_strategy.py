@@ -267,10 +267,12 @@ class MACDStrategy(Strategy):
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
+                print(macd[-4:])
+                print(rsi[-10:])
                 for macd_index, macd_value, macd_type in reversed(macd[-4:]):
                     causing_rsi = []
                     for rsi_index, rsi_value, rsi_type in reversed(rsi[-10:]):
-                        if rsi_index < macd_index:
+                        if rsi_index < macd_index or rsi_index == macd_index:
                             if rsi_type != macd_type:
                                 if len(causing_rsi):  # conclude the current search
                                     macd_points.append((macd_index, macd_value, macd_type))
