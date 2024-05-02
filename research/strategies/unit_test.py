@@ -30,24 +30,29 @@ data = pd.DataFrame({'rsi': [30, 45, 70, 60, 55, 75, 65, 50, 45, 55, 65, 30, 20]
 print(analyze_rsi_series(data))
 
 
-def filter_rsi_subset(macd_list, rsi_list):
-    filtered_rsi = []
-
-    for rsi_tuple in rsi_list:
-        rsi_index, rsi_price, rsi_type = rsi_tuple
-        for macd_tuple in macd_list:
-            macd_index, _, macd_type = macd_tuple
-            if macd_type == rsi_type and macd_index > rsi_index:
-                filtered_rsi.append(rsi_tuple)
-                break
-
-    return filtered_rsi
+def filter_rsi_subset(macd, rsi):
+    if len(macd) > 3 and len(rsi) > 3:
+        # RSI Lifting MACD
+        # strength & velocity (interval between peaks and valleys)
+        macd_points, rsi_points = [], []
+        print(macd[-4:])
+        print(rsi[-10:])
+        for macd_index, macd_value, macd_type in reversed(macd[-4:]):
+            macd_points.append((macd_index, macd_value, macd_type))
+            causing_rsi = []
+            for rsi_index, rsi_value, rsi_type in reversed(rsi[-10:]):
+                if rsi_index < macd_index or rsi_index == macd_index:
+                    if rsi_type != macd_type:
+                        if len(causing_rsi):  # conclude the current search
+                            break
+                    else:
+                        causing_rsi.append((rsi_index, rsi_value, rsi_type))
+            rsi_points.append(causing_rsi)
+        print(f'{macd_points} -------------------------- {rsi_points}')
 
 
 # Example usage
-macd_list = [(363, -0.005207801642914234, 'valley'), (366, -0.0033239127203188445, 'peak'), (371, -0.0035541983098674734, 'valley')]
-rsi_list = [(359, 57.712970069071226, 'peak'), (360, 44.41980783444175, 'valley'), (363, 49.96673320026621, 'valley'), (364, 58.33865814696503, 'peak'), (370, 40.458015267174545, 'valley'), (376, 92.307692307694, 'peak'), (377, 71.31502890173546, 'valley'), (379, 76.29850746268784, 'peak')]
+macd = [(2, 0.005656788341390495, 'valley'), (8, 0.024355482933032135, 'peak'), (11, 0.017572528247562502, 'valley'), (27, 0.10857385642029271, 'peak')]
+rsi = [(2, 41.228070175438475, 'valley'), (5, 62.85973947288657, 'peak'), (8, 50.89158345221094, 'valley'), (11, 56.01851851851898, 'peak'), (14, 39.90825688073404, 'valley'), (16, 63.359591228443854, 'peak'), (18, 58.470986869971036, 'valley'), (27, 85.73446327683581, 'peak')]
 
-filtered_rsi_subset = filter_rsi_subset(macd_list, rsi_list)
-print(macd_list)
-print(filtered_rsi_subset)
+filter_rsi_subset(macd, rsi)
