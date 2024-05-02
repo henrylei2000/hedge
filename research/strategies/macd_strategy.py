@@ -263,20 +263,22 @@ class MACDStrategy(Strategy):
             rsi = self.peaks_valleys(index, 'rsi')
             macd = self.peaks_valleys(index, 'macd')
 
-            if len(macd) > 2 and len(rsi) > 2:
+            if len(macd) > 3 and len(rsi) > 3:
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
-                for macd_index, macd_value, macd_type in reversed(macd):
+                macd_points, rsi_points = [], []
+                for macd_index, macd_value, macd_type in reversed(macd[-4:]):
                     causing_rsi = []
-                    for rsi_index, rsi_value, rsi_type in reversed(rsi):
+                    for rsi_index, rsi_value, rsi_type in reversed(rsi[-10:]):
                         if rsi_index < macd_index:
                             if rsi_type != macd_type:
-                                break
+                                if len(causing_rsi):  # conclude the current search
+                                    macd_points.append((macd_index, macd_value, macd_type))
+                                    rsi_points.append(causing_rsi)
+                                    break
                             else:
                                 causing_rsi.append((rsi_index, rsi_value, rsi_type))
-                                print((macd_index, macd_value, macd_type), causing_rsi)
-                                print('-------------------------------------------------------')
-
+                print(f'{macd_points} -------------------------- {rsi_points}')
             if len(rsi):
                 if rsi[-1][1] < 30:  # just found a new top!
                     position = -1
