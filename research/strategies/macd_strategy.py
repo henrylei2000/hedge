@@ -280,6 +280,26 @@ class MACDStrategy(Strategy):
                             else:
                                 causing_rsi.append((rsi_index, rsi_value, rsi_type))
                     rsi_points.append(causing_rsi)
+
+                """
+                process macd and rsi signals
+                - for each macd
+                    - peak / valley
+                    - absolute value (positive / negative)
+                    - change ratio (since last valley / peak)
+                    - velocity (peak-valley interval)
+                - for each rsi
+                    - peak / valley
+                    - absolute value (positive / negative)
+                    - change ratio (since last valley / peak)
+                    - velocity (peak-valley interval)
+                - historical regression (?)
+                
+                Theories
+                - macd resilience to rsi
+                    - price will be following the trend of macd
+                """
+
                 print(f'{macd_points} -------------------------- {rsi_points}')
 
             if len(rsi):
