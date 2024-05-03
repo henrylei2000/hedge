@@ -267,8 +267,6 @@ class MACDStrategy(Strategy):
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
-                print(macd[-4:])
-                print(rsi[-10:])
                 for macd_index, macd_value, macd_type in reversed(macd[-4:]):
                     macd_points.append((macd_index, macd_value, macd_type))
                     causing_rsi = []
@@ -300,7 +298,7 @@ class MACDStrategy(Strategy):
                     - price will be following the trend of macd
                 """
 
-                print(f'{macd_points} -------------------------- {rsi_points}')
+                print(f'{macd_points[0][2]} -------------------------- {rsi_points[0]}')
 
             if len(rsi):
                 if rsi[-1][1] < 30:  # just found a new top!
