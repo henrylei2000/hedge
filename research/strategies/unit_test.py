@@ -27,7 +27,7 @@ def analyze_rsi_series(data):
 
 # Example usage:
 data = pd.DataFrame({'rsi': [30, 45, 70, 60, 55, 75, 65, 50, 45, 55, 65, 30, 20]})
-print(analyze_rsi_series(data))
+# print(analyze_rsi_series(data))
 
 
 def filter_rsi_subset(macd, rsi):
@@ -55,4 +55,27 @@ def filter_rsi_subset(macd, rsi):
 macd = [(2, 0.005656788341390495, 'valley'), (8, 0.024355482933032135, 'peak'), (11, 0.017572528247562502, 'valley'), (27, 0.10857385642029271, 'peak')]
 rsi = [(2, 41.228070175438475, 'valley'), (5, 62.85973947288657, 'peak'), (8, 50.89158345221094, 'valley'), (11, 56.01851851851898, 'peak'), (14, 39.90825688073404, 'valley'), (16, 63.359591228443854, 'peak'), (18, 58.470986869971036, 'valley'), (27, 85.73446327683581, 'peak')]
 
-filter_rsi_subset(macd, rsi)
+# filter_rsi_subset(macd, rsi)
+
+def group_by_type(input_list):
+    if not input_list:
+        return []
+
+    result = []
+    current_group = [input_list[0]]
+
+    for i in range(1, len(input_list)):
+        if input_list[i][2] != current_group[-1][2]:
+            result.append(current_group)
+            current_group = [input_list[i]]
+        else:
+            current_group.append(input_list[i])
+
+    result.append(current_group)
+    return result
+
+
+# Example usage:
+input_list = [(1, 1.0, "peak"), (2, 1.5, "valley"), (3, 0.5, "valley"), (7, 1.5, "valley")]
+output_list = group_by_type(input_list)
+print(output_list)
