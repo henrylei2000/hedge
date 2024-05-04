@@ -298,7 +298,11 @@ class MACDStrategy(Strategy):
                     - price will be following the trend of macd
                 """
 
-                print(f'{macd_points[0][0]} -------------------------- {rsi_points[0]}')
+                print(f'{macd_points[0][0]}({macd_points[0][2]}) ----------{macd_points[0][1]}---------------- {rsi_points[0]}')
+                print(f'{macd_points[1][0]}({macd_points[1][2]}) ----------{macd_points[1][1]}---------------- {rsi_points[1]}')
+                print(f'{macd_points[2][0]}({macd_points[2][2]}) ----------{macd_points[2][1]}---------------- {rsi_points[2]}')
+                print(f'{macd_points[3][0]}({macd_points[3][2]}) ----------{macd_points[3][1]}---------------- {rsi_points[3]}')
+                print()
 
             if len(rsi):
                 if rsi[-1][1] < 30:  # just found a new top!
