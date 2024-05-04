@@ -309,9 +309,6 @@ class MACDStrategy(Strategy):
             positions.append(position)
             previous.append(current)
             count += 1
-        print(rsi[-8:])
-        print('-------')
-        print(macd[-3:])
         data['position'] = positions
 
 
