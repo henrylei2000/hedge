@@ -257,21 +257,21 @@ class MACDStrategy(Strategy):
         tops_found, bottoms_found = 0, 0
         # Initialize Signal column with zeros
         data['position'] = 0
-
+        count = 0
         for index, row in data.iterrows():
             position = 0
             rsi = self.peaks_valleys(index, 'rsi')
             macd = self.peaks_valleys(index, 'macd')
 
-            if len(macd) > 3 and len(rsi) > 3:
+            if len(macd) > 2 and len(rsi) > 2:
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
-                for macd_index, macd_value, macd_type in reversed(macd[-5:]):
+                for macd_index, macd_value, macd_type in reversed(macd[-4:]):
                     macd_points.append((macd_index, macd_value, macd_type))
                     causing_rsi = []
                     rsi_candidates = [(i, v, t) for i, v, t in rsi if i <= macd_index]
-                    for rsi_index, rsi_value, rsi_type in reversed(rsi_candidates[-4:]):
+                    for rsi_index, rsi_value, rsi_type in reversed(rsi_candidates[-5:]):
                         if rsi_type != macd_type:
                             if len(causing_rsi):  # conclude the current search
                                 break
@@ -297,11 +297,12 @@ class MACDStrategy(Strategy):
                 - macd resilience to rsi
                     - price will be following the trend of macd
                 """
-
-                print(f'{macd_points[0][0]}({macd_points[0][2]}) ----------{macd_points[0][1]}---------------- {rsi_points[0]}')
-                print(f'{macd_points[1][0]}({macd_points[1][2]}) ----------{macd_points[1][1]}---------------- {rsi_points[1]}')
-                print(f'{macd_points[2][0]}({macd_points[2][2]}) ----------{macd_points[2][1]}---------------- {rsi_points[2]}')
-                print(f'{macd_points[3][0]}({macd_points[3][2]}) ----------{macd_points[3][1]}---------------- {rsi_points[3]}')
+                print(f"[{count}]")
+                print(f'{macd_points[0][0]}({macd_points[0][2]}) ----------{macd_points[0][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[0]}')
+                print(f'{macd_points[1][0]}({macd_points[1][2]}) ----------{macd_points[1][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[1]}')
+                print(f'{macd_points[2][0]}({macd_points[2][2]}) ----------{macd_points[2][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[2]}')
+                if len(macd_points) > 3:
+                    print(f'{macd_points[3][0]}({macd_points[3][2]}) ----------{macd_points[3][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[3]}')
                 print()
 
             if len(rsi):
@@ -314,10 +315,12 @@ class MACDStrategy(Strategy):
             current = row['normalized_macd']
             positions.append(position)
             previous.append(current)
+            count += 1
         print(rsi[-8:])
         print('-------')
         print(macd[-3:])
         data['position'] = positions
+
 
     def zero_crossing(self):
         self.macd_simple()
