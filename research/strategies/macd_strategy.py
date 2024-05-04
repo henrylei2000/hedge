@@ -269,15 +269,8 @@ class MACDStrategy(Strategy):
                 macd_points, rsi_points = [], []
                 for macd_index, macd_value, macd_type in reversed(macd[-4:]):
                     macd_points.append((macd_index, macd_value, macd_type))
-                    causing_rsi = []
-                    rsi_candidates = [(i, v, t) for i, v, t in rsi if i <= macd_index]
-                    for rsi_index, rsi_value, rsi_type in reversed(rsi_candidates[-5:]):
-                        if rsi_type != macd_type:
-                            if len(causing_rsi):  # conclude the current search
-                                break
-                        else:
-                            causing_rsi.append((rsi_index, rsi_value, rsi_type))
-                    rsi_points.append(causing_rsi)
+                    driving_rsi = [(i, v, t) for i, v, t in rsi if i <= macd_index and t == macd_type]
+                    rsi_points.append(driving_rsi[-2:])
 
                 """
                 process macd and rsi signals
@@ -297,12 +290,12 @@ class MACDStrategy(Strategy):
                 - macd resilience to rsi
                     - price will be following the trend of macd
                 """
-                print(f"[{count}]")
-                print(f'{macd_points[0][0]}({macd_points[0][2]}) ----------{macd_points[0][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[0]}')
-                print(f'{macd_points[1][0]}({macd_points[1][2]}) ----------{macd_points[1][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[1]}')
-                print(f'{macd_points[2][0]}({macd_points[2][2]}) ----------{macd_points[2][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[2]}')
+                print(f'[{count}] ({row["macd"]:.4f}, {row["rsi"]:.2f})')
+                print(f'{macd_points[0][0]}({macd_points[0][2]}, {macd_points[0][1]:.4f}) ---------------- {rsi_points[0]}')
+                print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
+                print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
                 if len(macd_points) > 3:
-                    print(f'{macd_points[3][0]}({macd_points[3][2]}) ----------{macd_points[3][1]:.4f}({row["macd"]:.4f} - {row["rsi"]:.2f})---------------- {rsi_points[3]}')
+                    print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
                 print()
 
             if len(rsi):
