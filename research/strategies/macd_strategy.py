@@ -270,7 +270,7 @@ class MACDStrategy(Strategy):
                 macd_points, rsi_points = [], []
                 for macd_index, macd_value, macd_type in reversed(macds[-4:]):
                     macd_points.append((macd_index, macd_value, macd_type))
-                    driving_rsi = [(i, v, t) for i, v, t in rsis if i <= macd_index and t == macd_type]
+                    driving_rsi = [(i, v, t) for i, v, t in rsis[-10:] if i <= macd_index and t == macd_type]
                     rsi_points.append(driving_rsi[-2:])
 
                 """
@@ -299,13 +299,21 @@ class MACDStrategy(Strategy):
                     print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
                 print()
 
-                # todo: consecutive peaks and valleys of macd
-                if macd_points[0][2] == 'valley':  # to buy
-                    if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1] > 0:
-                        position = 1
-                if macd_points[0][2] == 'peak':  # to sell
-                    if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1] < 0:
-                        position = -1
+                if len(macd_points) > 3:
+                    if macd_points[0][2] == 'valley':  # to buy
+                        if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1] > macd_points[3][1]:
+                            position = 1
+                    if macd_points[0][2] == 'peak':  # to sell
+                        if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1] < macd_points[3][1]:
+                            position = -1
+                else:
+                    # assumption: NO consecutive peaks and valleys of macd
+                    if macd_points[0][2] == 'valley':  # to buy
+                        if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1] > 0:
+                            position = 1
+                    if macd_points[0][2] == 'peak':  # to sell
+                        if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1] < 0:
+                            position = -1
 
             positions.append(position)
             count += 1
