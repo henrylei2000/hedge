@@ -299,18 +299,17 @@ class MACDStrategy(Strategy):
                     print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
                 print()
 
-                # scenario 1:
+                # todo: consecutive peaks and valleys of macd
                 if macd_points[0][2] == 'valley':  # to buy
-                    if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1]:
+                    if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1] > 0:
                         position = 1
                 if macd_points[0][2] == 'peak':  # to sell
-                    if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1]:
+                    if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1] < 0:
                         position = -1
 
             positions.append(position)
             count += 1
         data['position'] = positions
-
 
     def zero_crossing(self):
         self.macd_simple()
