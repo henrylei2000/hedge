@@ -260,16 +260,17 @@ class MACDStrategy(Strategy):
         count = 0
         for index, row in data.iterrows():
             position = 0
-            rsi = self.peaks_valleys(index, 'rsi')
-            macd = self.peaks_valleys(index, 'macd')
+            macd, rsi = row['macd'], row['rsi']
+            rsis = self.peaks_valleys(index, 'rsi')
+            macds = self.peaks_valleys(index, 'macd')
 
-            if len(macd) > 2 and len(rsi) > 2:
+            if len(macds) > 2 and len(rsis) > 2:
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
-                for macd_index, macd_value, macd_type in reversed(macd[-4:]):
+                for macd_index, macd_value, macd_type in reversed(macds[-4:]):
                     macd_points.append((macd_index, macd_value, macd_type))
-                    driving_rsi = [(i, v, t) for i, v, t in rsi if i <= macd_index and t == macd_type]
+                    driving_rsi = [(i, v, t) for i, v, t in rsis if i <= macd_index and t == macd_type]
                     rsi_points.append(driving_rsi[-2:])
 
                 """
@@ -290,7 +291,7 @@ class MACDStrategy(Strategy):
                 - macd resilience to rsi
                     - price will be following the trend of macd
                 """
-                print(f'[{count}] ({row["macd"]:.4f}, {row["rsi"]:.2f})')
+                print(f'[{count}] ({macd:.4f}, {rsi:.2f})')
                 print(f'{macd_points[0][0]}({macd_points[0][2]}, {macd_points[0][1]:.4f}) ---------------- {rsi_points[0]}')
                 print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
                 print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
@@ -298,16 +299,15 @@ class MACDStrategy(Strategy):
                     print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
                 print()
 
-            if len(rsi):
-                if rsi[-1][1] < 30:  # just found a new top!
-                    position = -1
+                # scenario 1:
+                if macd_points[0][2] == 'valley':  # to buy
+                    if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1]:
+                        position = 1
+                if macd_points[0][2] == 'peak':  # to sell
+                    if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1]:
+                        position = -1
 
-                if rsi[-1][1] > 70:
-                    position = 1
-
-            current = row['normalized_macd']
             positions.append(position)
-            previous.append(current)
             count += 1
         data['position'] = positions
 
