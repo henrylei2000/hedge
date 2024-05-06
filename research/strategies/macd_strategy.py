@@ -235,15 +235,16 @@ class MACDStrategy(Strategy):
         for i in range(2, len(values) - 2):
             # Read surrounding RSI values to determine peaks or valleys
             prev_1, prev_2 = values[i - 2], values[i - 1]
-            curr_rsi = values[i]
+            curr = values[i]
             next_1, next_2 = values[i + 1], values[i + 2]
 
-            # Check for a peak
-            if curr_rsi > max(prev_1, prev_2, next_1, next_2):
-                result.append((i, curr_rsi, 'peak'))
-            # Check for a valley
-            elif curr_rsi < min(prev_1, prev_2, next_1, next_2):
-                result.append((i, curr_rsi, 'valley'))
+            if curr != 0 and curr != 100:
+                # Check for a peak
+                if curr >= max(prev_1, prev_2, next_1, next_2):
+                    result.append((i, curr, 'peak'))
+                # Check for a valley
+                elif curr <= min(prev_1, prev_2, next_1, next_2):
+                    result.append((i, curr, 'valley'))
 
         return result
 
@@ -260,11 +261,11 @@ class MACDStrategy(Strategy):
         count = 0
         for index, row in data.iterrows():
             position = 0
-            macd, rsi = row['macd'], row['rsi']
-            rsis = self.peaks_valleys(index, 'rsi')
-            macds = self.peaks_valleys(index, 'macd')
+            macd, rsi = row['normalized_macd'], row['rolling_rsi']
+            rsis = self.peaks_valleys(index, 'rolling_rsi')
+            macds = self.peaks_valleys(index, 'normalized_macd')
 
-            if len(macds) > 2 and len(rsis) > 2:
+            if len(macds) and len(rsis):
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
@@ -293,26 +294,21 @@ class MACDStrategy(Strategy):
                 """
                 print(f'[{count}] ({macd:.4f}, {rsi:.2f})')
                 print(f'{macd_points[0][0]}({macd_points[0][2]}, {macd_points[0][1]:.4f}) ---------------- {rsi_points[0]}')
-                print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
-                print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
+                if len(macd_points) > 1:
+                    print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
+                if len(macd_points) > 2:
+                    print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
                 if len(macd_points) > 3:
                     print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
                 print()
 
-                if len(macd_points) > 3:
-                    if macd_points[0][2] == 'valley':  # to buy
-                        if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1] > macd_points[3][1]:
-                            position = 1
-                    if macd_points[0][2] == 'peak':  # to sell
-                        if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1] < macd_points[3][1]:
-                            position = -1
-                else:
+                if len(macd_points):
                     # assumption: NO consecutive peaks and valleys of macd
                     if macd_points[0][2] == 'valley':  # to buy
-                        if macd > macd_points[0][1] > macd_points[2][1] and macd > macd_points[1][1] > 0:
+                        if macd_points[0][1] < rsi_points[0][-1][1] < 30:
                             position = 1
                     if macd_points[0][2] == 'peak':  # to sell
-                        if macd < macd_points[0][1] < macd_points[2][1] and macd < macd_points[1][1] < 0:
+                        if macd_points[0][1] > rsi_points[0][-1][1] > 70:
                             position = -1
 
             positions.append(position)
