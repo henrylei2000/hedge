@@ -156,13 +156,13 @@ class MACDStrategy(Strategy):
         normalized_macds = []
         for index, row in data.iterrows():
             recent_rows = self.data.loc[:index]
-            min_macd = recent_rows['strength'].min()
-            max_macd = recent_rows['strength'].max()
+            min_macd = recent_rows['signal_line'].min()
+            max_macd = recent_rows['signal_line'].max()
             max_macd = max(-min_macd, max_macd)
             min_macd = -max_macd
             # Normalize each MACD value to the range [0, 100]
             if max_macd != min_macd:
-                normalized_macd = (row['strength'] - min_macd) / (max_macd - min_macd) * 100
+                normalized_macd = (row['signal_line'] - min_macd) / (max_macd - min_macd) * 100
             else:
                 normalized_macd = 50
 
@@ -315,13 +315,13 @@ class MACDStrategy(Strategy):
                         if macd_points[0][1] < rsi_points[0][-1][1] < 30:
                             if rsi > 50:
                                 position = 1
-                            elif rsi < 25:
+                            elif rsi < 30:
                                 position = -1
                     if macd_points[0][2] == 'peak':  # to sell
                         if macd_points[0][1] > rsi_points[0][-1][1] > 70:
                             if rsi < 50:
                                 position = -1
-                            elif rsi > 75:
+                            elif rsi > 70:
                                 position = 1
 
             positions.append(position)
@@ -358,6 +358,7 @@ class MACDStrategy(Strategy):
 
     def rsi(self):
         self.macd_simple()
+        self.macd_normalized()
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
         positions = []  # Store updated signals
@@ -368,24 +369,16 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
 
-            current = row['rsi']
+            rsi = row['rolling_rsi']
+            signal = row['normalized_macd']
 
-            if len(previous):
+            if signal > rsi > 50 and rsi < 75:
+                position = 1
 
-                if previous[-1] > 75 > current and row['rolling_macd'] < 0:
-                    position = -1
-
-                if previous[-1] < 25 < current and row['rolling_macd'] > 0:
-                    position = 1
-
-                # if previous[-1] < 75 < current and row['rolling_macd'] > 0:
-                #     position = 1
-                #
-                # if previous[-1] > 25 > current and row['rolling_macd'] < 0:
-                #     position = -1
+            if signal < rsi < 50 and rsi > 25:
+                position = -1
 
             positions.append(position)
-            previous.append(current)
 
         data['position'] = positions
 

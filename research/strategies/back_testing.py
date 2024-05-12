@@ -14,7 +14,7 @@ def get_dates():
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
 
     # Define the start and end dates for the market calendar you want to retrieve
-    start_date = '2023-10-01'
+    start_date = '2023-09-01'
     end_date = '2023-12-31'
 
     # Get the market calendar
