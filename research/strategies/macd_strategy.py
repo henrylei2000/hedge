@@ -53,7 +53,8 @@ class MACDStrategy(Strategy):
             loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
-            data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
+            # data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
+            data['rolling_rsi'] = data['rsi'].ewm(span=signal_window, adjust=False).mean()
             # Calculate the first derivative of MACD
             data['rsi_derivative'] = data['rsi'].diff()
             data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
@@ -149,32 +150,32 @@ class MACDStrategy(Strategy):
         # print(f"{column} {coefficients}")
         return coefficients
 
-    def macd_normalized(self):
+    def normalized(self, column="macd", mid=0):
         data = self.data
-        data['normalized_macd'] = 0
+        data['normalized_'+column] = 0
         rolling_window = deque(maxlen=3)
-        normalized_macds = []
+        normalizeds = []
         for index, row in data.iterrows():
             recent_rows = self.data.loc[:index]
-            min_macd = recent_rows['signal_line'].min()
-            max_macd = recent_rows['signal_line'].max()
-            max_macd = max(-min_macd, max_macd)
-            min_macd = -max_macd
+            bottom = recent_rows[column].min() - mid
+            top = recent_rows[column].max() - mid
+            top = max(-bottom, top)
+            bottom = -top
             # Normalize each MACD value to the range [0, 100]
-            if max_macd != min_macd:
-                normalized_macd = (row['signal_line'] - min_macd) / (max_macd - min_macd) * 100
+            if top != bottom:
+                normalized = (row[column] - mid - bottom) / (top - bottom) * 100
             else:
-                normalized_macd = 50
+                normalized = 50
 
-            rolling_window.append(normalized_macd)
+            rolling_window.append(normalized)
             rolling_mean = sum(rolling_window) / len(rolling_window)
-            normalized_macds.append(rolling_mean)
+            normalizeds.append(rolling_mean)
             # close, macd = row['close'], row['macd']
             # # print(recent_rows['rsi'].mean() - rsi_base, rsi_base)
             # rsi_base = max(rsi_base, 1)
             # roc = (recent_rows['rolling_rsi'].mean() - 50) / 50
             # normalized_macds.append(macd + macd_base * roc * 6.18)
-        data['normalized_macd'] = normalized_macds
+        data['normalized_'+column] = normalizeds
         data.to_csv(f"{self.symbol}.csv")
 
     def significance(self):
@@ -255,7 +256,7 @@ class MACDStrategy(Strategy):
 
     def macd_x_rsi(self):
         self.macd_simple()
-        self.macd_normalized()
+        self.normalized()
 
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
@@ -266,8 +267,8 @@ class MACDStrategy(Strategy):
         count = 0
         for index, row in data.iterrows():
             position = 0
-            macd, rsi = row['normalized_macd'], row['rolling_rsi']
-            rsis = self.peaks_valleys(index, 'rolling_rsi')
+            macd, rsi = row['normalized_macd'], row['rsi']
+            rsis = self.peaks_valleys(index, 'rsi')
             macds = self.peaks_valleys(index, 'normalized_macd')
 
             if len(macds) and len(rsis):
@@ -312,16 +313,16 @@ class MACDStrategy(Strategy):
                 if len(macd_points):
                     # assumption: NO consecutive peaks and valleys of macd
                     if macd_points[0][2] == 'valley':  # to buy
-                        if macd_points[0][1] < rsi_points[0][-1][1] < 30:
+                        if macd_points[0][1] < rsi_points[0][-1][1] < 40:
                             if rsi > 50:
                                 position = 1
-                            elif rsi < 30:
+                            elif rsi < 20:
                                 position = -1
                     if macd_points[0][2] == 'peak':  # to sell
-                        if macd_points[0][1] > rsi_points[0][-1][1] > 70:
+                        if macd_points[0][1] > rsi_points[0][-1][1] > 60:
                             if rsi < 50:
                                 position = -1
-                            elif rsi > 70:
+                            elif rsi > 80:
                                 position = 1
 
             positions.append(position)
@@ -330,7 +331,8 @@ class MACDStrategy(Strategy):
 
     def zero_crossing(self):
         self.macd_simple()
-        self.macd_normalized()
+        self.normalized()
+        self.normalized(column='rsi', mid=50)
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 3 signals
         positions = []  # Store updated signals
@@ -358,13 +360,15 @@ class MACDStrategy(Strategy):
 
     def rsi(self):
         self.macd_simple()
-        self.macd_normalized()
+        self.normalized()
+        self.normalized(column='rsi', mid=50)
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
         positions = []  # Store updated signals
 
         # Initialize Signal column with zeros
         data['position'] = 0
+        hold = False
 
         for index, row in data.iterrows():
             position = 0
@@ -372,11 +376,13 @@ class MACDStrategy(Strategy):
             rsi = row['rolling_rsi']
             signal = row['normalized_macd']
 
-            if signal > rsi > 50 and rsi < 75:
+            if signal > rsi and not hold:
                 position = 1
+                hold = True
 
-            if signal < rsi < 50 and rsi > 25:
+            if signal < rsi and hold:
                 position = -1
+                hold = False
 
             positions.append(position)
 
@@ -515,7 +521,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.macd_x_rsi()
+        self.rsi()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
