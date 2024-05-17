@@ -373,7 +373,10 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
 
-            rsi = row['rolling_rsi']
+            rsis = self.peaks_valleys(index, 'rsi')
+            macds = self.peaks_valleys(index, 'normalized_macd')
+
+            rsi = row['normalized_rsi']
             signal = row['normalized_macd']
 
             if signal > rsi and not hold:
