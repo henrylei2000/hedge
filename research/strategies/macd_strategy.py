@@ -383,10 +383,10 @@ class MACDStrategy(Strategy):
 
             macd_points, rsi_points = [], []
             for macd_index, macd_value, macd_type in reversed(macds[-4:]):
-                driving_rsi = [(i, v, t) for i, v, t in rsis[-10:] if i <= macd_index and t == macd_type]
+                driving_rsi = [(i, v, t) for i, v, t in rsis[-15:] if i <= macd_index and t == macd_type]
                 if len(driving_rsi) > 1:
                     macd_points.append((macd_index, macd_value, macd_type))
-                    rsi_points.append(driving_rsi[-2:])
+                    rsi_points.append(driving_rsi[-4:])
 
             print(f'[{count}] ({signal:.4f}, {rsi:.2f})')
             if len(macd_points):
