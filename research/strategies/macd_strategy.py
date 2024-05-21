@@ -220,7 +220,7 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
-    def peaks_valleys(self, index=None, column="rolling_rsi"):
+    def peaks_valleys(self, index=None, column="rsi"):
 
         # Extract RSI values from the DataFrame and convert to a list for faster access
         if not index:
@@ -235,21 +235,23 @@ class MACDStrategy(Strategy):
         # First, detect all peaks and valleys
         for i in range(2, len(values) - 2):
             # Read surrounding RSI values to determine peaks or valleys
-            prev_1, prev_2 = values[i - 2], values[i - 1]
+            prev_1, prev_2 = values[i - 1], values[i - 2]
             curr = values[i]
             next_1, next_2 = values[i + 1], values[i + 2]
 
             # Check for a peak
             if curr == 100:
-                result.append((i, curr, 'peak'))
+                if next_1 < 100:
+                    result.append((i, curr, 'peak'))
 
             elif curr == 0:
-                result.append((i, curr, 'valley'))
+                if next_1 > 0:
+                    result.append((i, curr, 'valley'))
 
-            elif curr >= max(prev_1, prev_2, next_1, next_2):
+            elif curr > prev_1 > prev_2 and curr > next_1 > next_2:
                 result.append((i, curr, 'peak'))
-            # Check for a valley
-            elif curr <= min(prev_1, prev_2, next_1, next_2):
+
+            elif curr < prev_1 < prev_2 and curr < next_1 < next_2:
                 result.append((i, curr, 'valley'))
 
         return result
@@ -276,7 +278,7 @@ class MACDStrategy(Strategy):
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
                 for macd_index, macd_value, macd_type in reversed(macds[-4:]):
-                    driving_rsi = [(i, v, t) for i, v, t in rsis[-10:] if i <= macd_index and t == macd_type]
+                    driving_rsi = [(i, v, t) for i, v, t in rsis[-10:] if i <= macd_index and (t == macd_type or macd_value == 100 or macd_value == 0)]
                     if len(driving_rsi) > 1:
                         macd_points.append((macd_index, macd_value, macd_type))
                         rsi_points.append(driving_rsi[-2:])
@@ -369,15 +371,33 @@ class MACDStrategy(Strategy):
         # Initialize Signal column with zeros
         data['position'] = 0
         hold = False
-
+        count = 0
         for index, row in data.iterrows():
             position = 0
 
-            rsis = self.peaks_valleys(index, 'rsi')
+            rsis = self.peaks_valleys(index, 'normalized_rsi')
             macds = self.peaks_valleys(index, 'normalized_macd')
 
             rsi = row['normalized_rsi']
             signal = row['normalized_macd']
+
+            macd_points, rsi_points = [], []
+            for macd_index, macd_value, macd_type in reversed(macds[-4:]):
+                driving_rsi = [(i, v, t) for i, v, t in rsis[-10:] if i <= macd_index and t == macd_type]
+                if len(driving_rsi) > 1:
+                    macd_points.append((macd_index, macd_value, macd_type))
+                    rsi_points.append(driving_rsi[-2:])
+
+            print(f'[{count}] ({signal:.4f}, {rsi:.2f})')
+            if len(macd_points):
+                print(f'{macd_points[0][0]}({macd_points[0][2]}, {macd_points[0][1]:.4f}) ---------------- {rsi_points[0]} {(rsi_points[0][1][1] - rsi_points[0][0][1]) / rsi_points[0][0][1]}')
+            if len(macd_points) > 1:
+                print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
+            if len(macd_points) > 2:
+                print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
+            if len(macd_points) > 3:
+                print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
+            print()
 
             if signal > rsi and not hold:
                 position = 1
@@ -388,7 +408,9 @@ class MACDStrategy(Strategy):
                 hold = False
 
             positions.append(position)
+            count += 1
 
+        print(f"rsi {len(rsis)} \nmacd {len(macds)}")
         data['position'] = positions
 
     def wave(self):
