@@ -391,8 +391,25 @@ class MACDStrategy(Strategy):
 
             positions.append(position)
             count += 1
-        print(f"rsi peaks \n{rpeaks}")
-        print(f"macd peaks \n{mpeaks}")
+
+        print(f"********* RSI Peaks Change Rate ************")
+        for i in range(1, len(rpeaks)):
+            print(f"{rpeaks[i][1] / rpeaks[i-1][1]} {rpeaks[i]} / {rpeaks[i-1]}")
+        print(f"********* MACD Peaks Change Rate ************")
+        for i in range(1, len(mpeaks)):
+            print(f"{mpeaks[i][1] / mpeaks[i-1][1]} {mpeaks[i]} / {mpeaks[i-1]}")
+        print(f"********* RSI Valleys Change Rate ************")
+        for i in range(1, len(rvalleys)):
+            if rvalleys[i-1][1] == 0.0:
+                print(f"{rvalleys[i][1]} {rvalleys[i]} / {rvalleys[i - 1]}")
+            else:
+                print(f"{rvalleys[i][1] / rvalleys[i-1][1]} {rvalleys[i]} / {rvalleys[i-1]}")
+        print(f"********* MACD Valleys Change Rate ************")
+        for i in range(1, len(mvalleys)):
+            if mvalleys[i-1][1] == 0.0:
+                print(f"{mvalleys[i][1]} {mvalleys[i]} / {mvalleys[i - 1]}")
+            else:
+                print(f"{mvalleys[i][1] / mvalleys[i-1][1]} {mvalleys[i]} / {mvalleys[i-1]}")
         print(f"*********************")
         data['position'] = positions
 
