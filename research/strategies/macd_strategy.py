@@ -229,7 +229,7 @@ class MACDStrategy(Strategy):
             data = self.data.loc[:index]
 
         # Initialize variables
-        result = []
+        peaks, valleys = [], []
         values = data[column].tolist()
 
         # First, detect all peaks and valleys
@@ -242,19 +242,19 @@ class MACDStrategy(Strategy):
             # Check for a peak
             if curr == 100:
                 if next_1 < 100:
-                    result.append((i, curr, 'peak'))
+                    peaks.append((i, curr, 'peak'))
 
             elif curr == 0:
                 if next_1 > 0:
-                    result.append((i, curr, 'valley'))
+                    valleys.append((i, curr, 'valley'))
 
             elif curr > prev_1 > prev_2 and curr > next_1 > next_2:
-                result.append((i, curr, 'peak'))
+                peaks.append((i, curr, 'peak'))
 
             elif curr < prev_1 < prev_2 and curr < next_1 < next_2:
-                result.append((i, curr, 'valley'))
+                valleys.append((i, curr, 'valley'))
 
-        return result
+        return peaks, valleys
 
     def macd_x_rsi(self):
         self.macd_simple()
@@ -375,29 +375,11 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
 
-            rsis = self.peaks_valleys(index, 'normalized_rsi')
-            macds = self.peaks_valleys(index, 'normalized_macd')
+            rpeaks, rvalleys = self.peaks_valleys(index, 'normalized_rsi')
+            mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_macd')
 
             rsi = row['normalized_rsi']
             signal = row['normalized_macd']
-
-            macd_points, rsi_points = [], []
-            for macd_index, macd_value, macd_type in reversed(macds[-4:]):
-                driving_rsi = [(i, v, t) for i, v, t in rsis[-15:] if i <= macd_index and t == macd_type]
-                if len(driving_rsi) > 1:
-                    macd_points.append((macd_index, macd_value, macd_type))
-                    rsi_points.append(driving_rsi[-4:])
-
-            print(f'[{count}] ({signal:.4f}, {rsi:.2f})')
-            if len(macd_points):
-                print(f'{macd_points[0][0]}({macd_points[0][2]}, {macd_points[0][1]:.4f}) ---------------- {rsi_points[0]} {(rsi_points[0][1][1] - rsi_points[0][0][1]) / rsi_points[0][0][1]}')
-            if len(macd_points) > 1:
-                print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
-            if len(macd_points) > 2:
-                print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
-            if len(macd_points) > 3:
-                print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
-            print()
 
             if signal > rsi and not hold:
                 position = 1
@@ -409,8 +391,9 @@ class MACDStrategy(Strategy):
 
             positions.append(position)
             count += 1
-
-        print(f"rsi {len(rsis)} \nmacd {len(macds)}")
+        print(f"rsi peaks \n{rpeaks}")
+        print(f"macd peaks \n{mpeaks}")
+        print(f"*********************")
         data['position'] = positions
 
     def wave(self):
