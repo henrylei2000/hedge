@@ -375,13 +375,13 @@ class MACDStrategy(Strategy):
             mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_macd')
 
             rsi = row['rsi']
-            signal = row['normalized_macd']
+            macd = row['normalized_macd']
 
-            if signal > rsi and not hold:
+            if macd > rsi and not hold:
                 position = 1
                 hold = True
 
-            if signal < rsi and hold:
+            if macd < rsi and hold:
                 position = -1
                 hold = False
 
@@ -390,16 +390,16 @@ class MACDStrategy(Strategy):
 
         print(f"********* RSI Peaks Change Rate ({len(rpeaks)}) ************")
         for i in range(1, len(rpeaks)):
-            print(f"{rpeaks[i][1] / rpeaks[i-1][1]:.2f} {rpeaks[i]} / {rpeaks[i-1]}")
+            print(f"{(rpeaks[i][1] / rpeaks[i-1][1] -1) / (rpeaks[i][0] - rpeaks[i-1][0]) * 100:.2f} {rpeaks[i]} / {rpeaks[i-1]}")
         print(f"********* MACD Peaks Change Rate ({len(mpeaks)}) ************")
         for i in range(1, len(mpeaks)):
-            print(f"{mpeaks[i][1] / mpeaks[i-1][1]:.2f} {mpeaks[i]} / {mpeaks[i-1]}")
+            print(f"{(mpeaks[i][1] / mpeaks[i-1][1] -1) / (mpeaks[i][0] - mpeaks[i-1][0]) * 100:.2f} {mpeaks[i]} / {mpeaks[i-1]}")
         print(f"********* RSI Valleys Change Rate ({len(rvalleys)}) ************")
         for i in range(1, len(rvalleys)):
-            print(f"{rvalleys[i][1] / rvalleys[i-1][1]:.2f} {rvalleys[i]} / {rvalleys[i-1]}")
+            print(f"{(rvalleys[i][1] / rvalleys[i-1][1] -1) / (rvalleys[i][0] - rvalleys[i-1][0]) * 100:.2f} {rvalleys[i]} / {rvalleys[i-1]}")
         print(f"********* MACD Valleys Change Rate ({len(mvalleys)}) ************")
         for i in range(1, len(mvalleys)):
-            print(f"{mvalleys[i][1] / mvalleys[i-1][1]:.2f} {mvalleys[i]} / {mvalleys[i-1]}")
+            print(f"{(mvalleys[i][1] / mvalleys[i-1][1] -1) / (mvalleys[i][0] - mvalleys[i-1][0]) * 100:.2f} {mvalleys[i]} / {mvalleys[i-1]}")
         print(f"*********************")
         data['position'] = positions
 
