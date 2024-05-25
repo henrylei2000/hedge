@@ -27,7 +27,7 @@ class MACDStrategy(Strategy):
         return approaching_min_boundary, approaching_max_boundary
 
     def macd_simple(self):
-        short_window, long_window, signal_window = 19, 39, 9   # 3, 7, 2
+        short_window, long_window, signal_window = 12, 26, 9   # 3, 7, 2
         dataset = [self.data]
         if self.reference:
             dataset += [self.qqq, self.spy, self.dia]
@@ -49,12 +49,12 @@ class MACDStrategy(Strategy):
             data['rolling_macd_derivative'] = data['macd_derivative'].rolling(window=5).mean()
 
             delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
+            gain = (delta.where(delta > 0, 0)).rolling(window=5).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=5).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
             # data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
-            data['rolling_rsi'] = data['rsi'].ewm(span=signal_window, adjust=False).mean()
+            data['rolling_rsi'] = data['rsi'].ewm(span=5, adjust=False).mean()
             # Calculate the first derivative of MACD
             data['rsi_derivative'] = data['rsi'].diff()
             data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
@@ -297,16 +297,6 @@ class MACDStrategy(Strategy):
                 - macd resilience to rsi
                     - price will be following the trend of macd
                 """
-                # print(f'[{count}] ({macd:.4f}, {rsi:.2f})')
-                # if len(macd_points):
-                #     print(f'{macd_points[0][0]}({macd_points[0][2]}, {macd_points[0][1]:.4f}) ---------------- {rsi_points[0]}')
-                # if len(macd_points) > 1:
-                #     print(f'{macd_points[1][0]}({macd_points[1][2]}), {macd_points[1][1]:.4f}) ---------------- {rsi_points[1]}')
-                # if len(macd_points) > 2:
-                #     print(f'{macd_points[2][0]}({macd_points[2][2]}), {macd_points[2][1]:.4f}) ---------------- {rsi_points[2]}')
-                # if len(macd_points) > 3:
-                #     print(f'{macd_points[3][0]}({macd_points[3][2]}), {macd_points[3][1]:.4f}) ---------------- {rsi_points[3]}')
-                # print()
 
                 if len(macd_points):
                     # assumption: NO consecutive peaks and valleys of macd
@@ -371,10 +361,10 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
 
-            rpeaks, rvalleys = self.peaks_valleys(index, 'rsi')
+            rpeaks, rvalleys = self.peaks_valleys(index, 'rolling_rsi')
             mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_macd')
 
-            rsi = row['rsi']
+            rsi = row['rolling_rsi']
             macd = row['normalized_macd']
 
             if macd > rsi and not hold:
