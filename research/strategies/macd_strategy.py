@@ -357,8 +357,8 @@ class MACDStrategy(Strategy):
         hold = False
         count = 0
         for index, row in data.iterrows():
+            print(f"-------- Processing {index} {data.index.get_loc(index)} ---------")
             position = 0
-
             rpeaks, rvalleys = self.peaks_valleys(index, 'rsi')
             mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_macd')
 
