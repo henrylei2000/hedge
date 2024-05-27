@@ -42,19 +42,19 @@ class MACDStrategy(Strategy):
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
             data['rolling_strength'] = data['strength'].ewm(span=5, adjust=False).mean()
-            data['rolling_macd'] = data['macd'].rolling(window=5).mean()
+            data['rolling_macd'] = data['macd'].rolling(window=3).mean()
 
             # Calculate the first derivative of MACD
             data['macd_derivative'] = data['macd'].diff()
             data['rolling_macd_derivative'] = data['macd_derivative'].rolling(window=5).mean()
 
             delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=short_window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=short_window).mean()
+            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
             # data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
-            data['rolling_rsi'] = data['rsi'].ewm(span=5, adjust=False).mean()
+            data['rolling_rsi'] = data['rsi'].ewm(span=3, adjust=False).mean()
             # Calculate the first derivative of MACD
             data['rsi_derivative'] = data['rsi'].diff()
             data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
@@ -150,7 +150,7 @@ class MACDStrategy(Strategy):
         # print(f"{column} {coefficients}")
         return coefficients
 
-    def normalized(self, column="macd", mid=0):
+    def normalized(self, column="rolling_macd", mid=0):
         data = self.data
         data['normalized_'+column] = 0
         rolling_window = deque(maxlen=3)
@@ -357,13 +357,13 @@ class MACDStrategy(Strategy):
         hold = False
         count = 0
         for index, row in data.iterrows():
-            print(f"-------- Processing {index} {data.index.get_loc(index)} ---------")
-            position = 0
-            rpeaks, rvalleys = self.peaks_valleys(index, 'rsi')
-            mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_macd')
 
-            rsi = row['rsi']
-            macd = row['normalized_macd']
+            position = 0
+            rpeaks, rvalleys = self.peaks_valleys(index, 'rolling_rsi')
+            mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_rolling_macd')
+
+            rsi = row['rolling_rsi']
+            macd = row['normalized_rolling_macd']
 
             """
             process macd and rsi signals
@@ -398,10 +398,12 @@ class MACDStrategy(Strategy):
 
             if macd > rsi and not hold:
                 position = 1
+                print(f"-------- Processing {index} {data.index.get_loc(index)} ---------")
                 hold = True
 
             if macd < rsi and hold:
                 position = -1
+                print(f"-------- Processing {index} {data.index.get_loc(index)} ---------")
                 hold = False
 
             positions.append(position)
@@ -410,12 +412,12 @@ class MACDStrategy(Strategy):
         print(f"*********** RSI Peaks Change Rate ({len(rpeaks)}) ************")
         for i in range(1, len(rpeaks)):
             print(f"{(rpeaks[i][1] / rpeaks[i-1][1] -1) / (rpeaks[i][0] - rpeaks[i-1][0]) * 100:.2f} {rpeaks[i]} / {rpeaks[i-1]}")
+        print(f"*********** RSI Valleys Change Rate ({len(rvalleys)}) ************")
+        for i in range(1, len(rvalleys)):
+            print(f"{(rvalleys[i][1] / rvalleys[i - 1][1] - 1) / (rvalleys[i][0] - rvalleys[i - 1][0]) * 100:.2f} {rvalleys[i]} / {rvalleys[i - 1]}")
         print(f"*********** MACD Peaks Change Rate ({len(mpeaks)}) ************")
         for i in range(1, len(mpeaks)):
             print(f"{(mpeaks[i][1] / mpeaks[i-1][1] -1) / (mpeaks[i][0] - mpeaks[i-1][0]) * 100:.2f} {mpeaks[i]} / {mpeaks[i-1]}")
-        print(f"*********** RSI Valleys Change Rate ({len(rvalleys)}) ************")
-        for i in range(1, len(rvalleys)):
-            print(f"{(rvalleys[i][1] / rvalleys[i-1][1] -1) / (rvalleys[i][0] - rvalleys[i-1][0]) * 100:.2f} {rvalleys[i]} / {rvalleys[i-1]}")
         print(f"*********** MACD Valleys Change Rate ({len(mvalleys)}) ************")
         for i in range(1, len(mvalleys)):
             print(f"{(mvalleys[i][1] / mvalleys[i-1][1] -1) / (mvalleys[i][0] - mvalleys[i-1][0]) * 100:.2f} {mvalleys[i]} / {mvalleys[i-1]}")
