@@ -150,6 +150,21 @@ class MACDStrategy(Strategy):
         # print(f"{column} {coefficients}")
         return coefficients
 
+    def linear(self, points):
+        x_values, y_values = [], []
+        for p in points[-3:]:
+            x, y = p[0], p[1]
+            # Append y value to the list
+            y_values.append(y)
+            x_values.append(x)
+
+        # Convert list to numpy array
+        x_values, y_values = np.array(x_values), np.array(y_values)
+        # Perform linear regression
+        X = np.column_stack([x_values, np.ones(x_values.shape[0])])
+        coefficients = np.linalg.lstsq(X, y_values, rcond=None)[0]
+        return coefficients[0]
+
     def normalized(self, column="rolling_macd", mid=0):
         data = self.data
         data['normalized_'+column] = 0
@@ -237,11 +252,11 @@ class MACDStrategy(Strategy):
 
             # Check for a peak
             if curr == 95:
-                if next_1 < 100:
+                if next_1 < 95:
                     peaks.append((i, curr, 'peak'))
 
             elif curr == 5:
-                if next_1 > 0:
+                if next_1 > 5:
                     valleys.append((i, curr, 'valley'))
 
             elif curr > prev_1 and curr > prev_2 and curr > next_1 and curr > next_2:
@@ -365,6 +380,14 @@ class MACDStrategy(Strategy):
             rsi = row['rolling_rsi']
             macd = row['normalized_rolling_macd']
 
+            coe_rp = self.linear(rpeaks)
+            coe_rv = self.linear(rvalleys)
+            print(f"-------- Thinking {index} {data.index.get_loc(index)} ----  [rsi coe] {coe_rp:6.2f} {coe_rv:6.2f} -----")
+            coe_mp = self.linear(mpeaks)
+            coe_mv = self.linear(mvalleys)
+            print(f"-------- Thinking {index} {data.index.get_loc(index)} ---- [macd coe] {coe_mp:6.2f} {coe_mv:6.2f} -----")
+            print()
+
             """
             process macd and rsi signals
             - for each macd
@@ -398,12 +421,10 @@ class MACDStrategy(Strategy):
 
             if macd > rsi and not hold:
                 position = 1
-                print(f"-------- Processing {index} {data.index.get_loc(index)} ---------")
                 hold = True
 
             if macd < rsi and hold:
                 position = -1
-                print(f"-------- Processing {index} {data.index.get_loc(index)} ---------")
                 hold = False
 
             positions.append(position)
