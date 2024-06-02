@@ -53,8 +53,8 @@ class MACDStrategy(Strategy):
             loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
-            # data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
-            data['rolling_rsi'] = data['rsi'].ewm(span=3, adjust=False).mean()
+            data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
+            # data['rolling_rsi'] = data['rsi'].ewm(span=5, adjust=False).mean()
             # Calculate the first derivative of MACD
             data['rsi_derivative'] = data['rsi'].diff()
             data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
@@ -176,9 +176,9 @@ class MACDStrategy(Strategy):
             top = recent_rows[column].max() - mid
             top = max(-bottom, top)
             bottom = -top
-            # Normalize each MACD value to the range [5, 95]
+            # Normalize each MACD value to the range [1, 99]
             if top != bottom:
-                normalized = 5 + (row[column] - mid - bottom) / (top - bottom) * 90
+                normalized = 1 + (row[column] - mid - bottom) / (top - bottom) * 98
             else:
                 normalized = 50
 
@@ -251,12 +251,12 @@ class MACDStrategy(Strategy):
             next_1, next_2 = values[i + 1], values[i + 2]
 
             # Check for a peak
-            if curr == 95:
-                if next_1 < 95:
+            if curr == 99:
+                if next_1 < 99:
                     peaks.append((i, curr, 'peak'))
 
-            elif curr == 5:
-                if next_1 > 5:
+            elif curr == 1:
+                if next_1 > 1:
                     valleys.append((i, curr, 'valley'))
 
             elif curr > prev_1 and curr > prev_2 and curr > next_1 and curr > next_2:
@@ -280,8 +280,8 @@ class MACDStrategy(Strategy):
         count = 0
         for index, row in data.iterrows():
             position = 0
-            macd, rsi = row['normalized_macd'], row['rsi']
-            rsis = self.peaks_valleys(index, 'rsi')
+            macd, rsi = row['normalized_macd'], row['rolling_rsi']
+            rsis = self.peaks_valleys(index, 'rolling_rsi')
             macds = self.peaks_valleys(index, 'normalized_macd')
 
             if len(macds) and len(rsis):
@@ -374,19 +374,19 @@ class MACDStrategy(Strategy):
         for index, row in data.iterrows():
 
             position = 0
-            rpeaks, rvalleys = self.peaks_valleys(index, 'rolling_rsi')
             mpeaks, mvalleys = self.peaks_valleys(index, 'normalized_rolling_macd')
+            rpeaks, rvalleys = self.peaks_valleys(index, 'rolling_rsi')
 
             rsi = row['rolling_rsi']
             macd = row['normalized_rolling_macd']
 
-            coe_rp = self.linear(rpeaks)
-            coe_rv = self.linear(rvalleys)
-            print(f"-------- Thinking {index} {data.index.get_loc(index)} ----  [rsi coe] {coe_rp:6.2f} {coe_rv:6.2f} -----")
-            coe_mp = self.linear(mpeaks)
-            coe_mv = self.linear(mvalleys)
-            print(f"-------- Thinking {index} {data.index.get_loc(index)} ---- [macd coe] {coe_mp:6.2f} {coe_mv:6.2f} -----")
-            print()
+            # coe_rp = self.linear(rpeaks[-3:])
+            # coe_rv = self.linear(rvalleys[-3:])
+            # print(f"-------- Thinking {index} {data.index.get_loc(index)} ----  [rsi coe] {coe_rp:6.2f} {coe_rv:6.2f} -----")
+            # coe_mp = self.linear(mpeaks)
+            # coe_mv = self.linear(mvalleys)
+            # print(f"-------- Thinking {index} {data.index.get_loc(index)} ---- [macd coe] {coe_mp:6.2f} {coe_mv:6.2f} -----")
+            # print()
 
             """
             process macd and rsi signals
@@ -405,8 +405,7 @@ class MACDStrategy(Strategy):
             Theories
             - macd resilience to rsi
                 - price will be following the trend of macd
-                
-                
+            
             Scenarios (status / trend):
                 - high macd, high rsi: already top?
                 - high macd, low rsi (valley): resistence?
@@ -414,35 +413,37 @@ class MACDStrategy(Strategy):
                 = low macd, high rsi (?)
             """
 
-            if not hold:  # searching for a buying opportunity - bullish signal
-                pass
-            elif hold:  # waiting for a selling opportunity - bearish signal
-                pass
+            """
+            buy: 1) rsi_Valley < 20 spotted; 2) bounce back to 50 quickly; 3) macd_valley > rsi_valley spotted
+            sell: 1) rsi_peak > 80 spotted; 2) drop to 50 quickly; 3) macd_peak < rsi_peak spotted
+            sell: 1) rsi_peak < 50 spotted after a buy; 2) macd < 50 before a peak appears
+            """
 
-            if macd > rsi and not hold:
-                position = 1
-                hold = True
-
-            if macd < rsi and hold:
-                position = -1
-                hold = False
+            if not hold and len(rvalleys):  # searching for a buying opportunity - bullish signal
+                if macd > rpeaks[-1][1]:
+                    position = 1
+                    hold = True
+            elif hold and len(rvalleys):  # waiting for a selling opportunity - bearish signal
+                if macd < rvalleys[-1][1]:
+                    position = -1
+                    hold = False
 
             positions.append(position)
             count += 1
 
-        print(f"*********** RSI Peaks Change Rate ({len(rpeaks)}) ************")
-        for i in range(1, len(rpeaks)):
-            print(f"{(rpeaks[i][1] / rpeaks[i-1][1] -1) / (rpeaks[i][0] - rpeaks[i-1][0]) * 100:.2f} {rpeaks[i]} / {rpeaks[i-1]}")
-        print(f"*********** RSI Valleys Change Rate ({len(rvalleys)}) ************")
-        for i in range(1, len(rvalleys)):
-            print(f"{(rvalleys[i][1] / rvalleys[i - 1][1] - 1) / (rvalleys[i][0] - rvalleys[i - 1][0]) * 100:.2f} {rvalleys[i]} / {rvalleys[i - 1]}")
-        print(f"*********** MACD Peaks Change Rate ({len(mpeaks)}) ************")
-        for i in range(1, len(mpeaks)):
-            print(f"{(mpeaks[i][1] / mpeaks[i-1][1] -1) / (mpeaks[i][0] - mpeaks[i-1][0]) * 100:.2f} {mpeaks[i]} / {mpeaks[i-1]}")
-        print(f"*********** MACD Valleys Change Rate ({len(mvalleys)}) ************")
-        for i in range(1, len(mvalleys)):
-            print(f"{(mvalleys[i][1] / mvalleys[i-1][1] -1) / (mvalleys[i][0] - mvalleys[i-1][0]) * 100:.2f} {mvalleys[i]} / {mvalleys[i-1]}")
-        print(f"*********************")
+        # print(f"*********** RSI Peaks Change Rate ({len(rpeaks)}) ************")
+        # for i in range(1, len(rpeaks)):
+        #     print(f"{(rpeaks[i][1] / rpeaks[i-1][1] -1) / (rpeaks[i][0] - rpeaks[i-1][0]) * 100:.2f} {rpeaks[i]} / {rpeaks[i-1]}")
+        # print(f"*********** RSI Valleys Change Rate ({len(rvalleys)}) ************")
+        # for i in range(1, len(rvalleys)):
+        #     print(f"{(rvalleys[i][1] / rvalleys[i - 1][1] - 1) / (rvalleys[i][0] - rvalleys[i - 1][0]) * 100:.2f} {rvalleys[i]} / {rvalleys[i - 1]}")
+        # print(f"*********** MACD Peaks Change Rate ({len(mpeaks)}) ************")
+        # for i in range(1, len(mpeaks)):
+        #     print(f"{(mpeaks[i][1] / mpeaks[i-1][1] -1) / (mpeaks[i][0] - mpeaks[i-1][0]) * 100:.2f} {mpeaks[i]} / {mpeaks[i-1]}")
+        # print(f"*********** MACD Valleys Change Rate ({len(mvalleys)}) ************")
+        # for i in range(1, len(mvalleys)):
+        #     print(f"{(mvalleys[i][1] / mvalleys[i-1][1] -1) / (mvalleys[i][0] - mvalleys[i-1][0]) * 100:.2f} {mvalleys[i]} / {mvalleys[i-1]}")
+        # print(f"*********************")
         data['position'] = positions
 
     def wave(self):
