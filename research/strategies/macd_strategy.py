@@ -422,11 +422,10 @@ class MACDStrategy(Strategy):
             #     if rvalleys[-1][1] < 10 and mvalleys[-1][0] > rvalleys[-1][0]:
             #         print(f"{count} {index} {rvalleys[-1]} {mvalleys[-1]} rsi {rsi} {row['close']:.3f}")
 
-            if not hold and len(rvalleys) and len(mvalleys) and len(rpeaks) > 1:  # searching for a buying opportunity - bullish signal
+            if not hold and len(rvalleys) and len(mvalleys):  # searching for a buying opportunity - bullish signal
                 if rsi - rvalleys[-1][1] > 35 and rvalleys[-1][1] < 15 and count - rvalleys[-1][0] < 10 and 0 < mvalleys[-1][0] - rvalleys[-1][0] < 5 and mvalleys[-1][1] > rvalleys[-1][1]:
-                    if rpeaks[-1][1] + rpeaks[-2][1] > 120:
-                        position = 1
-                        hold = True
+                    position = 1
+                    hold = True
             elif hold and len(mpeaks) and len(rpeaks):  # waiting for a selling opportunity - bearish signal
                 if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5 and mpeaks[-1][1] < rpeaks[-1][1]:
                     position = -1
