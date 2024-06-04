@@ -418,13 +418,20 @@ class MACDStrategy(Strategy):
             sell: 1) rsi_peak > 80 spotted; 2) drop to 50 quickly; 3) macd_peak < rsi_peak spotted
             sell: 1) rsi_peak < 50 spotted after a buy; 2) macd < 50 before a peak appears
             """
+            # if len(rvalleys) and len(mvalleys):
+            #     if rvalleys[-1][1] < 10 and mvalleys[-1][0] > rvalleys[-1][0]:
+            #         print(f"{count} {index} {rvalleys[-1]} {mvalleys[-1]} rsi {rsi} {row['close']:.3f}")
 
-            if not hold and len(rvalleys):  # searching for a buying opportunity - bullish signal
-                if macd > rpeaks[-1][1]:
-                    position = 1
-                    hold = True
-            elif hold and len(rvalleys):  # waiting for a selling opportunity - bearish signal
-                if macd < rvalleys[-1][1]:
+            if not hold and len(rvalleys) and len(mvalleys) and len(rpeaks) > 1:  # searching for a buying opportunity - bullish signal
+                if rsi - rvalleys[-1][1] > 35 and rvalleys[-1][1] < 15 and count - rvalleys[-1][0] < 10 and 0 < mvalleys[-1][0] - rvalleys[-1][0] < 5 and mvalleys[-1][1] > rvalleys[-1][1]:
+                    if rpeaks[-1][1] + rpeaks[-2][1] > 120:
+                        position = 1
+                        hold = True
+            elif hold and len(mpeaks) and len(rpeaks):  # waiting for a selling opportunity - bearish signal
+                if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5 and mpeaks[-1][1] < rpeaks[-1][1]:
+                    position = -1
+                    hold = False
+                elif mpeaks[-1][1] - macd > 40 and 0 < count - mpeaks[-1][0] < 10:
                     position = -1
                     hold = False
 
