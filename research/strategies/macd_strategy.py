@@ -59,6 +59,9 @@ class MACDStrategy(Strategy):
             data['rsi_derivative'] = data['rsi'].diff()
             data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
 
+            price_change_ratio = data['close'].pct_change()
+            data['vpt'] = (price_change_ratio * data['volume']).cumsum()
+
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
@@ -424,13 +427,15 @@ class MACDStrategy(Strategy):
 
             if not hold and len(rvalleys) and len(mvalleys):  # searching for a buying opportunity - bullish signal
                 if rsi - rvalleys[-1][1] > 35 and rvalleys[-1][1] < 15 and count - rvalleys[-1][0] < 10 and 0 < mvalleys[-1][0] - rvalleys[-1][0] < 5 and mvalleys[-1][1] > rvalleys[-1][1]:
+                    # if row['rolling_volume'] < 1 * 280000 or macd > 50:
+                    #     print(row['rolling_volume'], macd)
                     position = 1
                     hold = True
             elif hold and len(mpeaks) and len(rpeaks):  # waiting for a selling opportunity - bearish signal
                 if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5 and mpeaks[-1][1] < rpeaks[-1][1]:
                     position = -1
                     hold = False
-                elif mpeaks[-1][1] - macd > 40 and 0 < count - mpeaks[-1][0] < 10:
+                elif mpeaks[-1][1] - macd > 40 and 0 < count - mpeaks[-1][0] < 1:
                     position = -1
                     hold = False
 
