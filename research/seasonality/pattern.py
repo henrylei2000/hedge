@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 
-def analyze_seasonality(stock_symbol, start_date='1993-01-01', end_date='2023-01-01'):
+def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01-01'):
     # Download historical stock price data
     stock_data = yf.download(stock_symbol, start=start_date, end=end_date)
 
@@ -87,5 +87,5 @@ def analyze_seasonality(stock_symbol, start_date='1993-01-01', end_date='2023-01
 
 
 # Example usage
-result = analyze_seasonality('AAPL')
+result = analyze_seasonality('SPY')
 print(result)
