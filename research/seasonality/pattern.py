@@ -32,11 +32,13 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     stock_data['Weekday'] = stock_data.index.weekday
     stock_data['MonthHalf'] = stock_data.index.day <= 15
     stock_data['Week'] = stock_data.index.isocalendar().week
+    stock_data['Day'] = stock_data.index.day
 
     whole_monthly_patterns = stock_data.groupby('Month')['Return'].mean()
     monthly_patterns = stock_data.groupby(['Month', 'MonthHalf'])['Return'].mean().unstack()
     weekly_patterns = stock_data.groupby('Weekday')['Return'].mean()
     yearly_weekly_patterns = stock_data.groupby('Week')['Return'].mean()
+    daily_patterns = stock_data.groupby('Day')['Return'].mean()
 
     # Perform seasonal decomposition
     decomposition = seasonal_decompose(stock_data['Close'].dropna(), model='multiplicative', period=365)
@@ -101,14 +103,25 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     plt.grid(True)
     plt.show()
 
+    # Plot daily patterns
+    plt.figure(figsize=(14, 5))
+    daily_patterns.plot(kind='bar')
+    plt.title('Average Daily Returns')
+    plt.xlabel('Day of the Month')
+    plt.ylabel('Average Return')
+    plt.xticks(ticks=range(1, 32), labels=[str(i) for i in range(1, 32)], rotation=45)
+    plt.grid(True)
+    plt.show()
+
     return {
         'decomposition': decomposition,
         'whole_monthly_patterns': whole_monthly_patterns,
         'monthly_patterns': monthly_patterns,
         'weekly_patterns': weekly_patterns,
-        'yearly_weekly_patterns': yearly_weekly_patterns
+        'yearly_weekly_patterns': yearly_weekly_patterns,
+        'daily_patterns': daily_patterns
     }
 
 # Example usage
-result = analyze_seasonality(stock_symbol='^GSPC', start_date='1974-07-01', end_date='2024-07-01')
+result = analyze_seasonality(stock_symbol='^GSPC', start_date='2004-07-01', end_date='2024-07-01')
 print(result)
