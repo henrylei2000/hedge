@@ -4,7 +4,6 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 from statsmodels.tsa.seasonal import seasonal_decompose
 
-
 def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01-01'):
     # Download historical stock price data
     stock_data = yf.download(stock_symbol, start=start_date, end=end_date)
@@ -31,9 +30,13 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     # Aggregate data to find average monthly and daily patterns
     stock_data['Month'] = stock_data.index.month
     stock_data['Weekday'] = stock_data.index.weekday
+    stock_data['MonthHalf'] = stock_data.index.day <= 15
+    stock_data['Week'] = stock_data.index.isocalendar().week
 
-    monthly_patterns = stock_data.groupby('Month')['Return'].mean()
+    whole_monthly_patterns = stock_data.groupby('Month')['Return'].mean()
+    monthly_patterns = stock_data.groupby(['Month', 'MonthHalf'])['Return'].mean().unstack()
     weekly_patterns = stock_data.groupby('Weekday')['Return'].mean()
+    yearly_weekly_patterns = stock_data.groupby('Week')['Return'].mean()
 
     # Perform seasonal decomposition
     decomposition = seasonal_decompose(stock_data['Close'].dropna(), model='multiplicative', period=365)
@@ -58,9 +61,19 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     plt.tight_layout()
     plt.show()
 
+    # Plot monthly patterns with two halves
+    monthly_patterns.plot(kind='bar', figsize=(14, 5))
+    plt.title('Average Monthly Returns (Split by First and Second Half)')
+    plt.xlabel('Month')
+    plt.ylabel('Average Return')
+    plt.xticks(ticks=range(12), labels=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], rotation=45)
+    plt.legend(['First Half', 'Second Half'])
+    plt.grid(True)
+    plt.show()
+
     # Plot monthly patterns
     plt.figure(figsize=(14, 5))
-    monthly_patterns.plot(kind='bar')
+    whole_monthly_patterns.plot(kind='bar')
     plt.title('Average Monthly Returns')
     plt.xlabel('Month')
     plt.ylabel('Average Return')
@@ -79,13 +92,23 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     plt.grid(True)
     plt.show()
 
+    # Plot yearly weekly patterns
+    plt.figure(figsize=(14, 5))
+    yearly_weekly_patterns.plot(kind='bar')
+    plt.title('Average Weekly Returns (Split by 52 Weeks)')
+    plt.xlabel('Week of the Year')
+    plt.ylabel('Average Return')
+    plt.grid(True)
+    plt.show()
+
     return {
         'decomposition': decomposition,
+        'whole_monthly_patterns': whole_monthly_patterns,
         'monthly_patterns': monthly_patterns,
-        'weekly_patterns': weekly_patterns
+        'weekly_patterns': weekly_patterns,
+        'yearly_weekly_patterns': yearly_weekly_patterns
     }
 
-
 # Example usage
-result = analyze_seasonality('SPY')
+result = analyze_seasonality(stock_symbol='^GSPC', start_date='1974-07-01', end_date='2024-07-01')
 print(result)

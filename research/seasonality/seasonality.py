@@ -45,4 +45,4 @@ def analyze_seasonality(stock_symbol, start_date='2003-01-01', end_date='2023-01
 
 
 # Example usage
-decomposition = analyze_seasonality('AAPL')
+decomposition = analyze_seasonality(stock_symbol='^GSPC', start_date='2003-01-01', end_date='2023-01-01')
