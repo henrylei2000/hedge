@@ -6,13 +6,10 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import lunardate
 
 
-import lunardate
-from datetime import datetime
-
-
 def gregorian_to_lunar_day(year, month, day):
     lunar_date = lunardate.LunarDate.fromSolarDate(year, month, day)
     return lunar_date.day
+
 
 def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01-01'):
     # Download historical stock price data
@@ -153,6 +150,7 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
         'daily_patterns': daily_patterns,
         'lunar_day_stats': lunar_day_stats
     }
+
 
 # Example usage
 result = analyze_seasonality(stock_symbol='^GSPC', start_date='1954-07-01', end_date='2024-07-01')
