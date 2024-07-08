@@ -22,7 +22,7 @@ def calculate_price_volume_changes(df):
 
 # Fetch historical data for AAPL over the past year
 ticker = 'TQQQ'
-data = yf.download(ticker, start='2024-05-01', end='2024-06-01')
+data = yf.download(ticker, start='2024-05-01', end='2024-07-01')
 
 # Calculate price and volume changes
 data = calculate_price_volume_changes(data)
