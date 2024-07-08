@@ -1,3 +1,5 @@
+import pandas as pd
+import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 from statsmodels.tsa.seasonal import seasonal_decompose
@@ -52,6 +54,11 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     daily_patterns = stock_data.groupby('Day')['Return'].mean()
     # Group by lunar days
     lunar_day_patterns = stock_data.groupby('LunarDay')['Return'].mean()
+    # Group by lunar days
+    lunar_day_stats = stock_data.groupby('LunarDay')['Return'].agg(['mean', 'std', 'count'])
+
+    # Calculate the standard error of the mean
+    lunar_day_stats['sem'] = lunar_day_stats['std'] / np.sqrt(lunar_day_stats['count'])
 
     # Perform seasonal decomposition
     decomposition = seasonal_decompose(stock_data['Close'].dropna(), model='multiplicative', period=365)
@@ -126,10 +133,10 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     plt.grid(True)
     plt.show()
 
-    # Plot lunar day patterns
+    # Plot lunar day patterns with error bars
     plt.figure(figsize=(14, 5))
-    lunar_day_patterns.plot(kind='bar')
-    plt.title('Average Returns Grouped by Lunar Days')
+    plt.bar(lunar_day_stats.index, lunar_day_stats['mean'], yerr=lunar_day_stats['sem'], capsize=5)
+    plt.title('Average Returns Grouped by Lunar Days with Standard Error')
     plt.xlabel('Lunar Day')
     plt.ylabel('Average Return')
     plt.xticks(ticks=range(1, 31), labels=[str(i) for i in range(1, 31)], rotation=45)
@@ -144,7 +151,7 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
         'weekly_patterns': weekly_patterns,
         'yearly_weekly_patterns': yearly_weekly_patterns,
         'daily_patterns': daily_patterns,
-        'lunar_day_patterns': lunar_day_patterns
+        'lunar_day_stats': lunar_day_stats
     }
 
 # Example usage
