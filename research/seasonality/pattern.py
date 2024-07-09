@@ -44,16 +44,21 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     stock_data['LunarDay'] = stock_data.index.to_series().apply(
         lambda x: gregorian_to_lunar_day(x.year, x.month, x.day))
 
-    whole_monthly_patterns = stock_data.groupby('Month')['Return'].mean()
+    whole_monthly_patterns = stock_data.groupby('Month')['Return'].agg(['mean', 'std', 'count'])
+    whole_monthly_patterns['sem'] = whole_monthly_patterns['std'] / np.sqrt(whole_monthly_patterns['count'])
     monthly_patterns = stock_data.groupby(['Month', 'MonthHalf'])['Return'].mean().unstack()
-    weekly_patterns = stock_data.groupby('Weekday')['Return'].mean()
-    yearly_weekly_patterns = stock_data.groupby('Week')['Return'].mean()
-    daily_patterns = stock_data.groupby('Day')['Return'].mean()
-    # Group by lunar days
-    lunar_day_patterns = stock_data.groupby('LunarDay')['Return'].mean()
+
+    weekly_patterns = stock_data.groupby('Weekday')['Return'].agg(['mean', 'std', 'count'])
+    weekly_patterns['sem'] = weekly_patterns['std'] / np.sqrt(weekly_patterns['count'])
+
+    yearly_weekly_patterns = stock_data.groupby('Week')['Return'].agg(['mean', 'std', 'count'])
+    yearly_weekly_patterns['sem'] = yearly_weekly_patterns['std'] / np.sqrt(yearly_weekly_patterns['count'])
+
+    daily_patterns = stock_data.groupby('Day')['Return'].agg(['mean', 'std', 'count'])
+    # Calculate the standard error of the mean
+    daily_patterns['sem'] = daily_patterns['std'] / np.sqrt(daily_patterns['count'])
     # Group by lunar days
     lunar_day_stats = stock_data.groupby('LunarDay')['Return'].agg(['mean', 'std', 'count'])
-
     # Calculate the standard error of the mean
     lunar_day_stats['sem'] = lunar_day_stats['std'] / np.sqrt(lunar_day_stats['count'])
 
@@ -92,18 +97,18 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
 
     # Plot monthly patterns
     plt.figure(figsize=(14, 5))
-    whole_monthly_patterns.plot(kind='bar')
+    plt.bar(whole_monthly_patterns.index, whole_monthly_patterns['mean'], yerr=whole_monthly_patterns['sem'], capsize=5)
     plt.title('Average Monthly Returns')
     plt.xlabel('Month')
     plt.ylabel('Average Return')
-    plt.xticks(ticks=range(12),
+    plt.xticks(ticks=range(1, 13),
                labels=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], rotation=45)
     plt.grid(True)
     plt.show()
 
     # Plot weekly patterns
     plt.figure(figsize=(14, 5))
-    weekly_patterns.plot(kind='bar')
+    plt.bar(weekly_patterns.index, weekly_patterns['mean'], yerr=weekly_patterns['sem'], capsize=5)
     plt.title('Average Weekly Returns')
     plt.xlabel('Weekday')
     plt.ylabel('Average Return')
@@ -113,7 +118,7 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
 
     # Plot yearly weekly patterns
     plt.figure(figsize=(14, 5))
-    yearly_weekly_patterns.plot(kind='bar')
+    plt.bar(yearly_weekly_patterns.index, yearly_weekly_patterns['mean'], yerr=yearly_weekly_patterns['sem'], capsize=5)
     plt.title('Average Weekly Returns (Split by 52 Weeks)')
     plt.xlabel('Week of the Year')
     plt.ylabel('Average Return')
@@ -122,7 +127,7 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
 
     # Plot daily patterns
     plt.figure(figsize=(14, 5))
-    daily_patterns.plot(kind='bar')
+    plt.bar(daily_patterns.index, daily_patterns['mean'], yerr=daily_patterns['sem'], capsize=5)
     plt.title('Average Daily Returns')
     plt.xlabel('Day of the Month')
     plt.ylabel('Average Return')
@@ -153,5 +158,5 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
 
 
 # Example usage
-result = analyze_seasonality(stock_symbol='^GSPC', start_date='1954-07-01', end_date='2024-07-01')
+result = analyze_seasonality(stock_symbol='^GSPC', start_date='1924-01-01', end_date='2024-07-01')
 print(result)
