@@ -85,66 +85,79 @@ def analyze_seasonality(stock_symbol, start_date='1973-01-01', end_date='2023-01
     plt.tight_layout()
     plt.show()
 
+    # Plot monthly patterns and whole monthly patterns in one figure
+    fig, axes = plt.subplots(2, 1, figsize=(14, 10))
+
     # Plot monthly patterns with two halves
-    monthly_patterns.plot(kind='bar', figsize=(14, 5))
-    plt.title('Average Monthly Returns (Split by First and Second Half)')
-    plt.xlabel('Month')
-    plt.ylabel('Average Return')
-    plt.xticks(ticks=range(12), labels=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], rotation=45)
-    plt.legend(['First Half', 'Second Half'])
-    plt.grid(True)
+    monthly_patterns.plot(kind='bar', ax=axes[0])
+    axes[0].set_title('Average Monthly Returns (Split by First and Second Half)')
+    axes[0].set_xlabel('Month')
+    axes[0].set_ylabel('Average Return')
+    axes[0].set_xticks(range(12))
+    axes[0].set_xticklabels(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            rotation=45)
+    axes[0].legend(['First Half', 'Second Half'])
+    axes[0].grid(True)
+
+    # Plot whole monthly patterns with error bars
+    axes[1].bar(whole_monthly_patterns.index, whole_monthly_patterns['mean'], yerr=whole_monthly_patterns['sem'],
+                capsize=5)
+    axes[1].set_title('Average Monthly Returns')
+    axes[1].set_xlabel('Month')
+    axes[1].set_ylabel('Average Return')
+    axes[1].set_xticks(range(1, 13))
+    axes[1].set_xticklabels(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            rotation=45)
+    axes[1].grid(True)
+
+    plt.tight_layout()
     plt.show()
 
-    # Plot monthly patterns
-    plt.figure(figsize=(14, 5))
-    plt.bar(whole_monthly_patterns.index, whole_monthly_patterns['mean'], yerr=whole_monthly_patterns['sem'], capsize=5)
-    plt.title('Average Monthly Returns')
-    plt.xlabel('Month')
-    plt.ylabel('Average Return')
-    plt.xticks(ticks=range(1, 13),
-               labels=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], rotation=45)
-    plt.grid(True)
+    # Plot weekly and yearly weekly patterns in one figure
+    fig, axes = plt.subplots(2, 1, figsize=(14, 10))
+
+    # Plot weekly patterns with error bars
+    axes[0].bar(weekly_patterns.index, weekly_patterns['mean'], yerr=weekly_patterns['sem'], capsize=5)
+    axes[0].set_title('Average Weekly Returns')
+    axes[0].set_xlabel('Weekday')
+    axes[0].set_ylabel('Average Return')
+    axes[0].set_xticks(range(7))
+    axes[0].set_xticklabels(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], rotation=45)
+    axes[0].grid(True)
+
+    # Plot yearly weekly patterns with error bars
+    axes[1].bar(yearly_weekly_patterns.index, yearly_weekly_patterns['mean'], yerr=yearly_weekly_patterns['sem'], capsize=5)
+    axes[1].set_title('Average Weekly Returns (Split by 52 Weeks)')
+    axes[1].set_xlabel('Week of the Year')
+    axes[1].set_ylabel('Average Return')
+    axes[1].grid(True)
+
+    plt.tight_layout()
     plt.show()
 
-    # Plot weekly patterns
-    plt.figure(figsize=(14, 5))
-    plt.bar(weekly_patterns.index, weekly_patterns['mean'], yerr=weekly_patterns['sem'], capsize=5)
-    plt.title('Average Weekly Returns')
-    plt.xlabel('Weekday')
-    plt.ylabel('Average Return')
-    plt.xticks(ticks=range(7), labels=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], rotation=45)
-    plt.grid(True)
-    plt.show()
-
-    # Plot yearly weekly patterns
-    plt.figure(figsize=(14, 5))
-    plt.bar(yearly_weekly_patterns.index, yearly_weekly_patterns['mean'], yerr=yearly_weekly_patterns['sem'], capsize=5)
-    plt.title('Average Weekly Returns (Split by 52 Weeks)')
-    plt.xlabel('Week of the Year')
-    plt.ylabel('Average Return')
-    plt.grid(True)
-    plt.show()
+    # Plot daily and lunar day patterns in one figure
+    fig, axes = plt.subplots(2, 1, figsize=(14, 10))
 
     # Plot daily patterns
-    plt.figure(figsize=(14, 5))
-    plt.bar(daily_patterns.index, daily_patterns['mean'], yerr=daily_patterns['sem'], capsize=5)
-    plt.title('Average Daily Returns')
-    plt.xlabel('Day of the Month')
-    plt.ylabel('Average Return')
-    plt.xticks(ticks=range(1, 32), labels=[str(i) for i in range(1, 32)], rotation=45)
-    plt.grid(True)
-    plt.show()
+    axes[0].bar(daily_patterns.index, daily_patterns['mean'], yerr=daily_patterns['sem'], capsize=5)
+    axes[0].set_title('Average Daily Returns')
+    axes[0].set_xlabel('Day of the Month')
+    axes[0].set_ylabel('Average Return')
+    axes[0].set_xticks(range(1, 32))
+    axes[0].set_xticklabels([str(i) for i in range(1, 32)], rotation=45)
+    axes[0].grid(True)
 
     # Plot lunar day patterns with error bars
-    plt.figure(figsize=(14, 5))
-    plt.bar(lunar_day_stats.index, lunar_day_stats['mean'], yerr=lunar_day_stats['sem'], capsize=5)
-    plt.title('Average Returns Grouped by Lunar Days with Standard Error')
-    plt.xlabel('Lunar Day')
-    plt.ylabel('Average Return')
-    plt.xticks(ticks=range(1, 31), labels=[str(i) for i in range(1, 31)], rotation=45)
-    plt.grid(True)
-    plt.show()
+    axes[1].bar(lunar_day_stats.index, lunar_day_stats['mean'], yerr=lunar_day_stats['sem'], capsize=5)
+    axes[1].set_title('Average Returns Grouped by Lunar Days with Standard Error')
+    axes[1].set_xlabel('Lunar Day')
+    axes[1].set_ylabel('Average Return')
+    axes[1].set_xticks(range(1, 31))
+    axes[1].set_xticklabels([str(i) for i in range(1, 31)], rotation=45)
+    axes[1].grid(True)
 
+    plt.tight_layout()
+    plt.show()
 
     return {
         'decomposition': decomposition,
