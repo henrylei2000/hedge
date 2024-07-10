@@ -61,6 +61,12 @@ class MACDStrategy(Strategy):
 
             price_change_ratio = data['close'].pct_change()
             data['vpt'] = (price_change_ratio * data['volume']).cumsum()
+            data['rolling_vpt'] = data['vpt'].rolling(window=5).mean()
+
+            data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
+                         data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
+            # Calculate OBV moving average
+            data['rolling_obv'] = data['obv'].rolling(window=10).mean()
 
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
@@ -364,6 +370,27 @@ class MACDStrategy(Strategy):
 
         data['position'] = positions
 
+    def crossover(self):
+        self.macd_simple()
+        data = self.data
+        position = 0
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+        hold = False
+        count = 0
+        for index, row in data.iterrows():
+            if hold and row['obv'] < row['rolling_obv']:
+                position = -1
+                hold = False
+            if not hold and row['obv'] > row['rolling_obv']:
+                position = 1
+                hold = True
+            positions.append(position)
+            count += 1
+        data['position'] = positions
+
     def rsi(self):
         self.macd_simple()
         self.normalized()
@@ -427,17 +454,18 @@ class MACDStrategy(Strategy):
 
             if not hold and len(rvalleys) and len(mvalleys):  # searching for a buying opportunity - bullish signal
                 if rsi - rvalleys[-1][1] > 35 and rvalleys[-1][1] < 15 and count - rvalleys[-1][0] < 10 and 0 < mvalleys[-1][0] - rvalleys[-1][0] < 5 and mvalleys[-1][1] > rvalleys[-1][1]:
-                    # if row['rolling_volume'] < 1 * 280000 or macd > 50:
-                    #     print(row['rolling_volume'], macd)
-                    position = 1
-                    hold = True
+                    if row['vpt'] > row['rolling_vpt']:
+                        position = 1
+                        hold = True
             elif hold and len(mpeaks) and len(rpeaks):  # waiting for a selling opportunity - bearish signal
                 if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5 and mpeaks[-1][1] < rpeaks[-1][1]:
-                    position = -1
-                    hold = False
+                    if row['obv'] < row['rolling_obv']:
+                        position = -1
+                        hold = False
                 elif mpeaks[-1][1] - macd > 40 and 0 < count - mpeaks[-1][0] < 1:
-                    position = -1
-                    hold = False
+                    if row['obv'] < row['rolling_obv']:
+                        position = -1
+                        hold = False
 
             positions.append(position)
             count += 1
