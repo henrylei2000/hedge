@@ -79,3 +79,96 @@ def group_by_type(input_list):
 input_list = [(1, 1.0, "peak"), (2, 1.5, "valley"), (3, 0.5, "valley"), (7, 1.5, "valley")]
 output_list = group_by_type(input_list)
 print(output_list)
+
+import pandas as pd
+import numpy as np
+import yfinance as yf
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
+
+
+def calculate_obv(data):
+    """
+    Calculates the On-Balance Volume (OBV) for the given data.
+
+    Parameters:
+    - data: A DataFrame containing 'Close' and 'Volume' columns.
+
+    Returns:
+    - A Series containing the OBV values.
+    """
+    obv = np.where(data['Close'] > data['Close'].shift(1), data['Volume'],
+                   np.where(data['Close'] < data['Close'].shift(1), -data['Volume'], 0)).cumsum()
+    # obv = data['Volume']
+    return pd.Series(obv, index=data.index)
+
+
+def analyze_tqqq_trends(start_date='2024-07-11', end_date='2024-07-12', distance=5, prominence=0.5):
+    """
+    Downloads historical TQQQ stock price data, identifies peaks and valleys, and analyzes trends.
+
+    Parameters:
+    - start_date: The start date for the historical data (format: 'YYYY-MM-DD').
+    - end_date: The end date for the historical data (format: 'YYYY-MM-DD').
+    - distance: Required minimal horizontal distance (in number of data points) between neighboring peaks.
+    - prominence: Required prominence of peaks.
+
+    Returns:
+    - A DataFrame with columns 'Price', 'Trend', and 'Type'.
+    - Plots the prices with peaks and valleys and the OBV.
+    """
+    # Download historical data for TQQQ
+    tqqq = yf.download('TQQQ', start=start_date, end=end_date, interval='1m')
+    tqqq_prices = tqqq['Close']
+
+    # Identify peaks and valleys
+    peaks, _ = find_peaks(tqqq_prices, distance=distance, prominence=prominence)
+    valleys, _ = find_peaks(-tqqq_prices, distance=distance, prominence=prominence)
+
+    trends = pd.DataFrame({
+        'Price': tqqq_prices,
+        'Trend': np.nan,
+        'Type': np.nan
+    }, dtype=object)
+
+    # Use iloc to align indices correctly
+    trends.iloc[peaks, trends.columns.get_loc('Trend')] = 'Peak'
+    trends.iloc[valleys, trends.columns.get_loc('Trend')] = 'Valley'
+
+    # Forward fill the trends to identify uptrends and downtrends
+    trends['Trend'] = trends['Trend'].ffill()
+    trends['Type'] = np.where(trends['Trend'] == 'Peak', 'Downtrend', 'Uptrend')
+
+    # Calculate OBV
+    obv = calculate_obv(tqqq)
+
+    # Plotting
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+
+    ax1.plot(tqqq_prices, label='Price', color='blue')
+    ax1.plot(tqqq_prices.iloc[peaks], 'ro', label='Peaks')
+    ax1.plot(tqqq_prices.iloc[valleys], 'go', label='Valleys')
+    ax1.set_title('TQQQ Stock Price Analysis')
+    ax1.set_ylabel('Price')
+    ax1.legend()
+
+    ax2.plot(obv, label='OBV', color='purple')
+    ax2.set_title('On-Balance Volume (OBV)')
+    ax2.set_xlabel('Time')
+    ax2.set_ylabel('OBV')
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    return trends
+
+
+# Example usage:
+trends = analyze_tqqq_trends(
+    start_date='2024-07-11',
+    end_date='2024-07-12',
+    distance=1,
+    prominence=0.5)
+print(trends)
+

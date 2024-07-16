@@ -42,7 +42,7 @@ class MACDStrategy(Strategy):
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
             data['rolling_strength'] = data['strength'].ewm(span=5, adjust=False).mean()
-            data['rolling_macd'] = data['macd'].rolling(window=3).mean()
+            data['rolling_macd'] = data['macd'].rolling(window=12).mean()
 
             # Calculate the first derivative of MACD
             data['macd_derivative'] = data['macd'].diff()
@@ -53,7 +53,7 @@ class MACDStrategy(Strategy):
             loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
-            data['rolling_rsi'] = data['rsi'].rolling(window=5).mean()
+            data['rolling_rsi'] = data['rsi'].rolling(window=12).mean()
             # data['rolling_rsi'] = data['rsi'].ewm(span=5, adjust=False).mean()
             # Calculate the first derivative of MACD
             data['rsi_derivative'] = data['rsi'].diff()
@@ -61,12 +61,12 @@ class MACDStrategy(Strategy):
 
             price_change_ratio = data['close'].pct_change()
             data['vpt'] = (price_change_ratio * data['volume']).cumsum()
-            data['rolling_vpt'] = data['vpt'].rolling(window=5).mean()
+            data['rolling_vpt'] = data['vpt'].rolling(window=12).mean()
 
             data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
                          data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
             # Calculate OBV moving average
-            data['rolling_obv'] = data['obv'].rolling(window=10).mean()
+            data['rolling_obv'] = data['obv'].rolling(window=12).mean()
 
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
@@ -381,12 +381,18 @@ class MACDStrategy(Strategy):
         hold = False
         count = 0
         for index, row in data.iterrows():
-            if hold and row['obv'] < row['rolling_obv']:
-                position = -1
-                hold = False
-            if not hold and row['obv'] > row['rolling_obv']:
-                position = 1
-                hold = True
+            mpeaks, mvalleys = self.peaks_valleys(index, 'rolling_macd')
+            if hold and row['obv'] < row['rolling_obv'] and row['macd'] < row['rolling_macd'] and row['macd'] < 0 and row['rsi'] > 25:
+                if len(mpeaks):
+                    if (len(mvalleys) and mvalleys[-1][0] < mpeaks[-1][0]) or len(mvalleys) == 0:
+                        position = -1
+                        hold = False
+            if not hold and row['obv'] > row['rolling_obv'] and row['macd'] > row['rolling_macd'] and row['macd'] > 0 and row['rsi'] < 75:
+                if len(mvalleys):
+                    if (len(mpeaks) and mpeaks[-1][0] < mvalleys[-1][0]) or len(mpeaks) == 0:
+                        position = 1
+                        hold = True
+
             positions.append(position)
             count += 1
         data['position'] = positions
@@ -453,17 +459,26 @@ class MACDStrategy(Strategy):
             #         print(f"{count} {index} {rvalleys[-1]} {mvalleys[-1]} rsi {rsi} {row['close']:.3f}")
 
             if not hold and len(rvalleys) and len(mvalleys):  # searching for a buying opportunity - bullish signal
-                if rsi - rvalleys[-1][1] > 35 and rvalleys[-1][1] < 15 and count - rvalleys[-1][0] < 10 and 0 < mvalleys[-1][0] - rvalleys[-1][0] < 5 and mvalleys[-1][1] > rvalleys[-1][1]:
-                    if row['vpt'] > row['rolling_vpt']:
-                        position = 1
-                        hold = True
+                # rsi trend reversal
+                if rsi - rvalleys[-1][1] > 35 and rvalleys[-1][1] < 15:
+                    # sharpness of the reversal
+                    if count - rvalleys[-1][0] < 10:
+                        # relation to macd (following rsi closely and a reliable base)
+                        if 0 < mvalleys[-1][0] - rvalleys[-1][0] < 5 and mvalleys[-1][1] > 35:
+                            # volume consideration
+                            if row['obv'] > row['rolling_obv'] or True:
+                                position = 1
+                                hold = True
             elif hold and len(mpeaks) and len(rpeaks):  # waiting for a selling opportunity - bearish signal
-                if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5 and mpeaks[-1][1] < rpeaks[-1][1]:
-                    if row['obv'] < row['rolling_obv']:
+                # trend reversal
+                if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5:
+                    if row['obv'] < row['rolling_obv'] or True:
                         position = -1
                         hold = False
-                elif mpeaks[-1][1] - macd > 40 and 0 < count - mpeaks[-1][0] < 1:
-                    if row['obv'] < row['rolling_obv']:
+
+                # a sudden drop of macd
+                elif mpeaks[-1][1] - macd > 40 and 0 < count - mpeaks[-1][0] < 2:
+                    if row['obv'] < row['rolling_obv'] or True:
                         position = -1
                         hold = False
 
@@ -618,7 +633,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.rsi()
+        self.crossover()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
