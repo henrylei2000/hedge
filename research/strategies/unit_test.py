@@ -196,8 +196,8 @@ def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, p
 
 # Example usage:
 trends = analyze_trends(
-    start_date='2024-07-22',
-    end_date='2024-07-23',
+    start_date='2024-07-23',
+    end_date='2024-07-24',
     distance=1,
     prominence=0.1)
 print(trends)

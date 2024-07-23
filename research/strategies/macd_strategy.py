@@ -397,6 +397,42 @@ class MACDStrategy(Strategy):
             count += 1
         data['position'] = positions
 
+    def trend(self):
+        self.macd_simple()
+        data = self.data
+        position = 0
+        positions = []  # Store updated signals
+
+        # Initialize Signal column with zeros
+        data['position'] = 0
+        hold = False
+        count = 0
+        for index, row in data.iterrows():
+            visible_rows = data.loc[:index]
+            prices = visible_rows['close']
+
+            # Identify peaks and valleys
+            peaks, _ = find_peaks(prices, distance=1, prominence=0.2)
+            valleys, _ = find_peaks(-prices, distance=1, prominence=0.2)
+
+            # Perform linear regression on peaks
+            if len(peaks) > 1:
+                peak_indices = np.array(peaks)
+                peak_prices = prices.iloc[peaks]
+                a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
+                print(f"[{a_peaks:.3f} {b_peaks:.3f}]")
+
+            # Perform linear regression on valleys
+            if len(valleys) > 1:
+                valley_indices = np.array(valleys)
+                valley_prices = prices.iloc[valleys]
+                a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
+                print(f"[{a_valleys:.3f} {b_valleys:.3f}]")
+
+            positions.append(position)
+            count += 1
+        data['position'] = positions
+
     def rsi(self):
         self.macd_simple()
         self.normalized()
@@ -633,7 +669,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.crossover()
+        self.trend()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
