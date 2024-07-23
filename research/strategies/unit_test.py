@@ -86,6 +86,11 @@ import yfinance as yf
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
+import pandas as pd
+import numpy as np
+import yfinance as yf
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 def calculate_obv(data):
     """
@@ -99,13 +104,26 @@ def calculate_obv(data):
     """
     obv = np.where(data['Close'] > data['Close'].shift(1), data['Volume'],
                    np.where(data['Close'] < data['Close'].shift(1), -data['Volume'], 0)).cumsum()
-    # obv = data['Volume']
     return pd.Series(obv, index=data.index)
 
-
-def analyze_tqqq_trends(start_date='2024-07-11', end_date='2024-07-12', distance=5, prominence=0.5):
+def linear_regression(x, y):
     """
-    Downloads historical TQQQ stock price data, identifies peaks and valleys, and analyzes trends.
+    Performs linear regression on the given x and y data.
+
+    Parameters:
+    - x: The x values.
+    - y: The y values.
+
+    Returns:
+    - A tuple (a, b) representing the slope and intercept of the line.
+    """
+    a, b = np.polyfit(x, y, 1)
+    return a, b
+
+
+def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, prominence=0.5):
+    """
+    Downloads historical stock price data, identifies peaks and valleys, and analyzes trends.
 
     Parameters:
     - start_date: The start date for the historical data (format: 'YYYY-MM-DD').
@@ -118,15 +136,15 @@ def analyze_tqqq_trends(start_date='2024-07-11', end_date='2024-07-12', distance
     - Plots the prices with peaks and valleys and the OBV.
     """
     # Download historical data for TQQQ
-    tqqq = yf.download('TQQQ', start=start_date, end=end_date, interval='1m')
-    tqqq_prices = tqqq['Close']
+    ticker = yf.download('TQQQ', start=start_date, end=end_date, interval='1m')
+    prices = ticker['Close']
 
     # Identify peaks and valleys
-    peaks, _ = find_peaks(tqqq_prices, distance=distance, prominence=prominence)
-    valleys, _ = find_peaks(-tqqq_prices, distance=distance, prominence=prominence)
+    peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+    valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
 
     trends = pd.DataFrame({
-        'Price': tqqq_prices,
+        'Price': prices,
         'Trend': np.nan,
         'Type': np.nan
     }, dtype=object)
@@ -140,14 +158,26 @@ def analyze_tqqq_trends(start_date='2024-07-11', end_date='2024-07-12', distance
     trends['Type'] = np.where(trends['Trend'] == 'Peak', 'Downtrend', 'Uptrend')
 
     # Calculate OBV
-    obv = calculate_obv(tqqq)
+    obv = calculate_obv(ticker)
+
+    # Perform linear regression on peaks
+    peak_indices = np.array(peaks)
+    peak_prices = prices.iloc[peaks]
+    a_peaks, b_peaks = linear_regression(peak_indices, peak_prices)
+
+    # Perform linear regression on valleys
+    valley_indices = np.array(valleys)
+    valley_prices = prices.iloc[valleys]
+    a_valleys, b_valleys = linear_regression(valley_indices, valley_prices)
 
     # Plotting
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 
-    ax1.plot(tqqq_prices, label='Price', color='blue')
-    ax1.plot(tqqq_prices.iloc[peaks], 'ro', label='Peaks')
-    ax1.plot(tqqq_prices.iloc[valleys], 'go', label='Valleys')
+    ax1.plot(prices, label='Price', color='blue')
+    ax1.plot(prices.iloc[peaks], 'ro', label='Peaks')
+    ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
+    ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
+    ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
     ax1.set_title('TQQQ Stock Price Analysis')
     ax1.set_ylabel('Price')
     ax1.legend()
@@ -165,10 +195,11 @@ def analyze_tqqq_trends(start_date='2024-07-11', end_date='2024-07-12', distance
 
 
 # Example usage:
-trends = analyze_tqqq_trends(
-    start_date='2024-07-11',
-    end_date='2024-07-12',
+trends = analyze_trends(
+    start_date='2024-07-22',
+    end_date='2024-07-23',
     distance=1,
-    prominence=0.5)
+    prominence=0.1)
 print(trends)
+
 
