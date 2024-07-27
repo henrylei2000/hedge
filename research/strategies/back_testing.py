@@ -15,7 +15,7 @@ def get_dates():
 
     # Define the start and end dates for the market calendar you want to retrieve
     start_date = '2024-07-22'
-    end_date = '2024-07-23'
+    end_date = '2024-07-22'
 
     # Get the market calendar
     calendar = api.get_calendar(start=start_date, end=end_date)

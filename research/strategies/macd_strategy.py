@@ -408,22 +408,26 @@ class MACDStrategy(Strategy):
         hold = False
         count = 0
         for index, row in data.iterrows():
-            visible_rows = data.loc[:index]
+            visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
 
             # Identify peaks and valleys
-            peaks, _ = find_peaks(prices, distance=1, prominence=0.2)
-            valleys, _ = find_peaks(-prices, distance=1, prominence=0.2)
+            peaks, _ = find_peaks(prices, distance=1, prominence=0.1)
+            valleys, _ = find_peaks(-prices, distance=1, prominence=0.1)
 
             # Perform linear regression on peaks
-            if len(peaks) > 1:
+            if len(peaks) > 5:
                 peak_indices = np.array(peaks)
                 peak_prices = prices.iloc[peaks]
                 a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
-                print(f"[{a_peaks:.3f} {b_peaks:.3f}]")
+                a_recent, b_recent = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
+                if a_peaks * a_recent < 0:
+                    if a_recent > a_peaks:
+                        position = 1
+                    print(f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]} {data.index.get_loc(index)} {index}")
 
             # Perform linear regression on valleys
-            if len(valleys) > 1:
+            if len(valleys) > 5:
                 valley_indices = np.array(valleys)
                 valley_prices = prices.iloc[valleys]
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
