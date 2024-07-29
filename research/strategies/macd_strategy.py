@@ -673,7 +673,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.trend()
+        self.rsi()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #

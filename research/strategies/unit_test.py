@@ -136,7 +136,7 @@ def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, p
     - Plots the prices with peaks and valleys and the OBV.
     """
     # Download historical data for TQQQ
-    ticker = yf.download('TQQQ', start=start_date, end=end_date, interval='1m')
+    ticker = yf.download('TQQQ', start=start_date, end=end_date, interval='1d')
     prices = ticker['Close']
 
     # Identify peaks and valleys
@@ -196,10 +196,81 @@ def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, p
 
 # Example usage:
 trends = analyze_trends(
-    start_date='2024-07-22',
-    end_date='2024-07-23',
+    start_date='2024-01-30',
+    end_date='2024-07-30',
     distance=1,
-    prominence=0.3)
+    prominence=0.1)
 print(trends)
 
+
+def predict_next_day_peak_valley(ticker='TQQQ'):
+    """
+    Predicts the next day's peak and valley based on one year of daily prices and linear regression.
+
+    Parameters:
+    - ticker: The stock ticker symbol (default is 'TQQQ').
+
+    Returns:
+    - A dictionary containing the predicted peak and valley prices for the next day.
+    """
+    end_date = pd.to_datetime('today')
+    start_date = end_date - pd.DateOffset(days=15)
+
+    # Download one year of daily price data
+    data = yf.download(ticker, start=start_date, end=end_date, interval='1d')
+    prices = data['Close']
+
+    # Identify peaks and valleys
+    peaks, _ = find_peaks(prices, distance=2, prominence=0.5)
+    valleys, _ = find_peaks(-prices, distance=2, prominence=0.5)
+
+    # Perform linear regression on peaks
+    peak_indices = np.array(peaks)
+    peak_prices = prices.iloc[peaks]
+    a_peaks, b_peaks = linear_regression(peak_indices, peak_prices)
+
+    # Perform linear regression on valleys
+    valley_indices = np.array(valleys)
+    valley_prices = prices.iloc[valleys]
+    a_valleys, b_valleys = linear_regression(valley_indices, valley_prices)
+
+    # Predict the next day's peak and valley
+    next_day_index = len(prices)
+    predicted_peak = a_peaks * next_day_index + b_peaks
+    predicted_valley = a_valleys * next_day_index + b_valleys
+
+    # Indicate whether the next day is predicted to be a peak or a valley
+    if predicted_peak > predicted_valley:
+        next_day_prediction = 'Peak'
+    else:
+        next_day_prediction = 'Valley'
+
+        # Determine the type of the last recognized abnormal day
+    last_peak_index = peak_indices[-1] if len(peak_indices) > 0 else -1
+    last_valley_index = valley_indices[-1] if len(valley_indices) > 0 else -1
+
+    if last_peak_index > last_valley_index:
+        last_abnormal_day = 'Peak'
+    else:
+        last_abnormal_day = 'Valley'
+
+    # Indicate whether the next day is predicted to be a peak or a valley based on the last abnormal day
+    if last_abnormal_day == 'Peak':
+        next_day_prediction = 'Valley'
+    else:
+        next_day_prediction = 'Peak'
+
+    prediction = {
+        'Next Day Index': next_day_index,
+        'Predicted Peak': predicted_peak,
+        'Predicted Valley': predicted_valley,
+        'Prediction Type': next_day_prediction
+    }
+
+    return prediction
+
+
+# Example usage:
+prediction = predict_next_day_peak_valley()
+print(prediction)
 
