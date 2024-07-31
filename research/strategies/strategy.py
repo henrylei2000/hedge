@@ -5,7 +5,9 @@ import alpaca_trade_api as tradeapi
 import configparser
 import matplotlib.pyplot as plt
 import sys
-
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
+import pandas as pd
 
 class Strategy:
     def __init__(self, symbol='TQQQ', open='2024-03-01 09:30', close='2024-03-01 16:00'):  # QQQ, SPY, DIA
@@ -23,14 +25,84 @@ class Strategy:
         self.num_buckets = 1
 
     def backtest(self):
-        if self.download():
-            self.sanitize()
-            self.signal()
-            self.bucket_trade()
-            # self.plot()
-            return
+        prediction = self.predict()
+        if prediction['Prediction Type'] == 'Peak':
+            if self.download():
+                self.sanitize()
+                self.signal()
+                self.bucket_trade()
+                # self.plot()
+                return
+            else:
+                print("No data found, please verify symbol and date range.")
+
+    def predict(self):
+        """
+        Predicts the next day's peak and valley based on one year of daily prices and linear regression.
+
+        Parameters:
+        - ticker: The stock ticker symbol (default is 'TQQQ').
+
+        Returns:
+        - A dictionary containing the predicted peak and valley prices for the next day.
+        """
+        day = self.start.strftime('%Y-%m-%d')
+        end_date = pd.to_datetime(day) - pd.DateOffset(days=1)
+        print(end_date)
+        start_date = end_date - pd.DateOffset(months=3)
+
+        # Download one year of daily price data
+        data = yf.download(self.symbol, start=start_date, end=end_date, interval='1d')
+        prices = data['Close']
+
+        # Identify peaks and valleys
+        peaks, _ = find_peaks(prices, distance=5, prominence=0.5)
+        valleys, _ = find_peaks(-prices, distance=5, prominence=0.5)
+
+        # Perform linear regression on peaks
+        peak_indices = np.array(peaks)
+        peak_prices = prices.iloc[peaks]
+        a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
+
+        # Perform linear regression on valleys
+        valley_indices = np.array(valleys)
+        valley_prices = prices.iloc[valleys]
+        a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
+
+        # Predict the next day's peak and valley
+        next_day_index = len(prices)
+        predicted_peak = a_peaks * next_day_index + b_peaks
+        predicted_valley = a_valleys * next_day_index + b_valleys
+
+        # Indicate whether the next day is predicted to be a peak or a valley
+        if predicted_peak > predicted_valley:
+            next_day_prediction = 'Peak'
         else:
-            print("No data found, please verify symbol and date range.")
+            next_day_prediction = 'Valley'
+
+            # Determine the type of the last recognized abnormal day
+        last_peak_index = peak_indices[-1] if len(peak_indices) > 0 else -1
+        last_valley_index = valley_indices[-1] if len(valley_indices) > 0 else -1
+
+        if last_peak_index > last_valley_index:
+            last_abnormal_day = 'Peak'
+        else:
+            last_abnormal_day = 'Valley'
+
+        # Indicate whether the next day is predicted to be a peak or a valley based on the last abnormal day
+        if last_abnormal_day == 'Peak':
+            next_day_prediction = 'Valley'
+        else:
+            next_day_prediction = 'Peak'
+
+        prediction = {
+            'Next Day Index': next_day_index,
+            'Predicted Peak': predicted_peak,
+            'Predicted Valley': predicted_valley,
+            'Prediction Type': next_day_prediction
+        }
+        print(prediction)
+        return prediction
 
     def download(self, api="alpaca"):
 

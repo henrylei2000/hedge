@@ -1,96 +1,10 @@
 import pandas as pd
-
-def analyze_rsi_series(data):
-    if 'rsi' not in data.columns:
-        raise ValueError("Data must include 'rsi' column")
-
-    # Initialize variables
-    result = []
-    rsi_values = data['rsi'].tolist()
-
-    # First, detect all peaks and valleys
-    for i in range(2, len(rsi_values) - 2):
-        # Read surrounding RSI values to determine peaks or valleys
-        prev_rsi_1, prev_rsi_2 = rsi_values[i - 2], rsi_values[i - 1]
-        curr_rsi = rsi_values[i]
-        next_rsi_1, next_rsi_2 = rsi_values[i + 1], rsi_values[i + 2]
-
-        # Check for a peak
-        if curr_rsi > max(prev_rsi_1, prev_rsi_2, next_rsi_1, next_rsi_2):
-            print(f"{i} ----- {rsi_values[i]}")
-            result.append((i, curr_rsi, 'peak'))
-        # Check for a valley
-        elif curr_rsi < min(prev_rsi_1, prev_rsi_2, next_rsi_1, next_rsi_2):
-            result.append((i, curr_rsi, 'valley'))
-
-    return result
-
-# Example usage:
-data = pd.DataFrame({'rsi': [30, 45, 70, 60, 55, 75, 65, 50, 45, 55, 65, 30, 20]})
-# print(analyze_rsi_series(data))
-
-
-def filter_rsi_subset(macd, rsi):
-    if len(macd) > 3 and len(rsi) > 3:
-        # RSI Lifting MACD
-        # strength & velocity (interval between peaks and valleys)
-        macd_points, rsi_points = [], []
-        print(macd[-4:])
-        print(rsi[-10:])
-        for macd_index, macd_value, macd_type in reversed(macd[-4:]):
-            macd_points.append((macd_index, macd_value, macd_type))
-            causing_rsi = []
-            for rsi_index, rsi_value, rsi_type in reversed(rsi[-10:]):
-                if rsi_index < macd_index or rsi_index == macd_index:
-                    if rsi_type != macd_type:
-                        if len(causing_rsi):  # conclude the current search
-                            break
-                    else:
-                        causing_rsi.append((rsi_index, rsi_value, rsi_type))
-            rsi_points.append(causing_rsi)
-        print(f'{macd_points} -------------------------- {rsi_points}')
-
-
-# Example usage
-macd = [(2, 0.005656788341390495, 'valley'), (8, 0.024355482933032135, 'peak'), (11, 0.017572528247562502, 'valley'), (27, 0.10857385642029271, 'peak')]
-rsi = [(2, 41.228070175438475, 'valley'), (5, 62.85973947288657, 'peak'), (8, 50.89158345221094, 'valley'), (11, 56.01851851851898, 'peak'), (14, 39.90825688073404, 'valley'), (16, 63.359591228443854, 'peak'), (18, 58.470986869971036, 'valley'), (27, 85.73446327683581, 'peak')]
-
-# filter_rsi_subset(macd, rsi)
-
-def group_by_type(input_list):
-    if not input_list:
-        return []
-
-    result = []
-    current_group = [input_list[0]]
-
-    for i in range(1, len(input_list)):
-        if input_list[i][2] != current_group[-1][2]:
-            result.append(current_group)
-            current_group = [input_list[i]]
-        else:
-            current_group.append(input_list[i])
-
-    result.append(current_group)
-    return result
-
-
-# Example usage:
-input_list = [(1, 1.0, "peak"), (2, 1.5, "valley"), (3, 0.5, "valley"), (7, 1.5, "valley")]
-output_list = group_by_type(input_list)
-print(output_list)
-
-import pandas as pd
 import numpy as np
 import yfinance as yf
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
-
-import pandas as pd
-import numpy as np
-import yfinance as yf
-from scipy.signal import find_peaks
-import matplotlib.pyplot as plt
+import alpaca_trade_api as tradeapi
+import configparser
 
 def calculate_obv(data):
     """
@@ -121,7 +35,7 @@ def linear_regression(x, y):
     return a, b
 
 
-def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, prominence=0.5):
+def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, prominence=0.1, interval='1m'):
     """
     Downloads historical stock price data, identifies peaks and valleys, and analyzes trends.
 
@@ -136,12 +50,42 @@ def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, p
     - Plots the prices with peaks and valleys and the OBV.
     """
     # Download historical data for TQQQ
-    ticker = yf.download('TQQQ', start=start_date, end=end_date, interval='1d')
-    prices = ticker['Close']
+    if interval == '1d':
+        ticker = yf.download(ticker, start=pd.to_datetime(d_day, format='%Y-%m-%d') - pd.DateOffset(months=12), end=d_day, interval=interval)
+        prices = ticker['Close']
+
+    if interval == '1m':
+        # Load Alpaca API credentials from configuration file
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        # Access configuration values
+        api_key = config.get('settings', 'API_KEY')
+        secret_key = config.get('settings', 'SECRET_KEY')
+        # Initialize Alpaca API
+        api = tradeapi.REST(api_key, secret_key, api_version='v2')
+
+        # Retrieve stock price data from Alpaca
+        start_time = pd.Timestamp(d_day + ' 09:30', tz='America/New_York').tz_convert('UTC')
+        end_time = pd.Timestamp(d_day + ' 16:00', tz='America/New_York').tz_convert('UTC')
+        ticker = api.get_bars(ticker, '1Min', start=start_time.isoformat(), end=end_time.isoformat()).df
+
+        if not ticker.empty:
+            # Convert timestamp index to Eastern Timezone (EST)
+            ticker.index = ticker.index.tz_convert('US/Eastern')
+            # Filter rows between 9:30am and 4:00pm EST
+            data = ticker.between_time('9:30', '16:00')
+            if not ticker.empty:
+                ticker['Close'] = ticker['close']
+                ticker['Volume'] = ticker['volume']
+                prices = data['close']
+            else:
+                prices = []
 
     # Identify peaks and valleys
     peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
     valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+    print(peaks)
+    print(valleys)
 
     trends = pd.DataFrame({
         'Price': prices,
@@ -178,7 +122,7 @@ def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, p
     ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
     ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
     ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
-    ax1.set_title('TQQQ Stock Price Analysis')
+    ax1.set_title(f"{d_day} Stock Price Analysis")
     ax1.set_ylabel('Price')
     ax1.legend()
 
@@ -193,17 +137,21 @@ def analyze_trends(start_date='2024-07-11', end_date='2024-07-12', distance=3, p
 
     return trends
 
+def linear_regression(x, y):
+    """
+    Performs linear regression on the given x and y data.
 
-# Example usage:
-trends = analyze_trends(
-    start_date='2024-01-30',
-    end_date='2024-07-30',
-    distance=1,
-    prominence=0.1)
-print(trends)
+    Parameters:
+    - x: The x values.
+    - y: The y values.
 
+    Returns:
+    - A tuple (a, b) representing the slope and intercept of the line.
+    """
+    a, b = np.polyfit(x, y, 1)
+    return a, b
 
-def predict_next_day_peak_valley(ticker='TQQQ'):
+def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6):
     """
     Predicts the next day's peak and valley based on one year of daily prices and linear regression.
 
@@ -213,16 +161,18 @@ def predict_next_day_peak_valley(ticker='TQQQ'):
     Returns:
     - A dictionary containing the predicted peak and valley prices for the next day.
     """
-    end_date = pd.to_datetime('today')
-    start_date = end_date - pd.DateOffset(days=15)
+    end_date = pd.to_datetime(next_day, format='%Y-%m-%d') - pd.DateOffset(days=1)
+    start_date = end_date - pd.DateOffset(months=months)
 
     # Download one year of daily price data
     data = yf.download(ticker, start=start_date, end=end_date, interval='1d')
     prices = data['Close']
 
     # Identify peaks and valleys
-    peaks, _ = find_peaks(prices, distance=2, prominence=0.5)
-    valleys, _ = find_peaks(-prices, distance=2, prominence=0.5)
+    peaks, _ = find_peaks(prices, distance=2, prominence=0.1)
+    valleys, _ = find_peaks(-prices, distance=2, prominence=0.1)
+    print(peaks)
+    print(valleys)
 
     # Perform linear regression on peaks
     peak_indices = np.array(peaks)
@@ -239,13 +189,7 @@ def predict_next_day_peak_valley(ticker='TQQQ'):
     predicted_peak = a_peaks * next_day_index + b_peaks
     predicted_valley = a_valleys * next_day_index + b_valleys
 
-    # Indicate whether the next day is predicted to be a peak or a valley
-    if predicted_peak > predicted_valley:
-        next_day_prediction = 'Peak'
-    else:
-        next_day_prediction = 'Valley'
-
-        # Determine the type of the last recognized abnormal day
+    # Determine the type of the last recognized abnormal day
     last_peak_index = peak_indices[-1] if len(peak_indices) > 0 else -1
     last_valley_index = valley_indices[-1] if len(valley_indices) > 0 else -1
 
@@ -267,10 +211,39 @@ def predict_next_day_peak_valley(ticker='TQQQ'):
         'Prediction Type': next_day_prediction
     }
 
+    # Create a new index for the next day
+    next_day_date = prices.index[-1] + pd.DateOffset(days=1)
+    extended_index = prices.index.append(pd.Index([next_day_date]))
+
+    # Plotting
+    plt.figure(figsize=(14, 7))
+    plt.plot(prices, label='Price', color='blue')
+    plt.plot(prices.index[peaks], prices.iloc[peaks], 'ro', label='Peaks')
+    plt.plot(prices.index[valleys], prices.iloc[valleys], 'go', label='Valleys')
+    plt.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
+    plt.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
+    plt.axvline(next_day_date, color='purple', linestyle='--', label='Next Day')
+    plt.axhline(predicted_peak, color='red', linestyle='--', label='Predicted Peak')
+    plt.axhline(predicted_valley, color='green', linestyle='--', label='Predicted Valley')
+    for peak in peaks[-2:]:
+        plt.text(prices.index[peak], prices.iloc[peak], prices.index[peak].strftime('%Y-%m-%d'),
+                 horizontalalignment='left', size='small', color='red', weight='semibold')
+
+    for valley in valleys[-2:]:
+        plt.text(prices.index[valley], prices.iloc[valley], prices.index[valley].strftime('%Y-%m-%d'),
+                 horizontalalignment='left', size='small', color='green', weight='semibold')
+
+    plt.title(f'{ticker} Price Analysis with Predicted Peaks and Valleys')
+    plt.xlabel('Date')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.show()
+
     return prediction
 
 
-# Example usage:
-prediction = predict_next_day_peak_valley()
+ticker = 'TQQQ'
+d_day = '2024-05-15'
+prediction = predict_next_day_peak_valley(ticker, d_day, months=12)
 print(prediction)
-
+trends = analyze_trends(ticker, d_day, distance=2, prominence=0.1)

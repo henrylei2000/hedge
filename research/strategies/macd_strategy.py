@@ -511,7 +511,7 @@ class MACDStrategy(Strategy):
                                 hold = True
             elif hold and len(mpeaks) and len(rpeaks):  # waiting for a selling opportunity - bearish signal
                 # trend reversal
-                if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 80 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5:
+                if rpeaks[-1][1] - rsi > 30 and rpeaks[-1][1] > 70 and count - rpeaks[-1][0] < 10 and 0 < mpeaks[-1][0] - rpeaks[-1][0] < 5:
                     if row['obv'] < row['rolling_obv'] or True:
                         position = -1
                         hold = False
@@ -673,7 +673,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.rsi()
+        self.zero_crossing()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
