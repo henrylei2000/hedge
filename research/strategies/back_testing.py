@@ -1,4 +1,5 @@
 from macd_strategy import MACDStrategy
+from wave_strategy import WaveStrategy
 import alpaca_trade_api as tradeapi
 import configparser
 
@@ -25,7 +26,7 @@ def get_dates():
     for day in calendar:
         daily_pnl, trades = 0, 0
         for symbol in ['TQQQ', 'SQQQ']:
-            macd_strategy = MACDStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
+            macd_strategy = WaveStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
             macd_strategy.backtest()
             if macd_strategy.trades:
                 print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {macd_strategy.pnl:.2f} ({macd_strategy.trades})")

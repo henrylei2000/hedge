@@ -6,6 +6,35 @@ import matplotlib.pyplot as plt
 import alpaca_trade_api as tradeapi
 import configparser
 
+
+def calculate_macd(data):
+    """
+    Calculates the Moving Average Convergence Divergence (MACD) for the given data.
+
+    Parameters:
+    - data: A DataFrame containing 'Close' prices.
+
+    Returns:
+    - A DataFrame containing the MACD line and the Signal line.
+    """
+    # Calculate the 12-day and 26-day EMAs
+    ema_12 = data['Close'].ewm(span=12, adjust=False).mean()
+    ema_26 = data['Close'].ewm(span=26, adjust=False).mean()
+
+    # Calculate the MACD line
+    macd = ema_12 - ema_26
+
+    # Calculate the Signal line
+    signal = macd.ewm(span=9, adjust=False).mean()
+
+    # Create a DataFrame to hold the MACD and Signal lines
+    macd_df = pd.DataFrame({
+        'MACD': macd,
+        'Signal': signal
+    })
+
+    return pd.Series(macd, index=data.index)
+
 def calculate_obv(data):
     """
     Calculates the On-Balance Volume (OBV) for the given data.
@@ -19,6 +48,9 @@ def calculate_obv(data):
     obv = np.where(data['Close'] > data['Close'].shift(1), data['Volume'],
                    np.where(data['Close'] < data['Close'].shift(1), -data['Volume'], 0)).cumsum()
     return pd.Series(obv, index=data.index)
+
+def calculate_volume(data):
+    return pd.Series(data['Volume'], index=data.index)
 
 def linear_regression(x, y):
     """
@@ -35,7 +67,7 @@ def linear_regression(x, y):
     return a, b
 
 
-def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, prominence=0.1, interval='1m'):
+def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, interval='1m'):
     """
     Downloads historical stock price data, identifies peaks and valleys, and analyzes trends.
 
@@ -81,6 +113,8 @@ def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, prominence=0.1
             else:
                 prices = []
 
+    prominence = prices.iloc[-1] * 0.00125 + 0.005
+    print(f"----------- {prominence}")
     # Identify peaks and valleys
     peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
     valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
@@ -137,19 +171,6 @@ def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, prominence=0.1
 
     return trends
 
-def linear_regression(x, y):
-    """
-    Performs linear regression on the given x and y data.
-
-    Parameters:
-    - x: The x values.
-    - y: The y values.
-
-    Returns:
-    - A tuple (a, b) representing the slope and intercept of the line.
-    """
-    a, b = np.polyfit(x, y, 1)
-    return a, b
 
 def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6):
     """
@@ -161,18 +182,20 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
     Returns:
     - A dictionary containing the predicted peak and valley prices for the next day.
     """
-    end_date = pd.to_datetime(next_day, format='%Y-%m-%d') - pd.DateOffset(days=1)
+    end_date = pd.to_datetime(next_day, format='%Y-%m-%d')
     start_date = end_date - pd.DateOffset(months=months)
 
     # Download one year of daily price data
     data = yf.download(ticker, start=start_date, end=end_date, interval='1d')
     prices = data['Close']
+    volumes = data['Volume']
+
+    # Calculate OBV
+    obv = calculate_obv(data)
 
     # Identify peaks and valleys
     peaks, _ = find_peaks(prices, distance=2, prominence=0.1)
     valleys, _ = find_peaks(-prices, distance=2, prominence=0.1)
-    print(peaks)
-    print(valleys)
 
     # Perform linear regression on peaks
     peak_indices = np.array(peaks)
@@ -212,38 +235,48 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
     }
 
     # Create a new index for the next day
+
     next_day_date = prices.index[-1] + pd.DateOffset(days=1)
     extended_index = prices.index.append(pd.Index([next_day_date]))
 
     # Plotting
-    plt.figure(figsize=(14, 7))
-    plt.plot(prices, label='Price', color='blue')
-    plt.plot(prices.index[peaks], prices.iloc[peaks], 'ro', label='Peaks')
-    plt.plot(prices.index[valleys], prices.iloc[valleys], 'go', label='Valleys')
-    plt.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
-    plt.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
-    plt.axvline(next_day_date, color='purple', linestyle='--', label='Next Day')
-    plt.axhline(predicted_peak, color='red', linestyle='--', label='Predicted Peak')
-    plt.axhline(predicted_valley, color='green', linestyle='--', label='Predicted Valley')
-    for peak in peaks[-2:]:
-        plt.text(prices.index[peak], prices.iloc[peak], prices.index[peak].strftime('%Y-%m-%d'),
-                 horizontalalignment='left', size='small', color='red', weight='semibold')
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 
+    # Plot price data and linear regression lines
+    ax1.plot(prices, label='Price', color='blue')
+    ax1.plot(prices.index[peaks], prices.iloc[peaks], 'ro', label='Peaks')
+    ax1.plot(prices.index[valleys], prices.iloc[valleys], 'go', label='Valleys')
+    ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
+    ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
+    ax1.axvline(next_day_date, color='purple', linestyle='--', label='Next Day')
+    ax1.axhline(predicted_peak, color='red', linestyle='--', label='Predicted Peak')
+    ax1.axhline(predicted_valley, color='green', linestyle='--', label='Predicted Valley')
+    for peak in peaks[-2:]:
+        ax1.text(prices.index[peak], prices.iloc[peak], prices.index[peak].strftime('%Y-%m-%d'),
+                 horizontalalignment='left', size='small', color='red', weight='semibold')
     for valley in valleys[-2:]:
-        plt.text(prices.index[valley], prices.iloc[valley], prices.index[valley].strftime('%Y-%m-%d'),
+        ax1.text(prices.index[valley], prices.iloc[valley], prices.index[valley].strftime('%Y-%m-%d'),
                  horizontalalignment='left', size='small', color='green', weight='semibold')
 
-    plt.title(f'{ticker} Price Analysis with Predicted Peaks and Valleys')
-    plt.xlabel('Date')
-    plt.ylabel('Price')
-    plt.legend()
+    ax1.set_title(f'{ticker} Price Analysis with Predicted Peaks and Valleys {prices.index[-1]}')
+    ax1.set_ylabel('Price')
+    ax1.legend()
+
+    # Plot OBV data
+    ax2.plot(obv, label='OBV', color='purple')
+    ax2.set_title('On-Balance Volume (OBV)')
+    ax2.set_xlabel('Date')
+    ax2.set_ylabel('OBV')
+    ax2.legend()
+
+    plt.tight_layout()
     plt.show()
 
     return prediction
 
 
 ticker = 'TQQQ'
-d_day = '2022-05-18'
+d_day = '2024-07-15'
 prediction = predict_next_day_peak_valley(ticker, d_day, months=12)
 print(prediction)
-trends = analyze_trends(ticker, d_day, distance=2, prominence=0.1)
+trends = analyze_trends(ticker, d_day, distance=2)

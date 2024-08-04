@@ -26,7 +26,7 @@ class Strategy:
 
     def backtest(self):
         prediction = self.predict()
-        if prediction['Prediction Type'] == 'Peak':
+        if prediction['Prediction Type'] == 'Peak' or True:
             if self.download():
                 self.sanitize()
                 self.signal()
