@@ -122,10 +122,11 @@ class WaveStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
-        ax2.plot(rows['macd'], label='OBV', color='purple')
-        ax2.set_title('On-Balance Volume (OBV)')
+        label = 'macd'
+        ax2.plot(rows[label], label=f"{label}", color='purple')
+        ax2.set_title(f"{label}")
         ax2.set_xlabel('Time')
-        ax2.set_ylabel('OBV')
+        ax2.set_ylabel(f"{label}")
         ax2.legend()
 
         plt.tight_layout()
