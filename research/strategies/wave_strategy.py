@@ -1,6 +1,8 @@
 from strategy import Strategy
-from scipy.signal import find_peaks
 import numpy as np
+import pandas as pd
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 
 class WaveStrategy(Strategy):
@@ -74,6 +76,60 @@ class WaveStrategy(Strategy):
             positions.append(position)
             count += 1
         data['position'] = positions
+
+        prices = data['close']
+        prominence = prices.iloc[-1] * 0.00125 + 0.005
+        print(f"----------- {prominence}")
+        # Identify peaks and valleys
+        peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
+        valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
+        print(peaks)
+        print(valleys)
+
+        trends = pd.DataFrame({
+            'Price': prices,
+            'Trend': np.nan,
+            'Type': np.nan
+        }, dtype=object)
+
+        # Use iloc to align indices correctly
+        trends.iloc[peaks, trends.columns.get_loc('Trend')] = 'Peak'
+        trends.iloc[valleys, trends.columns.get_loc('Trend')] = 'Valley'
+
+        # Forward fill the trends to identify uptrends and downtrends
+        trends['Trend'] = trends['Trend'].ffill()
+        trends['Type'] = np.where(trends['Trend'] == 'Peak', 'Downtrend', 'Uptrend')
+
+        # Perform linear regression on peaks
+        peak_indices = np.array(peaks)
+        peak_prices = prices.iloc[peaks]
+        a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
+
+        # Perform linear regression on valleys
+        valley_indices = np.array(valleys)
+        valley_prices = prices.iloc[valleys]
+        a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
+
+        # Plotting
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+
+        ax1.plot(prices, label='Price', color='blue')
+        ax1.plot(prices.iloc[peaks], 'ro', label='Peaks')
+        ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
+        ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
+        ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
+        ax1.set_title(f"{self.start} Stock Price Analysis")
+        ax1.set_ylabel('Price')
+        ax1.legend()
+
+        ax2.plot(data['obv'], label='OBV', color='purple')
+        ax2.set_title('On-Balance Volume (OBV)')
+        ax2.set_xlabel('Time')
+        ax2.set_ylabel('OBV')
+        ax2.legend()
+
+        plt.tight_layout()
+        plt.show()
 
     def signal(self):
         self.trend()

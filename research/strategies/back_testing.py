@@ -15,7 +15,7 @@ def get_dates():
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
 
     # Define the start and end dates for the market calendar you want to retrieve
-    start_date = '2024-07-21'
+    start_date = '2024-07-22'
     end_date = '2024-07-22'
 
     # Get the market calendar
@@ -25,7 +25,7 @@ def get_dates():
     performance = 0.0
     for day in calendar:
         daily_pnl, trades = 0, 0
-        for symbol in ['TQQQ', 'SQQQ']:
+        for symbol in ['TQQQ']:
             macd_strategy = WaveStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
             macd_strategy.backtest()
             if macd_strategy.trades:
