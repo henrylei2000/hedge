@@ -49,10 +49,13 @@ class WaveStrategy(Strategy):
         for index, row in data.iterrows():
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
-
+            prominence = prices.iloc[0] * 0.00125 + 0.005
+            print(f"----------- {prominence}")
             # Identify peaks and valleys
-            peaks, _ = find_peaks(prices, distance=1, prominence=0.1)
-            valleys, _ = find_peaks(-prices, distance=1, prominence=0.1)
+            peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
+            valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
+            print(peaks)
+            print(valleys)
 
             # Perform linear regression on peaks
             if len(peaks) > 5:
@@ -73,18 +76,15 @@ class WaveStrategy(Strategy):
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
                 print(f"[{a_valleys:.3f} {b_valleys:.3f}]")
 
+            if count == 90:
+                self.snapshot(visible_rows, peaks, valleys)
+
             positions.append(position)
             count += 1
         data['position'] = positions
 
-        prices = data['close']
-        prominence = prices.iloc[-1] * 0.00125 + 0.005
-        print(f"----------- {prominence}")
-        # Identify peaks and valleys
-        peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
-        valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
-        print(peaks)
-        print(valleys)
+    def snapshot(self, rows, peaks, valleys):
+        prices = rows['close']
 
         trends = pd.DataFrame({
             'Price': prices,
@@ -122,7 +122,7 @@ class WaveStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
-        ax2.plot(data['obv'], label='OBV', color='purple')
+        ax2.plot(rows['macd'], label='OBV', color='purple')
         ax2.set_title('On-Balance Volume (OBV)')
         ax2.set_xlabel('Time')
         ax2.set_ylabel('OBV')
