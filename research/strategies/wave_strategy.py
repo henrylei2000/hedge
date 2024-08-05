@@ -50,12 +50,14 @@ class WaveStrategy(Strategy):
         for index, row in data.iterrows():
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
-            prominence = prices.iloc[0] * 0.00125 + 0.005
-            print(f"----------- {prominence}")
+            if not count:
+                prominence = prices.iloc[0] * 0.00125 + 0.005
+                print(f"----------- {prominence}")
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
             valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
 
+            print(f"----- {index} {data.index.get_loc(index)} / {count} -------")
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
                 num_peaks += 1
@@ -73,13 +75,13 @@ class WaveStrategy(Strategy):
 
                 if max(peak_prices) == peak_prices.iloc[-1]:  # highest peak
                     print(
-                        f"peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']} and now {row['close']}")
+                        f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']} and now {row['close']}")
 
                 if a_peaks * a_recent < 0:
                     if a_recent > a_peaks:
                         position = 1
                     print(
-                        f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]} {data.index.get_loc(index)} {index}")
+                        f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]}")
 
             # Perform linear regression on valleys
             if len(valleys) > 5:
@@ -89,13 +91,15 @@ class WaveStrategy(Strategy):
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
                 print(f"[{a_valleys:.3f} {b_valleys:.3f}]")
                 if min(valley_prices) == valley_prices.iloc[-1]:  # lowest valley
-                    print(f"valley is the lowest: {valley_prices.iloc[-1]} {visible_rows.iloc[valley_indices[-1]]['close']} and now {row['close']}")
+                    print(f"[Trending HIGH] valley is the lowest: {valley_prices.iloc[-1]} {visible_rows.iloc[valley_indices[-1]]['close']} and now {row['close']}")
 
             if count == 90:
                 self.snapshot(visible_rows, peaks, valleys)
 
             positions.append(position)
             count += 1
+            print("\n")
+
         data['position'] = positions
 
     def snapshot(self, rows, peaks, valleys):
