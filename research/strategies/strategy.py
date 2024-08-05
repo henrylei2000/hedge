@@ -31,7 +31,7 @@ class Strategy:
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                # self.plot()
+                self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")

@@ -77,7 +77,7 @@ class WaveStrategy(Strategy):
                     print(
                         f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']} and now {row['close']}")
 
-                if a_peaks * a_recent < 0:
+                if a_peaks * a_recent < 0:  # trend reversal
                     if a_recent > a_peaks:
                         position = 1
                     print(
@@ -89,9 +89,16 @@ class WaveStrategy(Strategy):
                 valley_prices = prices.iloc[valleys]
 
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
-                print(f"[{a_valleys:.3f} {b_valleys:.3f}]")
+                a_recent, b_recent = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
+
                 if min(valley_prices) == valley_prices.iloc[-1]:  # lowest valley
                     print(f"[Trending HIGH] valley is the lowest: {valley_prices.iloc[-1]} {visible_rows.iloc[valley_indices[-1]]['close']} and now {row['close']}")
+
+                if a_valleys * a_recent < 0:  # trend reversal
+                    if a_recent < a_valleys:
+                        position = -1
+                    print(
+                        f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
             if count == 90:
                 self.snapshot(visible_rows, peaks, valleys)
@@ -141,7 +148,7 @@ class WaveStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
-        label = 'macd'
+        label = 'strength'
         ax2.plot(rows[label], label=f"{label}", color='purple')
         ax2.set_title(f"{label}")
         ax2.set_xlabel('Time')
