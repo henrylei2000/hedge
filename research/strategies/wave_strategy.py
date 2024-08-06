@@ -47,6 +47,9 @@ class WaveStrategy(Strategy):
         hold = False
         count = 0
         num_peaks, num_valleys = 0, 0
+
+        bottom, bottom_index = 0, 0
+
         for index, row in data.iterrows():
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
@@ -92,7 +95,9 @@ class WaveStrategy(Strategy):
                 a_recent, b_recent = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
 
                 if min(valley_prices) == valley_prices.iloc[-1]:  # lowest valley
-                    print(f"[Trending HIGH] valley is the lowest: {valley_prices.iloc[-1]} {visible_rows.iloc[valley_indices[-1]]['close']} and now {row['close']}")
+                    bottom = valley_prices.iloc[-1]
+                    bottom_index = valley_indices[-1]
+                    print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index} and now {row['close']}")
 
                 if a_valleys * a_recent < 0:  # trend reversal
                     if a_recent < a_valleys:
