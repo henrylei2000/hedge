@@ -51,6 +51,7 @@ class WaveStrategy(Strategy):
         bottom, bottom_index = 0, 0
 
         for index, row in data.iterrows():
+            print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {row['close']:.4f} / {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
             if not count:
@@ -60,7 +61,6 @@ class WaveStrategy(Strategy):
             peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
             valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
 
-            print(f"----- {index} {data.index.get_loc(index)} / {count} -------")
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
                 num_peaks += 1
@@ -69,16 +69,20 @@ class WaveStrategy(Strategy):
                 num_valleys += 1
 
             # Perform linear regression on peaks
-            if len(peaks) > 5:
+            if num_peaks > 2:
                 peak_indices = np.array(peaks)
                 peak_prices = prices.iloc[peaks]
 
                 a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
                 a_recent, b_recent = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
 
+                projected_peak = a_peaks * count + b_peaks
+                projected_recent = a_recent * count + b_recent
+                print(f"project peak {projected_peak:.4f} and {projected_recent:.4f}")
+
                 if max(peak_prices) == peak_prices.iloc[-1]:  # highest peak
                     print(
-                        f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']} and now {row['close']}")
+                        f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']}")
 
                 if a_peaks * a_recent < 0:  # trend reversal
                     if a_recent > a_peaks:
@@ -87,17 +91,21 @@ class WaveStrategy(Strategy):
                         f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]}")
 
             # Perform linear regression on valleys
-            if len(valleys) > 5:
+            if num_valleys > 2:
                 valley_indices = np.array(valleys)
                 valley_prices = prices.iloc[valleys]
 
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
                 a_recent, b_recent = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
 
+                projected_valley = a_valleys * count + b_valleys
+                projected_recent = a_recent * count + b_recent
+                print(f"project valley {projected_valley:.4f} and {projected_recent:.4f}")
+
                 if min(valley_prices) == valley_prices.iloc[-1]:  # lowest valley
                     bottom = valley_prices.iloc[-1]
                     bottom_index = valley_indices[-1]
-                    print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index} and now {row['close']}")
+                    print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index}")
 
                 if a_valleys * a_recent < 0:  # trend reversal
                     if a_recent < a_valleys:
