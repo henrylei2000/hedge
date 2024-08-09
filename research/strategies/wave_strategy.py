@@ -113,7 +113,7 @@ class WaveStrategy(Strategy):
                     print(
                         f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
-            if count == 90:
+            if count == 389:
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
                 self.snapshot(visible_rows, peaks, valleys)
 
@@ -162,7 +162,7 @@ class WaveStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
-        label = 'strength'
+        label = 'obv'
         ax2.plot(rows[label], label=f"{label}", color='purple')
         ax2.set_title(f"{label}")
         ax2.set_xlabel('Time')
