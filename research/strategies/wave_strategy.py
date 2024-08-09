@@ -114,6 +114,7 @@ class WaveStrategy(Strategy):
                         f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
             if count == 90:
+                print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
                 self.snapshot(visible_rows, peaks, valleys)
 
             positions.append(position)
