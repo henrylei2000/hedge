@@ -86,9 +86,9 @@ class WaveStrategy(Strategy):
                     print(f"project peak {projected_peak:.4f} and {projected_recent:.4f}")
 
                     if a_peaks * a_recent < 0:  # trend reversal
-                        if a_recent > a_peaks:
-                            position = 1
-                            print(f"!!!!!!!!!!!!")
+                        if a_recent < a_peaks:
+                            position = -1
+                            print(f"xxxxxxxxxxxxxxxxxxxxxxx")
                         print(
                             f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]}")
 
@@ -113,8 +113,9 @@ class WaveStrategy(Strategy):
                     projected_recent = a_recent * count + b_recent
                     print(f"project valley {projected_valley:.4f} and {projected_recent:.4f}")
                     if a_valleys * a_recent < 0:  # trend reversal
-                        if a_recent < a_valleys:
-                            position = -1
+                        if a_recent > a_valleys:
+                            position = 1
+                            print(f"!!!!!!!!!!!!!!!!!")
                         print(
                             f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
@@ -125,7 +126,7 @@ class WaveStrategy(Strategy):
 
 
 
-            if count == 180:
+            if count == 225:
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
                 self.snapshot(visible_rows, peaks, valleys)
 
