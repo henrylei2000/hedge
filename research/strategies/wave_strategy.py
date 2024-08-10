@@ -45,6 +45,7 @@ class WaveStrategy(Strategy):
         # Initialize Signal column with zeros
         data['position'] = 0
         buy, hold = False, False
+        sell_point = 0
         count = 0
         num_peaks, num_valleys = 0, 0
         bottom, bottom_index = 0, 0
@@ -68,45 +69,46 @@ class WaveStrategy(Strategy):
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
                 num_peaks += 1
+                buy = False
+                if max(peak_prices) == peak_prices.iloc[-1]:  # highest peak
+                    print(
+                        f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']}")
+
             if len(valleys) > num_valleys:
                 print(f"Found a new valley after {count - valleys[-1]}")
                 num_valleys += 1
+                if hold:
+                    sell_point = max(sell_point, valley_prices.iloc[-1])
                 if min(valley_prices) == valley_prices.iloc[-1]:  # lowest valley
                     bottom = valley_prices.iloc[-1]
                     bottom_index = valley_indices[-1]
                     print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index}")
                 elif min(valley_prices) < valley_prices.iloc[-1]:
-                    print(f"Buy signal @ {count}")
                     if not hold:
+                        print(f"Buy signal @ {count}")
                         buy = True
 
-
-            # Perform linear regression on peaks
-            if num_peaks > 2:
+            # Perform linear regression on valleys
+            if num_valleys > 2 and num_peaks > 2:
                 a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
                 projected_peak = a_peaks * count + b_peaks
                 a_recent, b_recent = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
                 projected_recent = a_recent * count + b_recent
                 print(f"project peak {projected_peak:.4f} and {projected_recent:.4f}")
 
-                if a_peaks * a_recent < 0:  # trend reversal
-                    if a_recent < a_peaks:
-                        position = -1
-                        print(f"xxxxxxxxxxxxxxxxxxxxxxx")
+                if row['close'] <= sell_point:  # trend reversal
+                    position = -1
+                    hold = False
+                    sell_point = 0
+                    print(f"selling @ {row['close']}")
                     print(
                         f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]}")
 
-                if max(peak_prices) == peak_prices.iloc[-1]:  # highest peak
-                    print(
-                        f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']}")
-
-            # Perform linear regression on valleys
-            if num_valleys > 2:
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
                 projected_valley = a_valleys * count + b_valleys
 
                 if buy:
-                    print(f"---------- {bottom_index}")
+                    print(f"Buy signal since the last dip ---------- {bottom_index}")
                     recent_indices = [i for i in valleys if i >= bottom_index]
                     print(f"recent indices {recent_indices}")
                     recent_prices = prices.iloc[recent_indices]
@@ -114,14 +116,18 @@ class WaveStrategy(Strategy):
 
                     projected_recent = a_recent * count + b_recent
                     print(f"project valley {projected_valley:.4f} and {projected_recent:.4f}")
-                    if a_valleys * a_recent < 0:  # trend reversal
-                        if a_recent > a_valleys:
+
+                    if a_valleys < 0 < a_recent:  # trend reversal
+                        if row['close'] > projected_peak:
                             position = 1
-                            print(f"!!!!!!!!!!!!!!!!!")
+                            print(f"buying @ {row['close']}")
+                            buy = False
+                            hold = True
+                            sell_point = row['close']
                         print(
                             f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
-            if count == 20:
+            if count == 60:
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
                 self.snapshot(visible_rows, peaks, valleys)
 
