@@ -276,7 +276,7 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
 
 
 ticker = 'TQQQ'
-d_day = '2024-07-15'
+d_day = '2024-07-22'
 prediction = predict_next_day_peak_valley(ticker, d_day, months=12)
 print(prediction)
 trends = analyze_trends(ticker, d_day, distance=2)

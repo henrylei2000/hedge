@@ -44,13 +44,14 @@ class WaveStrategy(Strategy):
 
         # Initialize Signal column with zeros
         data['position'] = 0
-        buy, hold = False, False
+        buy, sell, hold = False, False, False
         sell_point = 0
         count = 0
         num_peaks, num_valleys = 0, 0
         bottom, bottom_index = 0, 0
-
-        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        projected_peak = 0
+        a_valleys, b_valleys = 0, 0
+        prominence = data.iloc[0]['close'] * 0.00168 + 0.005
         print(f"prominence ----------- {prominence}")
 
         for index, row in data.iterrows():
@@ -70,6 +71,9 @@ class WaveStrategy(Strategy):
                 print(f"Found a new peak after {count - peaks[-1]}")
                 num_peaks += 1
                 buy = False
+                if hold and peak_prices.iloc[-1] < peak_prices.iloc[-2]:
+                    print(f"Peak not reached {count} {peak_prices.iloc[-1]} {a_valleys * peaks[-1] + b_valleys}")
+                    sell = True
                 if max(peak_prices) == peak_prices.iloc[-1]:  # highest peak
                     print(
                         f"[Trending LOW!] peak is the highest: {peak_prices.iloc[-1]} {visible_rows.iloc[peak_indices[-1]]['close']}")
@@ -96,9 +100,10 @@ class WaveStrategy(Strategy):
                 projected_recent = a_recent * count + b_recent
                 print(f"project peak {projected_peak:.4f} and {projected_recent:.4f}")
 
-                if row['close'] <= sell_point:  # trend reversal
+                if row['close'] <= sell_point or sell:  # trend reversal
                     position = -1
                     hold = False
+                    sell = False
                     sell_point = 0
                     print(f"selling @ {row['close']}")
                     print(
@@ -127,9 +132,9 @@ class WaveStrategy(Strategy):
                         print(
                             f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
-            if count == 60:
+            if count == 210:
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
-                self.snapshot(visible_rows, peaks, valleys)
+                self.snapshot([110,210], prominence)
 
             positions.append(position)
             count += 1
@@ -137,32 +142,28 @@ class WaveStrategy(Strategy):
 
         data['position'] = positions
 
-    def snapshot(self, rows, peaks, valleys):
+    def snapshot(self, interval, prominence):
+
+        rows = self.data.iloc[interval[0]:interval[1]]
         prices = rows['close']
 
-        trends = pd.DataFrame({
-            'Price': prices,
-            'Trend': np.nan,
-            'Type': np.nan
-        }, dtype=object)
-
-        # Use iloc to align indices correctly
-        trends.iloc[peaks, trends.columns.get_loc('Trend')] = 'Peak'
-        trends.iloc[valleys, trends.columns.get_loc('Trend')] = 'Valley'
-
-        # Forward fill the trends to identify uptrends and downtrends
-        trends['Trend'] = trends['Trend'].ffill()
-        trends['Type'] = np.where(trends['Trend'] == 'Peak', 'Downtrend', 'Uptrend')
+        # Identify peaks and valleys
+        peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
+        peak_indices = np.array(peaks)
+        peak_prices = prices.iloc[peaks]
+        valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
+        valley_indices = np.array(valleys)
+        valley_prices = prices.iloc[valleys]
 
         # Perform linear regression on peaks
         peak_indices = np.array(peaks)
         peak_prices = prices.iloc[peaks]
-        a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
+        a_peaks, b_peaks = np.polyfit(peak_indices[-2:], peak_prices[-2:], 1)
 
         # Perform linear regression on valleys
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
-        a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
+        a_valleys, b_valleys = np.polyfit(valley_indices[-2:], valley_prices[-2:], 1)
 
         # Plotting
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
@@ -172,7 +173,7 @@ class WaveStrategy(Strategy):
         ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
         ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
         ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
-        ax1.set_title(f"{self.start.strftime('%Y-%m-%d')} Stock Price Analysis")
+        ax1.set_title(f"{self.start.strftime('%Y-%m-%d')} {interval} Stock Price Analysis")
         ax1.set_ylabel('Price')
         ax1.legend()
 
