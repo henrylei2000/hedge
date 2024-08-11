@@ -69,6 +69,7 @@ class WaveStrategy(Strategy):
 
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
+                print(f"Peak standout: {self.standout(peak_prices)}")
                 num_peaks += 1
                 buy = False
                 if hold and peak_prices.iloc[-1] < peak_prices.iloc[-2]:
@@ -80,6 +81,7 @@ class WaveStrategy(Strategy):
 
             if len(valleys) > num_valleys:
                 print(f"Found a new valley after {count - valleys[-1]}")
+                print(f"Valley standout: {self.standout(valley_prices)}")
                 num_valleys += 1
                 if hold:
                     sell_point = max(sell_point, valley_prices.iloc[-1])
@@ -87,7 +89,8 @@ class WaveStrategy(Strategy):
                     bottom = valley_prices.iloc[-1]
                     bottom_index = valley_indices[-1]
                     print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index}")
-                elif min(valley_prices) < valley_prices.iloc[-1]:
+
+                if self.standout(valley_prices) > 3 and self.standout(peak_prices) > 3:
                     if not hold:
                         print(f"Buy signal @ {count}")
                         buy = True
@@ -132,15 +135,24 @@ class WaveStrategy(Strategy):
                         print(
                             f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
-            if count == 210:
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
-                self.snapshot([110,210], prominence)
-
             positions.append(position)
             count += 1
             print("\n")
 
         data['position'] = positions
+        self.snapshot([50, 99], prominence)
+
+    def standout(self, values):
+        base = values[-1]
+        count = 0
+        for v in values[-2::-1]:
+            if v <= base:
+                count += 1
+            else:
+                break
+
+        return count
 
     def snapshot(self, interval, prominence):
 
@@ -158,12 +170,12 @@ class WaveStrategy(Strategy):
         # Perform linear regression on peaks
         peak_indices = np.array(peaks)
         peak_prices = prices.iloc[peaks]
-        a_peaks, b_peaks = np.polyfit(peak_indices[-2:], peak_prices[-2:], 1)
+        a_peaks, b_peaks = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
 
         # Perform linear regression on valleys
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
-        a_valleys, b_valleys = np.polyfit(valley_indices[-2:], valley_prices[-2:], 1)
+        a_valleys, b_valleys = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
 
         # Plotting
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
