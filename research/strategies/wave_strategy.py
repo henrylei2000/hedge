@@ -103,7 +103,7 @@ class WaveStrategy(Strategy):
                 projected_recent = a_recent * count + b_recent
                 print(f"project peak {projected_peak:.4f} and {projected_recent:.4f}")
 
-                if row['close'] <= sell_point or sell:  # trend reversal
+                if row['close'] <= sell_point and sell:  # trend reversal
                     position = -1
                     hold = False
                     sell = False
@@ -125,14 +125,12 @@ class WaveStrategy(Strategy):
                     projected_recent = a_recent * count + b_recent
                     print(f"project valley {projected_valley:.4f} and {projected_recent:.4f}")
 
-                    if a_valleys < 0 < a_recent:  # trend reversal
-                        if row['close'] > projected_peak:
-                            position = 1
-                            print(f"buying @ {row['close']}")
-                            buy = False
-                            hold = True
-                            sell_point = row['close']
-                        print(
+                    position = 1
+                    print(f"buying @ {row['close']}")
+                    buy = False
+                    hold = True
+                    sell_point = row['close']
+                    print(
                             f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
