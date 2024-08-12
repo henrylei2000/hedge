@@ -70,7 +70,9 @@ class WaveStrategy(Strategy):
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
         a_valleys, b_valleys = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
-
+        # Get positions for buy (1) and sell (-1) signals
+        buy_signals = rows[rows['position'] == 1]
+        sell_signals = rows[rows['position'] == -1]
         # Plotting
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 
@@ -79,6 +81,9 @@ class WaveStrategy(Strategy):
         ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
         ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
         ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
+        # Plot buy and sell signals
+        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
+        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
         ax1.set_title(f"{self.start.strftime('%Y-%m-%d')} {interval} Stock Price Analysis")
         ax1.set_ylabel('Price')
         ax1.legend()
@@ -96,7 +101,6 @@ class WaveStrategy(Strategy):
     def trend(self):
         self.wave_simple()
         data = self.data
-        position = 0
         positions = []  # Store updated signals
 
         # Initialize Signal column with zeros
@@ -108,10 +112,11 @@ class WaveStrategy(Strategy):
         bottom, bottom_index = 0, 0
         projected_peak = 0
         a_valleys, b_valleys = 0, 0
-        prominence = data.iloc[0]['close'] * 0.00168 + 0.005
+        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
         print(f"prominence ----------- {prominence}")
 
         for index, row in data.iterrows():
+            position = 0
             print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {row['close']:.4f} / {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
@@ -147,8 +152,7 @@ class WaveStrategy(Strategy):
                     bottom_index = valley_indices[-1]
                     print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index}")
 
-                if self.standout(valley_prices) > 2 and self.standout(peak_prices) > 2 and self.standout(valley_prices[:-1]) and self.standout(peak_prices[:-1]):
-
+                if self.standout(valley_prices) > 1 and self.standout(peak_prices) and self.standout(valley_prices[:-1]):
                     if not hold:
                         print(f"Buy signal @ {count}")
                         buy = True
@@ -159,7 +163,7 @@ class WaveStrategy(Strategy):
                 projected_peak = a_peaks * count + b_peaks
                 a_recent, b_recent = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
                 projected_recent = a_recent * count + b_recent
-                print(f"project peak {projected_peak:.4f} and {projected_recent:.4f}")
+                print(f"projected peak {projected_peak:.4f} and {projected_recent:.4f}")
 
                 if row['close'] <= sell_point and sell:  # trend reversal
                     position = -1
@@ -181,8 +185,7 @@ class WaveStrategy(Strategy):
                     a_recent, b_recent = np.polyfit(recent_indices, recent_prices, 1)
 
                     projected_recent = a_recent * count + b_recent
-                    print(f"project valley {projected_valley:.4f} and {projected_recent:.4f}")
-
+                    print(f"projected valley {projected_valley:.4f} and {projected_recent:.4f}")
                     position = 1
                     print(f"buying @ {row['close']}")
                     buy = False
@@ -192,12 +195,13 @@ class WaveStrategy(Strategy):
                             f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
 
                 print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
+
             positions.append(position)
             count += 1
             print("\n")
 
         data['position'] = positions
-        self.snapshot([300, 385], prominence)
+        self.snapshot([280, 350], prominence)
 
     def signal(self):
         self.trend()
