@@ -15,7 +15,7 @@ def get_dates():
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
 
     # Define the start and end dates for the market calendar you want to retrieve
-    start_date = '2024-07-24'
+    start_date = '2024-07-25'
     end_date = start_date  #'2024-07-25'
 
     # Get the market calendar
@@ -37,8 +37,8 @@ def get_dates():
             print(f"-------------------------------------- {daily_pnl:.2f} ({trades})")
     print(f"------------ TOTAL ------------------- {performance:.2f}")
 
-def back_test():
 
+def back_test():
     # Backtest MACD strategy
     macd_strategy = MACDStrategy()
     macd_strategy.backtest()
