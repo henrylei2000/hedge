@@ -63,12 +63,12 @@ class WaveStrategy(Strategy):
         a_valleys, b_valleys = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
 
         obvs = rows['obv']
-        obv_distance = 25
-        obv_prominence = obvs.iloc[0] * 0.0618
+        obv_distance = 32
+        obv_prominence = obvs.iloc[0] * 0.00125 + 0.005
         # Identify peaks and valleys
         obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
-        obv_peak_prices = prices.iloc[obv_peaks]
+        obv_peak_prices = obvs.iloc[obv_peaks]
         obv_valleys, _ = find_peaks(-obvs, distance=obv_distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
@@ -76,13 +76,13 @@ class WaveStrategy(Strategy):
         # Perform linear regression on peaks
         obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-3:], obv_peak_prices[-3:], 1)
         # Perform linear regression on valleys
-        obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-3:], obv_valley_prices[-3:], 1)
+        obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-2:], obv_valley_prices[-2:], 1)
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
         sell_signals = rows[rows['position'] == -1]
         # Plotting
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
         ax1.plot(prices.iloc[peaks], 'ro', label='Peaks')
@@ -214,7 +214,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([0, 250], distance, prominence)
+        self.snapshot([0, 120], distance, prominence)
 
     def signal(self):
         self.trend()
