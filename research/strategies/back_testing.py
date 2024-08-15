@@ -25,7 +25,7 @@ def get_dates():
     performance = 0.0
     for day in calendar:
         daily_pnl, trades = 0, 0
-        for symbol in ['TQQQ']:
+        for symbol in ['SQQQ']:
             macd_strategy = WaveStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
             macd_strategy.backtest()
             if macd_strategy.trades:

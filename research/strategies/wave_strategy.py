@@ -63,14 +63,20 @@ class WaveStrategy(Strategy):
         a_valleys, b_valleys = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
 
         obvs = rows['obv']
-        obv_prominence = obvs.iloc[0] * 0.1
+        obv_distance = 25
+        obv_prominence = obvs.iloc[0] * 0.0618
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=30, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = prices.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=30, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=obv_distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
+
+        # Perform linear regression on peaks
+        obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-3:], obv_peak_prices[-3:], 1)
+        # Perform linear regression on valleys
+        obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-3:], obv_valley_prices[-3:], 1)
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
@@ -94,6 +100,8 @@ class WaveStrategy(Strategy):
         ax2.plot(rows[label], label=f"{label}", color='purple')
         ax2.plot(obvs.iloc[obv_peaks], 'ro', label='Peaks')
         ax2.plot(obvs.iloc[obv_valleys], 'go', label='Valleys')
+        ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
+        ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
         ax2.set_title(f"{label}")
         ax2.set_xlabel('Time')
         ax2.set_ylabel(f"{label}")
