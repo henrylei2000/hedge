@@ -25,8 +25,8 @@ class Strategy:
         self.num_buckets = 1
 
     def backtest(self):
-        prediction = self.predict()
-        if prediction['Prediction Type'] == 'Peak' or True:
+        # prediction = self.predict()
+        if True:
             if self.download():
                 self.sanitize()
                 self.signal()

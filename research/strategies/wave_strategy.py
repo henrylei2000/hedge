@@ -30,46 +30,48 @@ class WaveStrategy(Strategy):
                            data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
             # Calculate OBV moving average
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
-
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-
             data.to_csv(f"{self.symbol}.csv")
 
-
     def standout(self, values):
-        base = values[-1]
+        base = values.iloc[-1]
         count = 0
         for v in values[-2::-1]:
             if v <= base:
                 count += 1
             else:
                 break
-
         return count
 
-    def snapshot(self, interval, prominence):
+    def snapshot(self, interval, distance, prominence):
 
         rows = self.data.iloc[interval[0]:interval[1]]
         prices = rows['close']
 
         # Identify peaks and valleys
-        peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
+        peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
         peak_indices = np.array(peaks)
         peak_prices = prices.iloc[peaks]
-        valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
+        valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
 
         # Perform linear regression on peaks
-        peak_indices = np.array(peaks)
-        peak_prices = prices.iloc[peaks]
         a_peaks, b_peaks = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
-
         # Perform linear regression on valleys
-        valley_indices = np.array(valleys)
-        valley_prices = prices.iloc[valleys]
         a_valleys, b_valleys = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
+
+        obvs = rows['obv']
+        obv_prominence = obvs.iloc[0] * 0.1
+        # Identify peaks and valleys
+        obv_peaks, _ = find_peaks(obvs, distance=30, prominence=obv_prominence)
+        obv_peak_indices = np.array(obv_peaks)
+        obv_peak_prices = prices.iloc[obv_peaks]
+        obv_valleys, _ = find_peaks(-obvs, distance=30, prominence=obv_prominence)
+        obv_valley_indices = np.array(obv_valleys)
+        obv_valley_prices = obvs.iloc[obv_valleys]
+
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
         sell_signals = rows[rows['position'] == -1]
@@ -90,6 +92,8 @@ class WaveStrategy(Strategy):
 
         label = 'obv'
         ax2.plot(rows[label], label=f"{label}", color='purple')
+        ax2.plot(obvs.iloc[obv_peaks], 'ro', label='Peaks')
+        ax2.plot(obvs.iloc[obv_valleys], 'go', label='Valleys')
         ax2.set_title(f"{label}")
         ax2.set_xlabel('Time')
         ax2.set_ylabel(f"{label}")
@@ -112,6 +116,7 @@ class WaveStrategy(Strategy):
         bottom, bottom_index = 0, 0
         projected_peak = 0
         a_valleys, b_valleys = 0, 0
+        distance = 4
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
         print(f"prominence ----------- {prominence}")
 
@@ -122,10 +127,10 @@ class WaveStrategy(Strategy):
             prices = visible_rows['close']
 
             # Identify peaks and valleys
-            peaks, _ = find_peaks(prices, distance=2, prominence=prominence)
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             peak_indices = np.array(peaks)
             peak_prices = prices.iloc[peaks]
-            valleys, _ = find_peaks(-prices, distance=2, prominence=prominence)
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
             valley_indices = np.array(valleys)
             valley_prices = prices.iloc[valleys]
 
@@ -201,7 +206,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([280, 350], prominence)
+        self.snapshot([0, 250], distance, prominence)
 
     def signal(self):
         self.trend()

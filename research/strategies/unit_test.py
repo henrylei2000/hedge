@@ -67,7 +67,7 @@ def linear_regression(x, y):
     return a, b
 
 
-def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, interval='1m'):
+def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=5, interval='1m'):
     """
     Downloads historical stock price data, identifies peaks and valleys, and analyzes trends.
 
@@ -99,7 +99,7 @@ def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, interval='1m')
         # Retrieve stock price data from Alpaca
         start_time = pd.Timestamp(d_day + ' 09:30', tz='America/New_York').tz_convert('UTC')
         end_time = pd.Timestamp(d_day + ' 16:00', tz='America/New_York').tz_convert('UTC')
-        ticker = api.get_bars(ticker, '1Min', start=start_time.isoformat(), end=end_time.isoformat()).df
+        ticker = api.get_bars(ticker, '5Min', start=start_time.isoformat(), end=end_time.isoformat()).df
 
         if not ticker.empty:
             # Convert timestamp index to Eastern Timezone (EST)
@@ -113,7 +113,8 @@ def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=2, interval='1m')
             else:
                 prices = []
 
-    prominence = prices.iloc[-1] * 0.00125 + 0.005
+    prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+    # prominence = prices.iloc[-1] * 0.00125 + 0.005
     print(f"----------- {prominence}")
     # Identify peaks and valleys
     peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -194,8 +195,8 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
     obv = calculate_obv(data)
 
     # Identify peaks and valleys
-    peaks, _ = find_peaks(prices, distance=2, prominence=0.1)
-    valleys, _ = find_peaks(-prices, distance=2, prominence=0.1)
+    peaks, _ = find_peaks(prices, distance=10, prominence=0.1)
+    valleys, _ = find_peaks(-prices, distance=10, prominence=0.1)
 
     # Perform linear regression on peaks
     peak_indices = np.array(peaks)
@@ -276,7 +277,7 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
 
 
 ticker = 'TQQQ'
-d_day = '2024-07-22'
+d_day = '2023-03-09'
 prediction = predict_next_day_peak_valley(ticker, d_day, months=12)
 print(prediction)
-trends = analyze_trends(ticker, d_day, distance=2)
+trends = analyze_trends(ticker, d_day, distance=5)
