@@ -67,7 +67,7 @@ class WaveStrategy(Strategy):
 
         obvs = rows['obv']
         obv_distance = 20
-        obv_prominence = obvs.iloc[0] * 0.1
+        obv_prominence = self.data.iloc[0]['obv'] * 0.1
         # Identify peaks and valleys
         obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
@@ -89,7 +89,21 @@ class WaveStrategy(Strategy):
 
         ax1.plot(prices, label='Price', color='blue')
         ax1.plot(prices.iloc[peaks], 'ro', label='Peaks')
+        for peak in peaks:
+            ax1.annotate(f'{peak}',
+                         (prices.index[peak], prices.iloc[peak]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9)  # You can adjust the font size if needed
         ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
+        for valley in valleys:
+            ax1.annotate(f'{valley}',
+                         (prices.index[valley], prices.iloc[valley]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9)  # You can adjust the font size if needed
         ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
         ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
         # Plot buy and sell signals
@@ -102,7 +116,22 @@ class WaveStrategy(Strategy):
         label = 'obv'
         ax2.plot(rows[label], label=f"{label}", color='purple')
         ax2.plot(obvs.iloc[obv_peaks], 'ro', label='Peaks')
+        # Annotate each peak with its value
+        for peak in obv_peaks:
+            ax2.annotate(f'{peak}',
+                         (obvs.index[peak], obvs.iloc[peak]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9)  # You can adjust the font size if needed
         ax2.plot(obvs.iloc[obv_valleys], 'go', label='Valleys')
+        for valley in obv_valleys:
+            ax2.annotate(f'{valley}',
+                         (obvs.index[valley], obvs.iloc[valley]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9)  # You can adjust the font size if needed
         ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
         ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
         ax2.set_title(f"{label}")
@@ -159,13 +188,16 @@ class WaveStrategy(Strategy):
 
             if len(obv_peaks) > obv_num_peaks:  # new peak found!
                 print(f"Found a new obv peak after {count - obv_peaks[-1]}")
-                print(f"OBV Peak standout: {self.standout(obv_peak_prices)}")
+                print(f"OBV Peak standout: {self.standout(obv_peak_prices)}, recent obv peaks {obv_peak_indices[-3:]}")
                 obv_num_peaks += 1
 
             if len(obv_valleys) > obv_num_valleys:
                 print(f"Found a new obv valley after {count - obv_valleys[-1]}")
-                print(f"OBV Valley standout: {self.standout(obv_valley_prices)}")
+                print(f"OBV Valley standout: {self.standout(obv_valley_prices)}, recent obv valleys {obv_valley_indices[-3:]}")
                 obv_num_valleys += 1
+                """
+                
+                """
 
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
@@ -190,7 +222,7 @@ class WaveStrategy(Strategy):
                     bottom_index = valley_indices[-1]
                     print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index}")
 
-                if self.standout(valley_prices)[0] > 1 and self.standout(peak_prices)[0] and self.standout(valley_prices[:-1])[0]:
+                if self.standout(valley_prices)[0] and self.standout(peak_prices)[0]:
                     if not hold:
                         print(f"Buy signal @ {count}")
                         buy = True
@@ -236,7 +268,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([300, 389], distance, prominence)
+        self.snapshot([0, 83], distance, prominence)
 
     def signal(self):
         self.trend()
