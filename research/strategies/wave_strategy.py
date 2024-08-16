@@ -36,13 +36,16 @@ class WaveStrategy(Strategy):
 
     def standout(self, values):
         base = values.iloc[-1]
-        count = 0
+        high, low = 0, 0
+        high_stop, low_stop = False, False
         for v in values[-2::-1]:
-            if v <= base:
-                count += 1
-            else:
-                break
-        return count
+            if v <= base and not high_stop:
+                high += 1
+                low_stop = True
+            elif not low_stop:
+                low += 1
+                high_stop = True
+        return high, low
 
     def snapshot(self, interval, distance, prominence):
 
@@ -63,7 +66,7 @@ class WaveStrategy(Strategy):
         a_valleys, b_valleys = np.polyfit(valley_indices[-3:], valley_prices[-3:], 1)
 
         obvs = rows['obv']
-        obv_distance = 3
+        obv_distance = 20
         obv_prominence = obvs.iloc[0] * 0.1
         # Identify peaks and valleys
         obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
@@ -121,11 +124,14 @@ class WaveStrategy(Strategy):
         sell_point = 0
         count = 0
         num_peaks, num_valleys = 0, 0
+        obv_num_peaks, obv_num_valleys = 0, 0
         bottom, bottom_index = 0, 0
         projected_peak = 0
         a_valleys, b_valleys = 0, 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        obv_distance = 20
+        obv_prominence = data.iloc[0]['obv'] * 0.1
         print(f"prominence ----------- {prominence}")
 
         for index, row in data.iterrows():
@@ -143,8 +149,6 @@ class WaveStrategy(Strategy):
             valley_prices = prices.iloc[valleys]
 
             obvs = visible_rows['obv']
-            obv_distance = 3
-            obv_prominence = obvs.iloc[0] * 0.1
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
@@ -152,6 +156,16 @@ class WaveStrategy(Strategy):
             obv_valleys, _ = find_peaks(-obvs, distance=obv_distance, prominence=obv_prominence)
             obv_valley_indices = np.array(obv_valleys)
             obv_valley_prices = obvs.iloc[obv_valleys]
+
+            if len(obv_peaks) > obv_num_peaks:  # new peak found!
+                print(f"Found a new obv peak after {count - obv_peaks[-1]}")
+                print(f"OBV Peak standout: {self.standout(obv_peak_prices)}")
+                obv_num_peaks += 1
+
+            if len(obv_valleys) > obv_num_valleys:
+                print(f"Found a new obv valley after {count - obv_valleys[-1]}")
+                print(f"OBV Valley standout: {self.standout(obv_valley_prices)}")
+                obv_num_valleys += 1
 
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
@@ -176,7 +190,7 @@ class WaveStrategy(Strategy):
                     bottom_index = valley_indices[-1]
                     print(f"[Trending HIGH] valley is the lowest: {bottom} {bottom_index}")
 
-                if self.standout(valley_prices) > 1 and self.standout(peak_prices) and self.standout(valley_prices[:-1]):
+                if self.standout(valley_prices)[0] > 1 and self.standout(peak_prices)[0] and self.standout(valley_prices[:-1])[0]:
                     if not hold:
                         print(f"Buy signal @ {count}")
                         buy = True
@@ -187,7 +201,6 @@ class WaveStrategy(Strategy):
                 projected_peak = a_peaks * count + b_peaks
                 a_recent, b_recent = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
                 projected_recent = a_recent * count + b_recent
-                print(f"projected peak {projected_peak:.4f} and {projected_recent:.4f}")
 
                 if row['close'] <= sell_point and sell:  # trend reversal
                     position = -1
@@ -195,8 +208,8 @@ class WaveStrategy(Strategy):
                     sell = False
                     sell_point = 0
                     print(f"selling @ {row['close']}")
-                    print(
-                        f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]}")
+                    print(f"projected peak {projected_peak:.4f} and {projected_recent:.4f}")
+                    print(f"[{a_peaks:.3f} {a_recent:.3f}] [{b_peaks:.3f} {b_recent:.3f}] @{peak_indices[-1]}")
 
                 a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
                 projected_valley = a_valleys * count + b_valleys
@@ -215,17 +228,15 @@ class WaveStrategy(Strategy):
                     buy = False
                     hold = True
                     sell_point = row['close']
-                    print(
-                            f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
-
-                print(f"last dip @{bottom_index} {bottom} Strength diff: {visible_rows.iloc[bottom_index]['strength']} {visible_rows.iloc[bottom_index + 1]['strength']} {row['strength']}")
+                    print(f"[{a_valleys:.3f} {a_recent:.3f}] [{b_valleys:.3f} {b_recent:.3f}] @{valley_indices[-1]}")
+                    print(f"last dip @{bottom_index} {bottom} Strength diff: dip {visible_rows.iloc[bottom_index]['strength']} dip+ {visible_rows.iloc[bottom_index + 1]['strength']} now {row['strength']}")
 
             positions.append(position)
             count += 1
             print("\n")
 
         data['position'] = positions
-        self.snapshot([250, 380], distance, prominence)
+        self.snapshot([300, 389], distance, prominence)
 
     def signal(self):
         self.trend()
