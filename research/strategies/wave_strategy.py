@@ -195,11 +195,15 @@ class WaveStrategy(Strategy):
                 print(
                     f"OBV Valley standout: {self.standout(obv_valley_prices)}, recent obv valleys {obv_valley_indices[-3:]}")
                 obv_num_valleys += 1
+                if obv_num_valleys > 1 and self.standout(obv_valley_prices)[0] > self.standout(obv_valley_prices[:-1])[
+                    0] == 0:
+                    print(f"an obv reversal @ {obv_valleys[-1]}")
 
             if len(valleys) > num_valleys:
                 print(f"Found a new valley after {count - valleys[-1]}")
                 print(f"Valley standout: {self.standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
                 num_valleys += 1
+
 
             if len(common_valleys) and count > max(common_valleys) > 10 and not hold:
                 hold = True
