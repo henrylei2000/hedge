@@ -203,18 +203,19 @@ class WaveStrategy(Strategy):
                 print(f"Found a new valley after {count - valleys[-1]}")
                 print(f"Valley standout: {self.standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
                 num_valleys += 1
+                if len(valleys) and len(peaks) and valleys[-1] > peaks[-1]:
+                        print(f"trending up from the recent valley")
 
-
-            if len(common_valleys) and count > max(common_valleys) > 10 and not hold:
-                hold = True
-                # position = 1
-                print(f"buying @ {row['close']}")
-                print(f"last dip @{bottom_index} {bottom} Strength diff: dip {visible_rows.iloc[bottom_index]['strength']} dip+ {visible_rows.iloc[bottom_index + 1]['strength']} now {row['strength']}")
-
-            if hold and len(obv_peaks) and count > max(obv_peaks):
-                hold = False
-                # position = -1
-                print(f"selling @ {row['close']}")
+            # if len(common_valleys) and count > max(common_valleys) > 10 and not hold:
+            #     hold = True
+            #     # position = 1
+            #     print(f"buying @ {row['close']}")
+            #     print(f"last dip @{bottom_index} {bottom} Strength diff: dip {visible_rows.iloc[bottom_index]['strength']} dip+ {visible_rows.iloc[bottom_index + 1]['strength']} now {row['strength']}")
+            #
+            # if hold and len(obv_peaks) and count > max(obv_peaks):
+            #     hold = False
+            #     # position = -1
+            #     print(f"selling @ {row['close']}")
 
             if len(obv_peaks) > obv_num_peaks:  # new peak found!
                 print(f"Found a new obv peak after {count - obv_peaks[-1]}")
@@ -225,6 +226,8 @@ class WaveStrategy(Strategy):
                 print(f"Found a new peak after {count - peaks[-1]}")
                 print(f"Peak standout: {self.standout(peak_prices)}")
                 num_peaks += 1
+                if num_valleys and num_peaks and valleys[-1] < peaks[-1]:
+                    print(f"trending down from the recent peak")
 
             positions.append(position)
             count += 1
