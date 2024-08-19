@@ -5,6 +5,20 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 
+def standout(values):
+    base = values.iloc[-1]
+    high, low = 0, 0
+    high_stop, low_stop = False, False
+    for v in values[-2::-1]:
+        if v <= base and not high_stop:
+            high += 1
+            low_stop = True
+        elif not low_stop:
+            low += 1
+            high_stop = True
+    return high, low
+
+
 class WaveStrategy(Strategy):
     def wave_simple(self):
         short_window, long_window, signal_window = 12, 26, 9  # 3, 7, 2
@@ -34,19 +48,6 @@ class WaveStrategy(Strategy):
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             data.to_csv(f"{self.symbol}.csv")
 
-    def standout(self, values):
-        base = values.iloc[-1]
-        high, low = 0, 0
-        high_stop, low_stop = False, False
-        for v in values[-2::-1]:
-            if v <= base and not high_stop:
-                high += 1
-                low_stop = True
-            elif not low_stop:
-                low += 1
-                high_stop = True
-        return high, low
-
     def snapshot(self, interval, distance, prominence):
         if interval[1] - interval[0] < 30:
             return
@@ -66,7 +67,7 @@ class WaveStrategy(Strategy):
         # Perform linear regression on valleys
         a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
-        indicator = 'macd'
+        indicator = 'obv'
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
@@ -149,17 +150,16 @@ class WaveStrategy(Strategy):
 
         # Initialize Signal column with zeros
         data['position'] = 0
-        bullish, hold = False, False
+        obv_bullish, macd_bullish, price_bullish, hold = False, False, False, False
         sell_point = 0
         count = 0
         num_peaks, num_valleys = 0, 0
         obv_num_peaks, obv_num_valleys = 0, 0
-        bottom, bottom_index = 0, 0
-        projected_peak = 0
-        a_valleys, b_valleys = 0, 0
+        macd_num_peaks, macd_num_valleys = 0, 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
         obv_prominence = data.iloc[0]['obv'] * 0.1
+        macd_prominence = data.iloc[0]['obv'] * 0.1
 
         for index, row in data.iterrows():
             position = 0
@@ -184,35 +184,69 @@ class WaveStrategy(Strategy):
             obv_valley_indices = np.array(obv_valleys)
             obv_valley_prices = obvs.iloc[obv_valleys]
 
+            macds = visible_rows['macd']
+            # Identify peaks and valleys
+            macd_peaks, _ = find_peaks(macds, distance=distance * 2, prominence=macd_prominence)
+            macd_peak_indices = np.array(macd_peaks)
+            macd_peak_prices = macds.iloc[macd_peaks]
+            macd_valleys, _ = find_peaks(-macds, distance=distance * 2, prominence=macd_prominence)
+            macd_valley_indices = np.array(macd_valleys)
+            macd_valley_prices = macds.iloc[macd_valleys]
+
             if len(obv_valleys) > obv_num_valleys:
                 print(f"Found a new obv valley after {count - obv_valleys[-1]}")
                 print(
-                    f"OBV Valley standout: {self.standout(obv_valley_prices)}, recent obv valleys {obv_valley_indices[-3:]}")
+                    f"OBV Valley standout: {standout(obv_valley_prices)}, recent obv valleys {obv_valley_indices[-3:]}")
                 obv_num_valleys += 1
-                if obv_num_valleys > 1 and self.standout(obv_valley_prices)[0] > self.standout(obv_valley_prices[:-1])[
+                if obv_num_valleys > 1 and standout(obv_valley_prices)[0] > standout(obv_valley_prices[:-1])[
                     0] == 0:
                     print(f"an obv reversal @ {obv_valleys[-1]}")
+                    obv_bullish = True
+
+            if len(macd_valleys) > macd_num_valleys:
+                print(f"Found a new macd valley after {count - macd_valleys[-1]}")
+                print(
+                    f"MACD Valley standout: {standout(macd_valley_prices)}, recent obv valleys {macd_valley_indices[-3:]}")
+                macd_num_valleys += 1
+                macd_bullish = True
 
             if len(valleys) > num_valleys:
                 print(f"Found a new valley after {count - valleys[-1]}")
-                print(f"Valley standout: {self.standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
+                print(f"Valley standout: {standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
                 num_valleys += 1
                 if num_valleys and (num_peaks and valleys[-1] > peaks[-1] or not num_peaks):
                     print(f"trending up from the recent valley")
-                    bullish = True
+                    price_bullish = True
 
             if len(obv_peaks) > obv_num_peaks:  # new peak found!
                 print(f"Found a new obv peak after {count - obv_peaks[-1]}")
-                print(f"OBV Peak standout: {self.standout(obv_peak_prices)}, recent obv peaks {obv_peak_indices[-3:]}")
+                print(f"OBV Peak standout: {standout(obv_peak_prices)}, recent obv peaks {obv_peak_indices[-3:]}")
                 obv_num_peaks += 1
+                obv_bullish = False
+
+            if len(macd_peaks) > macd_num_peaks:  # new peak found!
+                print(f"Found a new macd peak after {count - macd_peaks[-1]}")
+                print(f"MACD Peak standout: {standout(macd_peak_prices)}, recent obv peaks {macd_peak_indices[-3:]}")
+                macd_num_peaks += 1
+                macd_bullish = False
 
             if len(peaks) > num_peaks:  # new peak found!
                 print(f"Found a new peak after {count - peaks[-1]}")
-                print(f"Peak standout: {self.standout(peak_prices)}")
+                print(f"Peak standout: {standout(peak_prices)}")
                 num_peaks += 1
                 if num_peaks and (num_valleys and valleys[-1] < peaks[-1] or not num_valleys):
                     print(f"trending down from the recent peak")
-                    bullish = False
+                    price_bullish = False
+
+            if price_bullish and obv_bullish and macd_bullish and not hold:
+                position = 1
+                hold = True
+                print(f"buying @{count} {row['close']}")
+
+            if not macd_bullish and not price_bullish and not obv_bullish and hold:
+                position = -1
+                hold = False
+                print(f"selling @{count} {row['close']}")
 
             positions.append(position)
             count += 1
