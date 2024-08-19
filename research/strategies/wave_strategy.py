@@ -48,7 +48,8 @@ class WaveStrategy(Strategy):
         return high, low
 
     def snapshot(self, interval, distance, prominence):
-
+        if interval[1] - interval[0] < 30:
+            return
         rows = self.data.iloc[interval[0]:interval[1]]
         prices = rows['close']
 
@@ -65,14 +66,14 @@ class WaveStrategy(Strategy):
         # Perform linear regression on valleys
         a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
-        obvs = rows['obv']
-        obv_distance = 3
-        obv_prominence = self.data.iloc[0]['obv'] * 0.1
+        indicator = 'macd'
+        obvs = rows[indicator]
+        obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=obv_distance, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -113,8 +114,7 @@ class WaveStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
-        label = 'obv'
-        ax2.plot(rows[label], label=f"{label}", color='purple')
+        ax2.plot(rows[indicator], label=f"{indicator}", color='purple')
         ax2.plot(obvs.iloc[obv_peaks], 'ro', label='Peaks')
         # Annotate each peak with its value
         for peak in obv_peaks:
@@ -134,9 +134,9 @@ class WaveStrategy(Strategy):
                          fontsize=9)  # You can adjust the font size if needed
         ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
         ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
-        ax2.set_title(f"{label}")
+        ax2.set_title(f"{indicator}")
         ax2.set_xlabel('Time')
-        ax2.set_ylabel(f"{label}")
+        ax2.set_ylabel(f"{indicator}")
         ax2.legend()
 
         plt.tight_layout()
@@ -149,7 +149,7 @@ class WaveStrategy(Strategy):
 
         # Initialize Signal column with zeros
         data['position'] = 0
-        buy, sell, hold = False, False, False
+        bullish, hold = False, False
         sell_point = 0
         count = 0
         num_peaks, num_valleys = 0, 0
@@ -159,9 +159,7 @@ class WaveStrategy(Strategy):
         a_valleys, b_valleys = 0, 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
-        obv_distance = 3
         obv_prominence = data.iloc[0]['obv'] * 0.1
-        print(f"prominence ----------- {prominence}")
 
         for index, row in data.iterrows():
             position = 0
@@ -179,16 +177,12 @@ class WaveStrategy(Strategy):
 
             obvs = visible_rows['obv']
             # Identify peaks and valleys
-            obv_peaks, _ = find_peaks(obvs, distance=obv_distance, prominence=obv_prominence)
+            obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
             obv_peak_prices = obvs.iloc[obv_peaks]
-            obv_valleys, _ = find_peaks(-obvs, distance=obv_distance, prominence=obv_prominence)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
             obv_valley_indices = np.array(obv_valleys)
             obv_valley_prices = obvs.iloc[obv_valleys]
-
-            common_valleys = list(set(obv_valleys) & set(valleys))
-            print(f"common valleys: {common_valleys}")
-            print(f"peaks {peaks}")
 
             if len(obv_valleys) > obv_num_valleys:
                 print(f"Found a new obv valley after {count - obv_valleys[-1]}")
@@ -203,19 +197,9 @@ class WaveStrategy(Strategy):
                 print(f"Found a new valley after {count - valleys[-1]}")
                 print(f"Valley standout: {self.standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
                 num_valleys += 1
-                if len(valleys) and len(peaks) and valleys[-1] > peaks[-1]:
-                        print(f"trending up from the recent valley")
-
-            # if len(common_valleys) and count > max(common_valleys) > 10 and not hold:
-            #     hold = True
-            #     # position = 1
-            #     print(f"buying @ {row['close']}")
-            #     print(f"last dip @{bottom_index} {bottom} Strength diff: dip {visible_rows.iloc[bottom_index]['strength']} dip+ {visible_rows.iloc[bottom_index + 1]['strength']} now {row['strength']}")
-            #
-            # if hold and len(obv_peaks) and count > max(obv_peaks):
-            #     hold = False
-            #     # position = -1
-            #     print(f"selling @ {row['close']}")
+                if num_valleys and (num_peaks and valleys[-1] > peaks[-1] or not num_peaks):
+                    print(f"trending up from the recent valley")
+                    bullish = True
 
             if len(obv_peaks) > obv_num_peaks:  # new peak found!
                 print(f"Found a new obv peak after {count - obv_peaks[-1]}")
@@ -226,8 +210,9 @@ class WaveStrategy(Strategy):
                 print(f"Found a new peak after {count - peaks[-1]}")
                 print(f"Peak standout: {self.standout(peak_prices)}")
                 num_peaks += 1
-                if num_valleys and num_peaks and valleys[-1] < peaks[-1]:
+                if num_peaks and (num_valleys and valleys[-1] < peaks[-1] or not num_valleys):
                     print(f"trending down from the recent peak")
+                    bullish = False
 
             positions.append(position)
             count += 1
