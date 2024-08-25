@@ -145,10 +145,10 @@ class WaveStrategy(Strategy):
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance * 2, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=distance * 2, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -168,16 +168,16 @@ class WaveStrategy(Strategy):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
-        ax1.plot(prices.iloc[peaks], 'ro', label='Peaks')
-        for peak in peaks:
+        ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
+        for peak in peak_indices:
             ax1.annotate(f'{peak}',
                          (prices.index[peak], prices.iloc[peak]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
-        for valley in valleys:
+        ax1.plot(prices.iloc[valley_indices], 'go', label='Valleys')
+        for valley in valley_indices:
             ax1.annotate(f'{valley}',
                          (prices.index[valley], prices.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
@@ -238,13 +238,14 @@ class WaveStrategy(Strategy):
         obv_num_peaks, obv_num_valleys = 0, 0
         macd_num_peaks, macd_num_valleys = 0, 0
         distance = 3
-        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        prominence = data.iloc[0]['close'] * 0.00169 + 0.003
         obv_prominence = data.iloc[0]['obv'] * 0.1
         macd_prominence = data.iloc[0]['obv'] * 0.1
 
         for index, row in data.iterrows():
             position = 0
-            print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {row['close']:.4f} @ {count}]")
+            price = row['close']
+            print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
 
@@ -281,16 +282,13 @@ class WaveStrategy(Strategy):
                 obv_peak_prices = obvs.iloc[obv_peak_indices]
                 obv_valley_prices = obvs.iloc[obv_valley_indices]
 
-            if len(valleys) and (len(peaks) and valleys[-1] > peaks[-1] or not len(peaks)):
-                print(f"------- valley is nearer than a peak")
-            if len(peaks) and (len(valleys) and peaks[-1] > valleys[-1] or not len(valleys)):
-                print(f"------- peak is nearer than a valley")
+            if len(valley_indices) and (len(peak_indices) and valley_indices[-1] > peak_indices[-1] or not len(peak_indices)):
+                print(f"------- uphill span {count - valley_indices[-1]} up {price - prices.iloc[valley_indices[-1]]}")
+            if len(peak_indices) and (len(valley_indices) and peak_indices[-1] > valley_indices[-1] or not len(valley_indices)):
+                print(f"------- downhill span {count - peak_indices[-1]} down {prices.iloc[peak_indices[-1]] - price}")
 
             if len(obv_valleys) > obv_num_valleys:
                 print(f"Found a new obv valley after {count - obv_valleys[-1]}")
-                """
-                wave_measure: span, gap, wave_num_max
-                """
                 print(
                     f"OBV Valley standout: {standout(obv_valley_prices)}, recent obv valleys {obv_valley_indices[-3:]}")
                 obv_num_valleys += 1
@@ -353,7 +351,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([190, 30], distance, prominence)
+        self.snapshot([0, 130], distance, prominence)
 
     def signal(self):
         self.trend()
