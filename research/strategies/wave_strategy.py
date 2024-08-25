@@ -5,59 +5,74 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 
-def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices):
+import numpy as np
+
+def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
+    # Convert lists to numpy arrays if they aren't already
+    valley_indices = np.array(valley_indices)
+    valley_prices = np.array(valley_prices)
+    peak_indices = np.array(peak_indices)
+    peak_prices = np.array(peak_prices)
+
     # Handle scenario 1: if the first peak appears before the first valley
     if peak_indices[0] < valley_indices[0]:
-        valley_indices.insert(0, 0)
-        valley_prices.insert(0, prices[0])
+        valley_indices = np.insert(valley_indices, 0, 0)
+        valley_prices = np.insert(valley_prices, 0, alternative_valley)
 
-    # Create a new list to store the corrected indices and prices
+    # Create lists to store the corrected indices, peak indices, and valley indices
     corrected_indices = []
-    corrected_prices = []
+    corrected_peak_indices = []
+    corrected_valley_indices = []
 
     # Start with the first valley
     i = j = 0
     while i < len(valley_indices) and j < len(peak_indices):
-        # Add the valley
-        corrected_indices.append(valley_indices[i])
-        corrected_prices.append(valley_prices[i])
+        # Handle consecutive valleys using argmin
+        start_i = i
+        while i + 1 < len(valley_indices) and valley_indices[i + 1] < peak_indices[j]:
+            i += 1
+        # Find the valley with the minimum price in the range
+        min_price_idx = start_i + np.argmin(valley_prices[start_i:i+1])
+        corrected_indices.append(valley_indices[min_price_idx])
+        corrected_valley_indices.append(valley_indices[min_price_idx])
         i += 1
 
-        # Check for consecutive peaks
+        # Handle consecutive peaks using argmax
+        start_j = j
         while j + 1 < len(peak_indices) and peak_indices[j + 1] < valley_indices[i]:
-            if peak_prices[j + 1] > peak_prices[j]:
-                j += 1
-            else:
-                peak_indices.pop(j + 1)
-                peak_prices.pop(j + 1)
-        corrected_indices.append(peak_indices[j])
-        corrected_prices.append(peak_prices[j])
+            j += 1
+        # Find the peak with the maximum price in the range
+        max_price_idx = start_j + np.argmax(peak_prices[start_j:j+1])
+        corrected_indices.append(peak_indices[max_price_idx])
+        corrected_peak_indices.append(peak_indices[max_price_idx])
         j += 1
 
     # Handle the case where only valleys are left
     if i < len(valley_indices):
         # Find the index with the minimum price among the remaining valleys
-        min_price_idx = i + valley_prices[i:].index(min(valley_prices[i:]))
+        min_price_idx = i + np.argmin(valley_prices[i:])
         corrected_indices.append(valley_indices[min_price_idx])
-        corrected_prices.append(valley_prices[min_price_idx])
+        corrected_valley_indices.append(valley_indices[min_price_idx])
 
     # Handle the case where only peaks are left
     if j < len(peak_indices):
         # Find the index with the maximum price among the remaining peaks
-        max_price_idx = j + peak_prices[j:].index(max(peak_prices[j:]))
+        max_price_idx = j + np.argmax(peak_prices[j:])
         corrected_indices.append(peak_indices[max_price_idx])
-        corrected_prices.append(peak_prices[max_price_idx])
+        corrected_peak_indices.append(peak_indices[max_price_idx])
 
-    return corrected_indices
+    return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
 
 # Example usage
-valley_indices = [4, 7, 8]
-valley_prices = [105, 102, 89]
+valley_indices = [4, 7, 8, 9]
+valley_prices = [105, 102, 89, 87]
 peak_indices = [3, 5, 6]
-peak_prices = [110, 109, 108]
-prices = [98, 100, 108, 110, 105, 109, 108, 102, 89]
+peak_prices = [110, 108, 109]
+prices = [98, 100, 108, 110, 105, 109, 108, 102, 89, 87]
 
-corrected_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices)
+prices = pd.Series(prices)
+
+corrected_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
 print("Corrected Indices:", corrected_indices)
 
 
@@ -118,6 +133,8 @@ class WaveStrategy(Strategy):
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
 
+        rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
+
         # Perform linear regression on peaks
         a_peaks, b_peaks = np.polyfit(peak_indices[-5:], peak_prices[-5:], 1)
         # Perform linear regression on valleys
@@ -129,10 +146,18 @@ class WaveStrategy(Strategy):
         # Identify peaks and valleys
         obv_peaks, _ = find_peaks(obvs, distance=distance * 2, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
+        print(f"before correction peak number: {len(obv_peak_indices)}")
         obv_peak_prices = obvs.iloc[obv_peaks]
         obv_valleys, _ = find_peaks(-obvs, distance=distance * 2, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
+        print(f"before correction valley number: {len(obv_valley_indices)}")
         obv_valley_prices = obvs.iloc[obv_valleys]
+
+        # rearrange_valley_peak(obv_valley_indices, obv_valley_prices, obv_peak_indices, obv_peak_prices, obvs.iloc[0])
+        obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices, obv_valley_prices, obv_peak_indices, obv_peak_prices, obvs.iloc[0])
+        print(f"after correction peak number: {len(obv_peak_indices)}")
+        obv_peak_prices = obvs.iloc[obv_peak_indices]
+        obv_valley_prices = obvs.iloc[obv_valley_indices]
 
         # Perform linear regression on peaks
         obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-5:], obv_peak_prices[-5:], 1)
@@ -172,17 +197,18 @@ class WaveStrategy(Strategy):
         ax1.legend()
 
         ax2.plot(rows[indicator], label=f"{indicator}", color='purple')
-        ax2.plot(obvs.iloc[obv_peaks], 'ro', label='Peaks')
+        ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='Peaks')
+        print(f"----------------- {len(obv_peaks)}")
         # Annotate each peak with its value
-        for peak in obv_peaks:
+        for peak in obv_peak_indices:
             ax2.annotate(f'{peak}',
                          (obvs.index[peak], obvs.iloc[peak]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax2.plot(obvs.iloc[obv_valleys], 'go', label='Valleys')
-        for valley in obv_valleys:
+        ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='Valleys')
+        for valley in obv_valley_indices:
             ax2.annotate(f'{valley}',
                          (obvs.index[valley], obvs.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
@@ -293,11 +319,6 @@ class WaveStrategy(Strategy):
                 # Perform linear regression on valleys
                 a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
-                uphill = peak_prices[-1] - valley_prices[-2]
-                downhill = peak_prices[-1] - valley_prices[-1]
-
-                print(f"---- uphill {uphill}, downhill {downhill}")
-
             if price_bullish and obv_bullish and not hold:
                 if row['close'] > list_price:
                     position = 1
@@ -314,7 +335,8 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([0, 130], distance, prominence)
+        self.snapshot([190, 330], distance, prominence)
 
     def signal(self):
         self.trend()
+        pass
