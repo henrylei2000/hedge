@@ -5,8 +5,6 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 
-import numpy as np
-
 def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
     # Convert lists to numpy arrays if they aren't already
     valley_indices = np.array(valley_indices)
@@ -32,17 +30,17 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
         while i + 1 < len(valley_indices) and valley_indices[i + 1] < peak_indices[j]:
             i += 1
         # Find the valley with the minimum price in the range
-        min_price_idx = start_i + np.argmin(valley_prices[start_i:i+1])
+        min_price_idx = start_i + np.argmin(valley_prices[start_i:i + 1])
         corrected_indices.append(valley_indices[min_price_idx])
         corrected_valley_indices.append(valley_indices[min_price_idx])
         i += 1
 
         # Handle consecutive peaks using argmax
         start_j = j
-        while j + 1 < len(peak_indices) and peak_indices[j + 1] < valley_indices[i]:
+        while j + 1 < len(peak_indices) and i < len(valley_indices) and peak_indices[j + 1] < valley_indices[i]:
             j += 1
         # Find the peak with the maximum price in the range
-        max_price_idx = start_j + np.argmax(peak_prices[start_j:j+1])
+        max_price_idx = start_j + np.argmax(peak_prices[start_j:j + 1])
         corrected_indices.append(peak_indices[max_price_idx])
         corrected_peak_indices.append(peak_indices[max_price_idx])
         j += 1
@@ -62,6 +60,7 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
         corrected_peak_indices.append(peak_indices[max_price_idx])
 
     return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
+
 
 # Example usage
 valley_indices = [4, 7, 8, 9]
@@ -133,7 +132,9 @@ class WaveStrategy(Strategy):
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
 
-        rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
+        corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
+        peak_prices = prices.iloc[peak_indices]
+        valley_prices = prices.iloc[valley_indices]
 
         # Perform linear regression on peaks
         a_peaks, b_peaks = np.polyfit(peak_indices[-5:], peak_prices[-5:], 1)
@@ -146,16 +147,12 @@ class WaveStrategy(Strategy):
         # Identify peaks and valleys
         obv_peaks, _ = find_peaks(obvs, distance=distance * 2, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
-        print(f"before correction peak number: {len(obv_peak_indices)}")
         obv_peak_prices = obvs.iloc[obv_peaks]
         obv_valleys, _ = find_peaks(-obvs, distance=distance * 2, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
-        print(f"before correction valley number: {len(obv_valley_indices)}")
         obv_valley_prices = obvs.iloc[obv_valleys]
 
-        # rearrange_valley_peak(obv_valley_indices, obv_valley_prices, obv_peak_indices, obv_peak_prices, obvs.iloc[0])
         obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices, obv_valley_prices, obv_peak_indices, obv_peak_prices, obvs.iloc[0])
-        print(f"after correction peak number: {len(obv_peak_indices)}")
         obv_peak_prices = obvs.iloc[obv_peak_indices]
         obv_valley_prices = obvs.iloc[obv_valley_indices]
 
@@ -259,6 +256,13 @@ class WaveStrategy(Strategy):
             valley_indices = np.array(valleys)
             valley_prices = prices.iloc[valleys]
 
+            if len(peak_indices) and len(valley_indices):
+                corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
+                                                                                        peak_indices, peak_prices,
+                                                                                        prices.iloc[0])
+                peak_prices = prices.iloc[peak_indices]
+                valley_prices = prices.iloc[valley_indices]
+
             obvs = visible_rows['obv']
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
@@ -267,6 +271,20 @@ class WaveStrategy(Strategy):
             obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
             obv_valley_indices = np.array(obv_valleys)
             obv_valley_prices = obvs.iloc[obv_valleys]
+
+            if len(obv_valley_indices) and len(obv_peak_indices):
+                obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices,
+                                                                                                    obv_valley_prices,
+                                                                                                    obv_peak_indices,
+                                                                                                    obv_peak_prices,
+                                                                                                    obvs.iloc[0])
+                obv_peak_prices = obvs.iloc[obv_peak_indices]
+                obv_valley_prices = obvs.iloc[obv_valley_indices]
+
+            if len(valleys) and (len(peaks) and valleys[-1] > peaks[-1] or not len(peaks)):
+                print(f"------- valley is nearer than a peak")
+            if len(peaks) and (len(valleys) and peaks[-1] > valleys[-1] or not len(valleys)):
+                print(f"------- peak is nearer than a valley")
 
             if len(obv_valleys) > obv_num_valleys:
                 print(f"Found a new obv valley after {count - obv_valleys[-1]}")
@@ -335,8 +353,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([190, 330], distance, prominence)
+        self.snapshot([190, 30], distance, prominence)
 
     def signal(self):
         self.trend()
-        pass
