@@ -13,7 +13,7 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
     peak_prices = np.array(peak_prices)
 
     # Handle scenario 1: if the first peak appears before the first valley
-    if peak_indices[0] < valley_indices[0]:
+    if len(peak_indices) and len(valley_indices) and peak_indices[0] < valley_indices[0]:
         valley_indices = np.insert(valley_indices, 0, 0)
         valley_prices = np.insert(valley_prices, 0, alternative_valley)
 
@@ -114,9 +114,10 @@ class WaveStrategy(Strategy):
                            data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
             # Calculate OBV moving average
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
+            data['rolling_volume'] = data['obv'].rolling(window=6).mean()
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-            data.to_csv(f"{self.symbol}.csv")
+            # data.to_csv(f"{self.symbol}.csv")
 
     def snapshot(self, interval, distance, prominence):
         if interval[1] - interval[0] < 30:
@@ -141,7 +142,7 @@ class WaveStrategy(Strategy):
         # Perform linear regression on valleys
         a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
-        indicator = 'obv'
+        indicator = 'volume'
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
@@ -156,10 +157,11 @@ class WaveStrategy(Strategy):
         obv_peak_prices = obvs.iloc[obv_peak_indices]
         obv_valley_prices = obvs.iloc[obv_valley_indices]
 
-        # Perform linear regression on peaks
-        obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-5:], obv_peak_prices[-5:], 1)
-        # Perform linear regression on valleys
-        obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
+        if len(obv_peak_indices):
+            # Perform linear regression on peaks
+            obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-5:], obv_peak_prices[-5:], 1)
+            # Perform linear regression on valleys
+            obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
@@ -195,7 +197,6 @@ class WaveStrategy(Strategy):
 
         ax2.plot(rows[indicator], label=f"{indicator}", color='purple')
         ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='Peaks')
-        print(f"----------------- {len(obv_peaks)}")
         # Annotate each peak with its value
         for peak in obv_peak_indices:
             ax2.annotate(f'{interval[0] + peak}',
@@ -212,8 +213,9 @@ class WaveStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
-        ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
+        if len(obv_peak_indices):
+            ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
+            ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
         ax2.set_title(f"{indicator}")
         ax2.set_xlabel('Time')
         ax2.set_ylabel(f"{indicator}")
@@ -332,7 +334,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([120, 230], distance, prominence)
+        self.snapshot([300, 389], distance, prominence)
 
     def signal(self):
         self.trend()
