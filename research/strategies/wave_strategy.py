@@ -91,7 +91,7 @@ def standout(values):
 
 class WaveStrategy(Strategy):
     def wave_simple(self):
-        short_window, long_window, signal_window = 12, 26, 9  # 3, 7, 2
+        short_window, long_window, signal_window = 9, 21, 6  # 12, 26, 9
         dataset = [self.data]
         if self.reference:
             dataset += [self.qqq, self.spy, self.dia]
@@ -114,7 +114,7 @@ class WaveStrategy(Strategy):
                            data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
             # Calculate OBV moving average
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
-            data['rolling_volume'] = data['obv'].rolling(window=6).mean()
+            data['rolling_volume'] = data['obv'].rolling(window=3).mean()
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
@@ -235,12 +235,9 @@ class WaveStrategy(Strategy):
         a_peaks = 1000000
         b_peaks = 1000000
         count = 0
-        obv_num_peaks, obv_num_valleys = 0, 0
-        macd_num_peaks, macd_num_valleys = 0, 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00169 + 0.003
         obv_prominence = data.iloc[0]['obv'] * 0.1
-        macd_prominence = data.iloc[0]['obv'] * 0.1
 
         for index, row in data.iterrows():
             position = 0
@@ -264,7 +261,7 @@ class WaveStrategy(Strategy):
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
-            obvs = visible_rows['obv']
+            obvs = visible_rows['macd']
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
@@ -282,23 +279,27 @@ class WaveStrategy(Strategy):
                 obv_peak_prices = obvs.iloc[obv_peak_indices]
                 obv_valley_prices = obvs.iloc[obv_valley_indices]
 
+            # from a valley
             if len(valley_indices) and (len(peak_indices) and valley_indices[-1] > peak_indices[-1] or not len(peak_indices)):
-                print(f"------- uphill span {count - valley_indices[-1]} up {price - prices.iloc[valley_indices[-1]]:.3f}")
+                print(f"+++++++ uphill span {count - valley_indices[-1]} up {price - prices.iloc[valley_indices[-1]]:.3f}")
                 print(f"Valley standout: {standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
                 price_bullish = True
 
+            # from a peak
             if len(peak_indices) and (len(valley_indices) and peak_indices[-1] > valley_indices[-1] or not len(valley_indices)):
                 print(f"------- downhill span {count - peak_indices[-1]} down {prices.iloc[peak_indices[-1]] - price:.3f}")
                 print(f"Peak standout: {standout(peak_prices)}")
                 price_bullish = False
 
+            # from an obv_valley
             if len(obv_valley_indices) and (len(obv_peak_indices) and obv_valley_indices[-1] > obv_peak_indices[-1] or not len(obv_peak_indices)):
-                print(f"------- OBV uphill span {count - obv_valley_indices[-1]} up {row['obv'] - obvs.iloc[obv_valley_indices[-1]]:.3f}")
+                print(f"+++++++ OBV uphill span {count - obv_valley_indices[-1]} up {row['obv'] - obvs.iloc[obv_valley_indices[-1]]:.3f}")
                 print(f"OBV Valley standout: {standout(obv_valley_prices)}, recent OBV valleys {obv_valley_indices[-3:]}")
                 obv_bullish = True
 
+            # from an obv_peak
             if len(obv_peak_indices) and (len(obv_valley_indices) and obv_peak_indices[-1] > obv_valley_indices[-1] or not len(obv_valley_indices)):
-                print(f"------- downhill span {count - obv_peak_indices[-1]} down {obvs.iloc[obv_peak_indices[-1]] - row['obv']:.3f}")
+                print(f"------- OBV downhill span {count - obv_peak_indices[-1]} down {obvs.iloc[obv_peak_indices[-1]] - row['obv']:.3f}")
                 print(f"OBV Peak standout: {standout(obv_peak_prices)}")
                 obv_bullish = False
 

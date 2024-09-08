@@ -1,9 +1,7 @@
 import numpy as np
-import pandas as pd
 import yfinance as yf
 import alpaca_trade_api as tradeapi
 import configparser
-import matplotlib.pyplot as plt
 import sys
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
