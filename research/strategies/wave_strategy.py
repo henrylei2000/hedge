@@ -163,6 +163,8 @@ class WaveStrategy(Strategy):
             # Perform linear regression on valleys
             obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
 
+            print(f"!!! {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
+
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
         sell_signals = rows[rows['position'] == -1]
@@ -335,7 +337,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([300, 389], distance, prominence)
+        self.snapshot([0, 149], distance, prominence)
 
     def signal(self):
         self.trend()

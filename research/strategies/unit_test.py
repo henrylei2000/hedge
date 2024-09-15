@@ -67,7 +67,7 @@ def linear_regression(x, y):
     return a, b
 
 
-def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=5, interval='1m'):
+def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=3, interval='1m'):
     """
     Downloads historical stock price data, identifies peaks and valleys, and analyzes trends.
 
@@ -113,7 +113,7 @@ def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=5, interval='1m')
             else:
                 prices = []
 
-    prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+    prominence = data.iloc[0]['close']  * 0.00169 + 0.003
     # prominence = prices.iloc[-1] * 0.00125 + 0.005
     print(f"----------- {prominence}")
     # Identify peaks and valleys
@@ -137,8 +137,8 @@ def analyze_trends(ticker='TQQQ', d_day='2024-07-12', distance=5, interval='1m')
     trends['Type'] = np.where(trends['Trend'] == 'Peak', 'Downtrend', 'Uptrend')
 
     # Calculate OBV
-    obv = calculate_obv(ticker)
-
+    # obv = calculate_obv(ticker)
+    obv = calculate_volume(ticker)
     # Perform linear regression on peaks
     peak_indices = np.array(peaks)
     peak_prices = prices.iloc[peaks]
@@ -195,6 +195,7 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
     obv = calculate_obv(data)
 
     # Identify peaks and valleys
+    prominence = data.iloc[0]['Close'] * 0.00169 + 0.003
     peaks, _ = find_peaks(prices, distance=10, prominence=0.1)
     valleys, _ = find_peaks(-prices, distance=10, prominence=0.1)
 
@@ -264,10 +265,10 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
     ax1.legend()
 
     # Plot OBV data
-    ax2.plot(obv, label='OBV', color='purple')
-    ax2.set_title('On-Balance Volume (OBV)')
+    ax2.plot(volumes, label='volume', color='purple')
+    ax2.set_title('volume')
     ax2.set_xlabel('Date')
-    ax2.set_ylabel('OBV')
+    ax2.set_ylabel('volume')
     ax2.legend()
 
     plt.tight_layout()
