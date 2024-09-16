@@ -5,6 +5,43 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 
+def weighted_average_recent_peaks(prices, obvs, recent_peaks):
+
+    if len(recent_peaks) == 0:
+        # If no peaks in the recent 30 time points, return the current price
+        return prices.iloc[-1]
+
+    # Calculate weights: linearly prorated by their distance to the most recent time point
+    # Assign weight proportional to index distance, more recent -> higher weight
+    base = recent_peaks[0]
+    time_weights = [(i - base) + 1 for i in recent_peaks]
+
+    # Normalize time weights so their sum equals 1
+    time_weights = time_weights / sum(time_weights)
+
+    # Extract the peak prices and volumes
+    peak_prices = prices.iloc[recent_peaks]
+    peak_volumes = obvs.iloc[recent_peaks]
+
+    # Calculate combined weights: time weight * volume
+    combined_weights = time_weights * peak_volumes
+
+    # Normalize combined weights so their sum equals 1
+    combined_weights = combined_weights / sum(combined_weights)
+
+    # Calculate the weighted average with price, time weight, and volume
+    weighted_avg = np.dot(peak_prices, combined_weights)
+
+    return weighted_avg
+
+
+    # Extract the peak prices and calculate the weighted average
+    peak_prices = prices.iloc[recent_peaks]
+    weighted_avg = np.dot(peak_prices, weights)
+
+    return weighted_avg
+
+
 def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
     # Convert lists to numpy arrays if they aren't already
     valley_indices = np.array(valley_indices)
@@ -163,6 +200,8 @@ class WaveStrategy(Strategy):
             # Perform linear regression on valleys
             obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
 
+            w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-3:])
+            print(f"!!! {w_price}")
             print(f"!!! {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
 
         # Get positions for buy (1) and sell (-1) signals
@@ -337,7 +376,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([0, 149], distance, prominence)
+        self.snapshot([0, 249], distance, prominence)
 
     def signal(self):
         self.trend()
