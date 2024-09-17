@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 
 def weighted_average_recent_peaks(prices, obvs, recent_peaks):
 
+    recent_peaks = recent_peaks[recent_peaks >= len(prices) - 30]
+
     if len(recent_peaks) == 0:
         # If no peaks in the recent 30 time points, return the current price
         return prices.iloc[-1]
@@ -279,6 +281,7 @@ class WaveStrategy(Strategy):
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00169 + 0.003
         obv_prominence = data.iloc[0]['obv'] * 0.1
+        w_price = -0.1
 
         for index, row in data.iterrows():
             position = 0
@@ -320,11 +323,15 @@ class WaveStrategy(Strategy):
                 obv_peak_prices = obvs.iloc[obv_peak_indices]
                 obv_valley_prices = obvs.iloc[obv_valley_indices]
 
+                w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-3:])
+
             # from a valley
             if len(valley_indices) and (len(peak_indices) and valley_indices[-1] > peak_indices[-1] or not len(peak_indices)):
                 print(f"+++++++ uphill span {count - valley_indices[-1]} up {price - prices.iloc[valley_indices[-1]]:.3f}")
                 print(f"Valley standout: {standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
-                price_bullish = True
+                if w_price > row['close'] * 1.005:
+                    print(f"!!! ---- {w_price}")
+                    price_bullish = True
 
             # from a peak
             if len(peak_indices) and (len(valley_indices) and peak_indices[-1] > valley_indices[-1] or not len(valley_indices)):
@@ -366,7 +373,7 @@ class WaveStrategy(Strategy):
                     hold = True
                     print(f"buying @{count} {row['close']}")
 
-            if not macd_bullish and not price_bullish and not obv_bullish and hold:
+            if not price_bullish and not obv_bullish and hold:
                 position = -1
                 hold = False
                 print(f"selling @{count} {row['close']}")
@@ -376,7 +383,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([0, 249], distance, prominence)
+        self.snapshot([80, 119], distance, prominence)
 
     def signal(self):
         self.trend()
