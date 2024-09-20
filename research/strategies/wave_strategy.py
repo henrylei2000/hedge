@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 
 def weighted_average_recent_peaks(prices, obvs, recent_peaks):
 
-    recent_peaks = recent_peaks[recent_peaks >= len(prices) - 30]
+    current_index = len(prices) - 1
+    recent_peaks = recent_peaks[recent_peaks > current_index - 30]
 
     if len(recent_peaks) == 0:
         # If no peaks in the recent 30 time points, return the current price
@@ -202,7 +203,7 @@ class WaveStrategy(Strategy):
             # Perform linear regression on valleys
             obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
 
-            w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-3:])
+            w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
             print(f"!!! {w_price}")
             print(f"!!! {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
 
@@ -279,9 +280,16 @@ class WaveStrategy(Strategy):
         b_peaks = 1000000
         count = 0
         distance = 3
-        prominence = data.iloc[0]['close'] * 0.00169 + 0.003
+        prominence = data.iloc[0]['close'] * 0.00179 + 0.003
         obv_prominence = data.iloc[0]['obv'] * 0.1
-        w_price = -0.1
+
+        # three benchmark lines
+        price_agreed = -0.1  # agreement line - based on volume peaks
+        # disagreement line - based on volume valleys
+        # projected_peak
+        peak_projected = -0.1
+        # projected_valley
+        valley_projected = -0.1
 
         for index, row in data.iterrows():
             position = 0
@@ -305,7 +313,12 @@ class WaveStrategy(Strategy):
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
-            obvs = visible_rows['macd']
+            obvs = visible_rows['volume']
+
+            previous_avg = np.mean(obvs[:index])
+            if row['volume'] > 7 * previous_avg:
+                print(f"Spike found {row['volume']} vs {previous_avg}")
+
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
@@ -323,15 +336,22 @@ class WaveStrategy(Strategy):
                 obv_peak_prices = obvs.iloc[obv_peak_indices]
                 obv_valley_prices = obvs.iloc[obv_valley_indices]
 
-                w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-3:])
+                price_agreed = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
 
             # from a valley
             if len(valley_indices) and (len(peak_indices) and valley_indices[-1] > peak_indices[-1] or not len(peak_indices)):
                 print(f"+++++++ uphill span {count - valley_indices[-1]} up {price - prices.iloc[valley_indices[-1]]:.3f}")
                 print(f"Valley standout: {standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
-                if w_price > row['close'] * 1.005:
-                    print(f"!!! ---- {w_price}")
-                    price_bullish = True
+                print(f"!!! ---- {price_agreed:.3f} > {row['close']:.3f}")
+                print(f"!!! ---- {np.mean(obv_peak_prices[-5:])} > {row['volume']} > {np.mean(obv_valley_prices[-5:])}")
+                if price_agreed > row['close'] * 1.001:
+                    mean_peak = np.mean(obv_peak_prices[-3:])
+                    mean_valley = np.mean(obv_valley_prices[-3:])
+                    v = row['volume']
+                    if mean_peak > v > mean_valley:
+                        price_bullish = True
+                else:
+                    price_bullish = False
 
             # from a peak
             if len(peak_indices) and (len(valley_indices) and peak_indices[-1] > valley_indices[-1] or not len(valley_indices)):
@@ -359,21 +379,21 @@ class WaveStrategy(Strategy):
 
             if len(peak_indices) > 1:
                 # Perform linear regression on peaks
-                a_peaks, b_peaks = np.polyfit(peak_indices[-3:], peak_prices[-3:], 1)
-
-            list_price = a_peaks * count + b_peaks
+                a_peaks, b_peaks = np.polyfit(peak_indices[-5:], peak_prices[-5:], 1)
+                peak_projected = a_peaks * count + b_peaks
 
             if len(valley_indices) > 1:
                 # Perform linear regression on valleys
                 a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
+                valley_projected = a_valleys * count + b_valleys
 
-            if price_bullish and obv_bullish and not hold:
-                if row['close'] > list_price:
+            if price_bullish and not hold:
+                if valley_projected < row['close'] < peak_projected:
                     position = 1
                     hold = True
                     print(f"buying @{count} {row['close']}")
 
-            if not price_bullish and not obv_bullish and hold:
+            if not price_bullish and hold:
                 position = -1
                 hold = False
                 print(f"selling @{count} {row['close']}")
@@ -383,7 +403,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([80, 119], distance, prominence)
+        self.snapshot([300, 389], distance, prominence)
 
     def signal(self):
         self.trend()
