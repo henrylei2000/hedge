@@ -271,16 +271,17 @@ class WaveStrategy(Strategy):
     def trend(self):
         self.wave_simple()
         data = self.data
-        positions = []  # Store updated signals
-
-        # Initialize Signal column with zeros
+        positions = []
         data['position'] = 0
-        obv_bullish, macd_bullish, price_bullish, hold = False, False, False, False
+
+        obv_bullish, macd_bullish, price_bullish = False, False, False
+        hold = False
+        trigger = False
         a_peaks = 1000000
         b_peaks = 1000000
         count = 0
         distance = 3
-        prominence = data.iloc[0]['close'] * 0.00179 + 0.003
+        prominence = data.iloc[0]['close'] * 0.00169 + 0.003
         obv_prominence = data.iloc[0]['obv'] * 0.1
 
         # three benchmark lines
@@ -300,6 +301,11 @@ class WaveStrategy(Strategy):
             print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
+
+            if trigger and prices.iloc[-1] > prices.iloc[-2]:
+                position = 1
+                hold = True
+                trigger = False
 
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -367,8 +373,7 @@ class WaveStrategy(Strategy):
                         if mean_peak > v > mean_valley:
                             # current price is within the limit ???
                             if valley_projected < row['close'] < peak_projected:
-                                position = 1
-                                hold = True
+                                trigger = True
                                 benchmark = row['close']
                                 print(f"buying @{count} {row['close']}")
 
