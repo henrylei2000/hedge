@@ -282,3 +282,55 @@ d_day = '2023-03-09'
 prediction = predict_next_day_peak_valley(ticker, d_day, months=12)
 print(prediction)
 trends = analyze_trends(ticker, d_day, distance=5)
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# Function to detect peaks and valleys
+def detect_peaks_and_valleys(volume, threshold=1.5):
+    rolling_mean = volume.rolling(window=5).mean()
+    peaks = (volume > rolling_mean * threshold)
+    valleys = (volume < rolling_mean / threshold)
+    return peaks, valleys
+
+
+
+d_day = '2024-09-24'
+ticker = yf.download(ticker, start=pd.to_datetime(d_day, format='%Y-%m-%d') - pd.DateOffset(days=1), end=d_day, interval='1m')
+prices = ticker['Close']
+volume = ticker['Volume']
+highs = ticker['High']
+lows = ticker['Low']
+
+# Function to calculate Accumulation/Distribution (A/D) Line
+def calculate_ad_line(prices, high, low, volume):
+    # Money Flow Multiplier calculation
+    money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
+
+    # Money Flow Volume calculation
+    money_flow_volume = money_flow_multiplier * volume
+
+    # Accumulation/Distribution Line (cumulative sum of money flow volume)
+    ad_line = money_flow_volume.cumsum()
+    return ad_line
+
+
+# Calculate A/D Line
+ad_line = calculate_ad_line(prices, highs, lows, volume)
+
+# Plot Price and A/D Line
+plt.figure(figsize=(12, 6))
+plt.subplot(2, 1, 1)
+plt.plot(prices, label='Price')
+plt.title('Stock Price')
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.plot(ad_line, label='Accumulation/Distribution (A/D) Line', color='green')
+plt.title('Accumulation/Distribution (A/D) Line')
+plt.legend()
+
+plt.tight_layout()
+plt.show()

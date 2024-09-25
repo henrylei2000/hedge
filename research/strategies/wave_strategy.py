@@ -38,13 +38,6 @@ def weighted_average_recent_peaks(prices, obvs, recent_peaks):
     return weighted_avg
 
 
-    # Extract the peak prices and calculate the weighted average
-    peak_prices = prices.iloc[recent_peaks]
-    weighted_avg = np.dot(peak_prices, weights)
-
-    return weighted_avg
-
-
 def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
     # Convert lists to numpy arrays if they aren't already
     valley_indices = np.array(valley_indices)
@@ -182,14 +175,14 @@ class WaveStrategy(Strategy):
         # Perform linear regression on valleys
         a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
-        indicator = 'volume'
+        indicator = 'obv'
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -257,9 +250,9 @@ class WaveStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        if len(obv_peak_indices):
-            ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
-            ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
+        # if len(obv_peak_indices):
+        #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
+        #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
         ax2.set_title(f"{indicator}")
         ax2.set_xlabel('Time')
         ax2.set_ylabel(f"{indicator}")
@@ -302,11 +295,6 @@ class WaveStrategy(Strategy):
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
 
-            if trigger and prices.iloc[-1] > prices.iloc[-2]:
-                position = 1
-                hold = True
-                trigger = False
-
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             peak_indices = np.array(peaks)
@@ -322,7 +310,7 @@ class WaveStrategy(Strategy):
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
-            obvs = visible_rows['volume']
+            obvs = visible_rows['obv']
 
             previous_avg = np.mean(obvs[:index])
             if row['volume'] > 7 * previous_avg:
@@ -373,8 +361,8 @@ class WaveStrategy(Strategy):
                         if mean_peak > v > mean_valley:
                             # current price is within the limit ???
                             if valley_projected < row['close'] < peak_projected:
-                                trigger = True
-                                benchmark = row['close']
+                                position = 1
+                                hold = True
                                 print(f"buying @{count} {row['close']}")
 
             # from a peak
@@ -410,7 +398,7 @@ class WaveStrategy(Strategy):
             print("\n")
 
         data['position'] = positions
-        self.snapshot([300, 389], distance, prominence)
+        self.snapshot([100, 200], distance, prominence)
 
     def signal(self):
         self.trend()
