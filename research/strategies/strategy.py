@@ -28,7 +28,7 @@ class Strategy:
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                self.plot()
+                # self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")
@@ -116,6 +116,8 @@ class Strategy:
                 if not data.empty:
                     data.rename_axis('timestamp', inplace=True)
                     data.rename(columns={'Close': 'close'}, inplace=True)
+                    data.rename(columns={'High': 'high'}, inplace=True)
+                    data.rename(columns={'Low': 'low'}, inplace=True)
                 else:
                     return False
 

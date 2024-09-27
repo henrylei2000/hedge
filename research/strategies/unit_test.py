@@ -297,7 +297,7 @@ def detect_peaks_and_valleys(volume, threshold=1.5):
 
 
 
-d_day = '2024-09-24'
+d_day = '2024-09-21'
 ticker = yf.download(ticker, start=pd.to_datetime(d_day, format='%Y-%m-%d') - pd.DateOffset(days=1), end=d_day, interval='1m')
 prices = ticker['Close']
 volume = ticker['Volume']

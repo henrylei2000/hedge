@@ -94,20 +94,6 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
 
     return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
 
-
-# Example usage
-valley_indices = [4, 7, 8, 9]
-valley_prices = [105, 102, 89, 87]
-peak_indices = [3, 5, 6]
-peak_prices = [110, 108, 109]
-prices = [98, 100, 108, 110, 105, 109, 108, 102, 89, 87]
-
-prices = pd.Series(prices)
-
-corrected_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
-print("Corrected Indices:", corrected_indices)
-
-
 def standout(values):
     base = values.iloc[-1]
     high, low = 0, 0
@@ -120,6 +106,17 @@ def standout(values):
             low += 1
             high_stop = True
     return high, low
+
+def ad_line(prices, high, low, volume):
+    # Money Flow Multiplier calculation
+    money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
+
+    # Money Flow Volume calculation
+    money_flow_volume = money_flow_multiplier * volume
+
+    # Accumulation/Distribution Line (cumulative sum of money flow volume)
+    ad_line = money_flow_volume.cumsum()
+    return ad_line
 
 
 class WaveStrategy(Strategy):
@@ -148,9 +145,21 @@ class WaveStrategy(Strategy):
             # Calculate OBV moving average
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
             data['rolling_volume'] = data['obv'].rolling(window=3).mean()
+            data['a/d'] = ad_line(data['close'], data['high'], data['low'], data['volume'])
+            self.normalize_column('a/d')
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
+
+    def normalize_column(self, column_name):
+        # Extract the column to be normalized
+        col = self.data[column_name]
+
+        # Normalize the column to range from 0 to 100
+        normalized_col = (col - col.min()) / (col.max() - col.min()) * 100
+
+        # Create a new column with the normalized values
+        self.data['normalized_' + column_name] = normalized_col
 
     def snapshot(self, interval, distance, prominence):
         if interval[1] - interval[0] < 30:
@@ -175,14 +184,14 @@ class WaveStrategy(Strategy):
         # Perform linear regression on valleys
         a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
-        indicator = 'obv'
+        indicator = 'a/d'
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -275,7 +284,6 @@ class WaveStrategy(Strategy):
         count = 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00169 + 0.003
-        obv_prominence = data.iloc[0]['obv'] * 0.1
 
         # three benchmark lines
         price_agreed = -0.1  # agreement line - based on volume peaks
@@ -291,9 +299,10 @@ class WaveStrategy(Strategy):
         for index, row in data.iterrows():
             position = 0
             price = row['close']
-            print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
+            # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
+            adlines = visible_rows['a/d']
 
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -310,11 +319,14 @@ class WaveStrategy(Strategy):
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
-            obvs = visible_rows['obv']
+            indicator = 'a/d'
+            obvs = visible_rows[indicator]
+            obv_prominence = self.data.iloc[0][indicator] * 0.1
 
             previous_avg = np.mean(obvs[:index])
             if row['volume'] > 7 * previous_avg:
-                print(f"Spike found {row['volume']} vs {previous_avg}")
+                pass
+                # print(f"Spike found {row['volume']} vs {previous_avg}")
 
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
@@ -332,7 +344,6 @@ class WaveStrategy(Strategy):
                                                                                                     obvs.iloc[0])
                 obv_peak_prices = obvs.iloc[obv_peak_indices]
                 obv_valley_prices = obvs.iloc[obv_valley_indices]
-
                 price_agreed = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
 
             if len(peak_indices) > 1:
@@ -347,44 +358,53 @@ class WaveStrategy(Strategy):
 
             # from a valley
             if not hold:
-                if len(valley_indices) and (len(peak_indices) and valley_indices[-1] > peak_indices[-1] or not len(peak_indices)):
-                    print(f"+++++++ uphill span {count - valley_indices[-1]} up {price - prices.iloc[valley_indices[-1]]:.3f}")
-                    print(f"Valley standout: {standout(valley_prices)}, recent valleys {valley_indices[-3:]}")
-                    print(f"!!! ---- {price_agreed:.3f} > {row['close']:.3f}")
-                    print(f"!!! ---- {np.mean(obv_peak_prices[-5:])} > {row['volume']} > {np.mean(obv_valley_prices[-5:])}")
-                    # current price is lower than the agreed price: potential to grow
-                    if row['close'] < price_agreed * 0.999:
-                        # volume is not significant: avoid reversal???
-                        mean_peak = np.mean(obv_peak_prices[-3:])
-                        mean_valley = np.mean(obv_valley_prices[-3:])
-                        v = row['volume']
-                        if mean_peak > v > mean_valley:
-                            # current price is within the limit ???
-                            if valley_projected < row['close'] < peak_projected:
-                                position = 1
-                                hold = True
-                                print(f"buying @{count} {row['close']}")
+                if len(valley_indices) and len(peak_indices) and valley_indices[-1] > peak_indices[-1]:
+                    ad_valley = False
+                    # smart money movement
+                    if len(peak_indices):
+                        reference_index = peak_indices[-1]
+                    else:
+                        reference_index = 0
+                    reference_span = valley_indices[-1]+1
+                    if reference_span - reference_index > 5:
+                        a_prices, _ = np.polyfit(np.arange(reference_index, reference_span), prices[reference_index:reference_span], 1)
+                        a_adlines, _ = np.polyfit(np.arange(reference_index, reference_span), adlines[reference_index:reference_span], 1)
+                        if a_adlines > 0 > a_prices and count - valley_indices[-1] < 5:
+                            position = 1
+                            hold = True
+                            print(f"buying @{count} {price}")
 
             # from a peak
             if hold:
-                if len(peak_indices) and (len(valley_indices) and peak_indices[-1] > valley_indices[-1] or not len(valley_indices)):
-                    print(f"------- downhill span {count - peak_indices[-1]} down {prices.iloc[peak_indices[-1]] - price:.3f}")
-                    print(f"Peak standout: {standout(peak_prices)}")
-                    if row['close'] > peak_projected or True:
+                ad_peak = False
+                if len(peak_indices) and len(valley_indices) and peak_indices[-1] > valley_indices[-1]:
+                    if len(obv_peak_indices) and (
+                            len(obv_valley_indices) and obv_peak_indices[-1] > obv_valley_indices[-1] or not len(
+                        obv_valley_indices)):
+                        if valley_indices[-1] < obv_peak_indices [-1] < peak_indices[-1]:
+                            ad_peak = True
+                    if len(valley_indices):
+                        reference_index = valley_indices[-1]
+                    else:
+                        reference_index = 0
+                    reference_span = peak_indices[-1]+1
+                    a_prices, _ = np.polyfit(np.arange(reference_index, reference_span), prices[reference_index:reference_span], 1)
+                    a_adlines, _ = np.polyfit(np.arange(reference_index, reference_span), adlines[reference_index:reference_span], 1)
+
+                    if a_prices > 0 > a_adlines:
+                        ad_down = True
+
+                    if ad_peak:
                         position = -1
                         hold = False
                         print(f"selling @{count} {row['close']}")
 
             # from an obv_valley
             if len(obv_valley_indices) and (len(obv_peak_indices) and obv_valley_indices[-1] > obv_peak_indices[-1] or not len(obv_peak_indices)):
-                print(f"+++++++ OBV uphill span {count - obv_valley_indices[-1]} up {row['obv'] - obvs.iloc[obv_valley_indices[-1]]:.3f}")
-                print(f"OBV Valley standout: {standout(obv_valley_prices)}, recent OBV valleys {obv_valley_indices[-3:]}")
                 obv_bullish = True
 
             # from an obv_peak
             if len(obv_peak_indices) and (len(obv_valley_indices) and obv_peak_indices[-1] > obv_valley_indices[-1] or not len(obv_valley_indices)):
-                print(f"------- OBV downhill span {count - obv_peak_indices[-1]} down {obvs.iloc[obv_peak_indices[-1]] - row['obv']:.3f}")
-                print(f"OBV Peak standout: {standout(obv_peak_prices)}")
                 obv_bullish = False
 
             if count and row['strength'] > 0 > data.iloc[count-1]['strength']:
@@ -395,10 +415,9 @@ class WaveStrategy(Strategy):
 
             positions.append(position)
             count += 1
-            print("\n")
 
         data['position'] = positions
-        self.snapshot([100, 200], distance, prominence)
+        # self.snapshot([0, 110], distance, prominence)
 
     def signal(self):
         self.trend()
