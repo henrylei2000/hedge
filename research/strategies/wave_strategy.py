@@ -206,8 +206,7 @@ class WaveStrategy(Strategy):
             obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
 
             w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
-            print(f"!!! {w_price}")
-            print(f"!!! {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
+            print(f"!!! {w_price} {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
@@ -278,7 +277,7 @@ class WaveStrategy(Strategy):
 
         obv_bullish, macd_bullish, price_bullish = False, False, False
         hold = False
-        wavelength, buy_at = 0, 0
+        wavelength, wavestart, entry = 0, 0, 0
         a_peaks = 1000000
         b_peaks = 1000000
         count = 0
@@ -363,11 +362,10 @@ class WaveStrategy(Strategy):
                     # smart money movement
                     #   WARNING: can be too quick to predict
                     #   to find a/d peaks before the most recent valley
-                    #   focus on [62,67], [132, 139], timer, number of peaks
-                    if len(peak_indices):
-                        reference_index = peak_indices[-1]
-                    else:
-                        reference_index = 0
+                    #   focus on [62,67], [132, 139], [230, 241] timer, number of peaks
+                    reference_index = peak_indices[-1]
+                    if obv_valley_indices.size and reference_index < obv_valley_indices[-1] < count:
+                        reference_index = obv_valley_indices[-1]
                     reference_span = valley_indices[-1] + 1
                     wavelength = reference_span - reference_index
                     if wavelength > 5:
@@ -376,22 +374,19 @@ class WaveStrategy(Strategy):
                         if a_adlines > 0 > a_prices and count - valley_indices[-1] < 5:
                             position = 1
                             hold = True
-                            buy_at = count
+                            wavestart = valley_indices[-1]
+                            entry = count
                             print(f"buying @{count} {price} wavelength {wavelength}")
 
             # from a peak
             if hold:
-                wavelength -= 1
                 ad_peak = False
-                if wavelength < 0 and adlines.iloc[count] < adlines.iloc[buy_at]:
+                if wavestart + wavelength - 1 <= count and adlines.iloc[count] < adlines.iloc[entry]:
                     ad_peak = True
 
                 if peak_indices.size and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
                     ad_peak = True
-                    if len(valley_indices):
-                        reference_index = valley_indices[-1]
-                    else:
-                        reference_index = 0
+                    reference_index = valley_indices[-1]
                     reference_span = peak_indices[-1]+1
                     a_prices, _ = np.polyfit(np.arange(reference_index, reference_span), prices[reference_index:reference_span], 1)
                     a_adlines, _ = np.polyfit(np.arange(reference_index, reference_span), adlines[reference_index:reference_span], 1)
@@ -422,7 +417,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([300, 389], distance, prominence)
+        self.snapshot([50, 180], distance, prominence)
 
     def signal(self):
         self.trend()
