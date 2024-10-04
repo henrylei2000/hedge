@@ -188,10 +188,10 @@ class WaveStrategy(Strategy):
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.1
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -278,7 +278,7 @@ class WaveStrategy(Strategy):
 
         obv_bullish, macd_bullish, price_bullish = False, False, False
         hold = False
-        trigger = False
+        wavelength, buy_at = 0, 0
         a_peaks = 1000000
         b_peaks = 1000000
         count = 0
@@ -329,10 +329,10 @@ class WaveStrategy(Strategy):
                 # print(f"Spike found {row['volume']} vs {previous_avg}")
 
             # Identify peaks and valleys
-            obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
+            obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
             obv_peak_prices = obvs.iloc[obv_peaks]
-            obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
             obv_valley_indices = np.array(obv_valleys)
             obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -358,31 +358,36 @@ class WaveStrategy(Strategy):
 
             # from a valley
             if not hold:
-                if len(valley_indices) and len(peak_indices) and valley_indices[-1] > peak_indices[-1]:
+                if valley_indices.size and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
                     ad_valley = False
                     # smart money movement
+                    #   WARNING: can be too quick to predict
+                    #   to find a/d peaks before the most recent valley
+                    #   focus on [62,67], [132, 139], timer, number of peaks
                     if len(peak_indices):
                         reference_index = peak_indices[-1]
                     else:
                         reference_index = 0
-                    reference_span = valley_indices[-1]+1
-                    if reference_span - reference_index > 5:
-                        a_prices, _ = np.polyfit(np.arange(reference_index, reference_span), prices[reference_index:reference_span], 1)
-                        a_adlines, _ = np.polyfit(np.arange(reference_index, reference_span), adlines[reference_index:reference_span], 1)
+                    reference_span = valley_indices[-1] + 1
+                    wavelength = reference_span - reference_index
+                    if wavelength > 5:
+                        a_prices, _ = np.polyfit(np.arange(wavelength), prices[reference_index:reference_span], 1)
+                        a_adlines, _ = np.polyfit(np.arange(wavelength), adlines[reference_index:reference_span], 1)
                         if a_adlines > 0 > a_prices and count - valley_indices[-1] < 5:
                             position = 1
                             hold = True
-                            print(f"buying @{count} {price}")
+                            buy_at = count
+                            print(f"buying @{count} {price} wavelength {wavelength}")
 
             # from a peak
             if hold:
+                wavelength -= 1
                 ad_peak = False
-                if len(peak_indices) and len(valley_indices) and peak_indices[-1] > valley_indices[-1]:
-                    if len(obv_peak_indices) and (
-                            len(obv_valley_indices) and obv_peak_indices[-1] > obv_valley_indices[-1] or not len(
-                        obv_valley_indices)):
-                        if valley_indices[-1] < obv_peak_indices [-1] < peak_indices[-1]:
-                            ad_peak = True
+                if wavelength < 0 and adlines.iloc[count] < adlines.iloc[buy_at]:
+                    ad_peak = True
+
+                if peak_indices.size and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
+                    ad_peak = True
                     if len(valley_indices):
                         reference_index = valley_indices[-1]
                     else:
@@ -394,10 +399,10 @@ class WaveStrategy(Strategy):
                     if a_prices > 0 > a_adlines:
                         ad_down = True
 
-                    if ad_peak:
-                        position = -1
-                        hold = False
-                        print(f"selling @{count} {row['close']}")
+                if ad_peak:
+                    position = -1
+                    hold = False
+                    print(f"selling @{count} {row['close']} wavelength: {wavelength}")
 
             # from an obv_valley
             if len(obv_valley_indices) and (len(obv_peak_indices) and obv_valley_indices[-1] > obv_peak_indices[-1] or not len(obv_peak_indices)):
@@ -417,7 +422,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        # self.snapshot([0, 110], distance, prominence)
+        self.snapshot([300, 389], distance, prominence)
 
     def signal(self):
         self.trend()
