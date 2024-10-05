@@ -357,7 +357,7 @@ class WaveStrategy(Strategy):
 
             # from a valley
             if not hold:
-                if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
+                if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1] and count <= valley_indices[-1] + 3:
                     ad_valley = False
                     # smart money movement
                     #   WARNING: can be too quick to predict
@@ -365,21 +365,23 @@ class WaveStrategy(Strategy):
                     #   focus on [62,67], [132, 139], [230, 241] timer, number of peaks
                     reference_index = valley_indices[-2]
                     reference_span = valley_indices[-1] + 1
-                    wavelength = reference_span - reference_index
+                    wavelength = reference_span - peak_indices[-1]
                     if wavelength > 5:
-                        a_prices, _ = np.polyfit(np.arange(wavelength), prices[reference_index:reference_span], 1)
-                        a_adlines, _ = np.polyfit(np.arange(wavelength), adlines[reference_index:reference_span], 1)
+                        a_prices, _ = np.polyfit(np.arange(reference_span - reference_index), prices[reference_index:reference_span], 1)
+                        a_adlines, _ = np.polyfit(np.arange(reference_span - reference_index), adlines[reference_index:reference_span], 1)
                         if a_adlines > 0 > a_prices and count - valley_indices[-1] < 5:
                             position = 1
                             hold = True
                             wavestart = valley_indices[-1]
                             entry = count
-                            print(f"buying @{count} {price} wavelength {wavelength}")
+                            print(f"buying @{count} {price} wavelength {wavelength} "
+                                  f"ratio 1: {(prices.iloc[valley_indices[-1]] - prices.iloc[valley_indices[-2]]) / prices.iloc[valley_indices[-2]]}.5f"
+                                  f"ratio 2: {(adlines.iloc[valley_indices[-1]] - adlines.iloc[valley_indices[-2]]) / adlines.iloc[valley_indices[-2]]}.5f")
 
             # from a peak
             if hold:
                 ad_peak = False
-                if wavestart + wavelength - 1 <= count and adlines.iloc[count] < adlines.iloc[entry]:
+                if count >= wavestart + wavelength and adlines.iloc[count] < adlines.iloc[entry]:
                     ad_peak = True
 
                 if peak_indices.size and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
@@ -415,7 +417,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([260, 389], distance, prominence)
+        self.snapshot([0, 159], distance, prominence)
 
     def signal(self):
         self.trend()
