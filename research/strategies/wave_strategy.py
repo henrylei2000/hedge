@@ -357,15 +357,13 @@ class WaveStrategy(Strategy):
 
             # from a valley
             if not hold:
-                if valley_indices.size and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
+                if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
                     ad_valley = False
                     # smart money movement
                     #   WARNING: can be too quick to predict
                     #   to find a/d peaks before the most recent valley
                     #   focus on [62,67], [132, 139], [230, 241] timer, number of peaks
-                    reference_index = peak_indices[-1]
-                    if obv_valley_indices.size and reference_index < obv_valley_indices[-1] < count:
-                        reference_index = obv_valley_indices[-1]
+                    reference_index = valley_indices[-2]
                     reference_span = valley_indices[-1] + 1
                     wavelength = reference_span - reference_index
                     if wavelength > 5:
@@ -417,7 +415,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([50, 180], distance, prominence)
+        self.snapshot([260, 389], distance, prominence)
 
     def signal(self):
         self.trend()
