@@ -99,12 +99,15 @@ def standout(values):
     high, low = 0, 0
     high_stop, low_stop = False, False
     for v in values[-2::-1]:
-        if v <= base and not high_stop:
-            high += 1
+        if v <= base:
             low_stop = True
-        elif not low_stop:
-            low += 1
+            if not high_stop:
+                high += 1
+        elif v > base:
             high_stop = True
+            if not low_stop:
+                low += 1
+
     return high, low
 
 def ad_line(prices, high, low, volume):
@@ -178,6 +181,12 @@ class WaveStrategy(Strategy):
         corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
         peak_prices = prices.iloc[peak_indices]
         valley_prices = prices.iloc[valley_indices]
+
+        # debugging info
+        print("[SNAPSHOT] valley_indices")
+        for i in range(valley_indices.size):
+            print(f"{valley_indices[i]} {valley_prices.iloc[i]} {standout(valley_prices.iloc[:i+1])}")
+
 
         # Perform linear regression on peaks
         a_peaks, b_peaks = np.polyfit(peak_indices[-5:], peak_prices[-5:], 1)
@@ -366,17 +375,25 @@ class WaveStrategy(Strategy):
                     reference_index = valley_indices[-2]
                     reference_span = valley_indices[-1] + 1
                     wavelength = reference_span - peak_indices[-1]
+                    ad_near, ad_far = adlines.iloc[valley_indices[-1]], adlines.iloc[valley_indices[-2]]
                     if wavelength > 5:
                         a_prices, _ = np.polyfit(np.arange(reference_span - reference_index), prices[reference_index:reference_span], 1)
                         a_adlines, _ = np.polyfit(np.arange(reference_span - reference_index), adlines[reference_index:reference_span], 1)
-                        if a_adlines > 0 > a_prices and count - valley_indices[-1] < 5:
+                        if ad_far < ad_near < 0 or ad_far < 0 < ad_near:
+                            ad_ratio = (ad_far - ad_near) / ad_far
+                        elif 0 < ad_far < ad_near:
+                            ad_ratio = (ad_near - ad_far) / ad_far
+                        else:
+                            ad_ratio = 0
+                        price_ratio = (prices.iloc[valley_indices[-1]] - prices.iloc[valley_indices[-2]]) / prices.iloc[valley_indices[-2]]
+                        if ad_ratio > 0.15 > 0 > price_ratio:
                             position = 1
                             hold = True
                             wavestart = valley_indices[-1]
                             entry = count
                             print(f"buying @{count} {price} wavelength {wavelength} "
-                                  f"ratio 1: {(prices.iloc[valley_indices[-1]] - prices.iloc[valley_indices[-2]]) / prices.iloc[valley_indices[-2]]}.5f"
-                                  f"ratio 2: {(adlines.iloc[valley_indices[-1]] - adlines.iloc[valley_indices[-2]]) / adlines.iloc[valley_indices[-2]]}.5f")
+                                  f"price roc: {price_ratio:.5f} "
+                                  f"ad roc: {ad_ratio:.5f} {a_adlines}")
 
             # from a peak
             if hold:
@@ -417,7 +434,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 159], distance, prominence)
+        self.snapshot([0, 129], distance, prominence)
 
     def signal(self):
         self.trend()
