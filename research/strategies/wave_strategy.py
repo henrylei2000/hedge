@@ -182,12 +182,6 @@ class WaveStrategy(Strategy):
         peak_prices = prices.iloc[peak_indices]
         valley_prices = prices.iloc[valley_indices]
 
-        # debugging info
-        print("[SNAPSHOT] valley_indices")
-        for i in range(valley_indices.size):
-            print(f"{valley_indices[i]} {valley_prices.iloc[i]} {standout(valley_prices.iloc[:i+1])}")
-
-
         # Perform linear regression on peaks
         a_peaks, b_peaks = np.polyfit(peak_indices[-5:], peak_prices[-5:], 1)
         # Perform linear regression on valleys
@@ -216,6 +210,18 @@ class WaveStrategy(Strategy):
 
             w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
             print(f"!!! {w_price} {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
+
+        # debugging info
+        print("----- [SNAPSHOT] valley research -----")
+        head, tail = 0, 0
+        head = valley_indices[0]
+        for i in range(valley_indices.size):
+            high, low = standout(valley_prices.iloc[:i+1])
+            print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
+            if low:
+                tail = valley_indices[i]
+                print(f"Needs attention {head} - {valley_indices[i]}")
+                head = tail
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
