@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
+from itertools import combinations
 
 
 def weighted_average_recent_peaks(prices, obvs, recent_peaks):
@@ -213,15 +214,22 @@ class WaveStrategy(Strategy):
 
         # debugging info
         print("----- [SNAPSHOT] valley research -----")
-        head, tail = 0, 0
-        head = valley_indices[0]
+        dips = []
+        dips.append(valley_indices[0])
         for i in range(valley_indices.size):
             high, low = standout(valley_prices.iloc[:i+1])
             print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
             if low:
-                tail = valley_indices[i]
-                print(f"Needs attention {head} - {valley_indices[i]}")
-                head = tail
+                dips.append(valley_indices[i])
+
+            print(f"{dips}")
+            valid_combinations = []
+            # Generate all pairs where a < b
+            for a, b in combinations(dips, 2):
+                if b - a < 60:
+                    valid_combinations.append((a, b))
+
+            print(f"{valid_combinations}")
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
