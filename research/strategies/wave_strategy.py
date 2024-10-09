@@ -381,6 +381,24 @@ class WaveStrategy(Strategy):
             # from a valley
             if not hold:
                 if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1] and count <= valley_indices[-1] + 3:
+
+                    dips = []
+                    dips.append(valley_indices[0])
+                    for i in range(valley_indices.size):
+                        high, low = standout(valley_prices.iloc[:i + 1])
+                        print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
+                        if low:
+                            dips.append(valley_indices[i])
+
+                        print(f"{dips}")
+                        valid_combinations = []
+                        # Generate all pairs where a < b
+                        for a, b in combinations(dips, 2):
+                            if b - a < 60:
+                                valid_combinations.append((a, b))
+
+                        print(f"{valid_combinations}")
+
                     ad_valley = False
                     # smart money movement
                     #   WARNING: can be too quick to predict
@@ -390,9 +408,11 @@ class WaveStrategy(Strategy):
                     reference_span = valley_indices[-1] + 1
                     wavelength = reference_span - peak_indices[-1]
                     ad_near, ad_far = adlines.iloc[valley_indices[-1]], adlines.iloc[valley_indices[-2]]
-                    if wavelength > 5:
+                    if wavelength > 1:
                         a_prices, _ = np.polyfit(np.arange(reference_span - reference_index), prices[reference_index:reference_span], 1)
                         a_adlines, _ = np.polyfit(np.arange(reference_span - reference_index), adlines[reference_index:reference_span], 1)
+                        print(f"a_prices {a_prices}, a_adlines {a_adlines}")
+
                         if ad_far < ad_near < 0 or ad_far < 0 < ad_near:
                             ad_ratio = (ad_far - ad_near) / ad_far
                         elif 0 < ad_far < ad_near:
