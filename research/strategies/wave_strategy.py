@@ -219,8 +219,7 @@ class WaveStrategy(Strategy):
         for i in range(valley_indices.size):
             high, low = standout(valley_prices.iloc[:i+1])
             print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
-            if low:
-                dips.append(valley_indices[i])
+            dips.append(valley_indices[i])
 
             print(f"{dips}")
             valid_combinations = []
@@ -387,8 +386,7 @@ class WaveStrategy(Strategy):
                     for i in range(valley_indices.size):
                         high, low = standout(valley_prices.iloc[:i + 1])
                         print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
-                        if low:
-                            dips.append(valley_indices[i])
+                        dips.append(valley_indices[i])
 
                         print(f"{dips}")
                         valid_combinations = []
