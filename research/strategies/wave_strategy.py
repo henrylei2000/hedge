@@ -372,14 +372,20 @@ class WaveStrategy(Strategy):
             # from a valley
             if not hold:
                 if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
-                    dips = []
-                    for i in range(valley_indices.size - 1):
-                        if valley_indices[i] > valley_indices[-1] - 60:
-                            dips.append((valley_indices[i], valley_indices[-1]))
-
-                    if 60 < count < 70:
-                        print(f"dips {dips} @ {count}")
-
+                    dips = valley_indices[::-1]
+                    for i in range(1, dips.size):
+                        if dips[i] > dips[0] - 60:
+                            start, end = dips[i], dips[0]
+                            wavelength = end - start
+                            if wavelength > 3:
+                                a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
+                                a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                                if a_prices < 0 < a_adlines:
+                                    print(f"linear regression: {a_prices:.3f} {a_adlines:.3f} [{start}, {end}] @{count}")
+                                price_ratio = (prices.iloc[end] - prices.iloc[start])
+                                ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
+                                if price_ratio < 0 < ad_ratio:
+                                    print(f"ratio: {price_ratio:.6f} {ad_ratio:.3f} [{start}, {end}] @ {count}")
                     ad_valley = False
                     # smart money movement
                     #   WARNING: can be too quick to predict
@@ -448,7 +454,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 129], distance, prominence)
+        self.snapshot([200, 389], distance, prominence)
 
     def signal(self):
         self.trend()
