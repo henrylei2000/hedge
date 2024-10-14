@@ -291,23 +291,13 @@ class WaveStrategy(Strategy):
 
         obv_bullish, macd_bullish, price_bullish = False, False, False
         hold = False
-        wavelength, wavestart, entry = 0, 0, 0
+        wavelength, wavestart, entry, patience, next_peak = 0, 0, 0, 0, False
         a_peaks = 1000000
         b_peaks = 1000000
         count = 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00169 + 0.003
 
-        # three benchmark lines
-        price_agreed = -0.1  # agreement line - based on volume peaks
-        # disagreement line - based on volume valleys
-
-        # benchmark price
-        benchmark = -0.1
-        # projected_peak
-        peak_projected = -0.1
-        # projected_valley
-        valley_projected = -0.1
 
         for index, row in data.iterrows():
             position = 0
@@ -370,91 +360,54 @@ class WaveStrategy(Strategy):
                 valley_projected = a_valleys * count + b_valleys
 
             # from a valley
-            if not hold:
-                if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
-                    dips = valley_indices[::-1]
-                    for i in range(1, dips.size):
-                        if dips[i] > dips[0] - 60:
-                            start, end = dips[i], dips[0]
-                            wavelength = end - start
-                            if wavelength > 3:
-                                a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
-                                a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
-                                if a_prices < 0 < a_adlines:
-                                    print(f"linear regression: {a_prices:.3f} {a_adlines:.3f} [{start}, {end}] @{count}")
-                                price_ratio = (prices.iloc[end] - prices.iloc[start])
-                                ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
-                                if price_ratio < 0 < ad_ratio:
-                                    print(f"ratio: {price_ratio:.6f} {ad_ratio:.3f} [{start}, {end}] @ {count}")
-                    ad_valley = False
-                    # smart money movement
-                    #   WARNING: can be too quick to predict
-                    #   to find a/d peaks before the most recent valley
-                    #   focus on [62,67], [132, 139], [230, 241] timer, number of peaks
-                    reference_index = valley_indices[-2]
-                    reference_span = valley_indices[-1] + 1
-                    wavelength = reference_span - peak_indices[-1]
-                    ad_near, ad_far = adlines.iloc[valley_indices[-1]], adlines.iloc[valley_indices[-2]]
-                    if wavelength > 1:
-                        a_prices, _ = np.polyfit(np.arange(reference_span - reference_index), prices[reference_index:reference_span], 1)
-                        a_adlines, _ = np.polyfit(np.arange(reference_span - reference_index), adlines[reference_index:reference_span], 1)
 
-                        if ad_far < ad_near < 0 or ad_far < 0 < ad_near:
-                            ad_ratio = (ad_far - ad_near) / ad_far
-                        elif 0 < ad_far < ad_near:
-                            ad_ratio = (ad_near - ad_far) / ad_far
-                        else:
-                            ad_ratio = 0
-                        price_ratio = (prices.iloc[valley_indices[-1]] - prices.iloc[valley_indices[-2]]) / prices.iloc[valley_indices[-2]]
-                        if ad_ratio > 0.15 > 0 > price_ratio:
-                            position = 1
-                            hold = True
-                            wavestart = valley_indices[-1]
-                            entry = count
-                            print(f"buying @{count} {price} wavelength {wavelength} "
-                                  f"price roc: {price_ratio:.5f} "
-                                  f"ad roc: {ad_ratio:.5f} {a_adlines}")
+            if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
+                dips = valley_indices[::-1]
+                for i in range(1, dips.size):
+                    if dips[i] > dips[0] - 60:
+                        start, end = dips[i], dips[0]
+                        wavelength = end - start
+                        if wavelength > 3:
+                            a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
+                            a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                            if a_prices < 0 < a_adlines:
+                                print(f"linear regression: {a_prices:.3f} {a_adlines:.3f} [{start}, {end}] @{count}")
+                            price_ratio = (prices.iloc[end] - prices.iloc[start])
+                            ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
+                            if price_ratio < 0 < ad_ratio:
+                                print(f"ratio: {price_ratio:.6f} {ad_ratio:.3f} [{start}, {end}] @ {count}")
 
-            # from a peak
+                            if a_prices < 0 < a_adlines and price_ratio < -0.002 < 0.2 < ad_ratio:
+                                next_peak = False
+                                interval = wavelength // 3
+                                if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
+                                    entry = count
+                                    patience = count - start
+                                    if not hold:
+                                        position = 1
+                                        hold = True
+                                        print(f"buying @{count} {price} wavelength {wavelength} "
+                                          f"price roc: {price_ratio:.5f} "
+                                          f"ad roc: {ad_ratio:.5f} {a_adlines}")
+
+                            if hold and (a_prices > 0 > a_adlines or ad_ratio < 0):
+                                next_peak = True
+
+            # from a price peak
             if hold:
-                ad_peak = False
-                if count >= wavestart + wavelength and adlines.iloc[count] < adlines.iloc[entry]:
-                    ad_peak = True
-
-                if peak_indices.size and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
-                    ad_peak = True
-                    reference_index = valley_indices[-1]
-                    reference_span = peak_indices[-1]+1
-                    a_prices, _ = np.polyfit(np.arange(reference_index, reference_span), prices[reference_index:reference_span], 1)
-                    a_adlines, _ = np.polyfit(np.arange(reference_index, reference_span), adlines[reference_index:reference_span], 1)
-
-                    if a_prices > 0 > a_adlines:
-                        ad_down = True
-
-                if ad_peak:
-                    position = -1
-                    hold = False
-                    print(f"selling @{count} {row['close']} wavelength: {wavelength}")
-
-            # from an obv_valley
-            if len(obv_valley_indices) and (len(obv_peak_indices) and obv_valley_indices[-1] > obv_peak_indices[-1] or not len(obv_peak_indices)):
-                obv_bullish = True
-
-            # from an obv_peak
-            if len(obv_peak_indices) and (len(obv_valley_indices) and obv_peak_indices[-1] > obv_valley_indices[-1] or not len(obv_valley_indices)):
-                obv_bullish = False
-
-            if count and row['strength'] > 0 > data.iloc[count-1]['strength']:
-                macd_bullish = True
-
-            if count and row['strength'] < 0 < data.iloc[count-1]['strength']:
-                macd_bullish = False
+                if peak_indices.size > 1 and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
+                    first_peak_after_buy = np.searchsorted(valley_indices, entry, side='right')
+                    differences = np.diff(valley_indices)
+                    if next_peak or (len(valley_indices) - first_peak_after_buy > patience // np.mean(differences)):
+                        position = -1
+                        hold = False
+                        print(f"selling @{count} {row['close']} wavelength: {wavelength}")
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
-        self.snapshot([200, 389], distance, prominence)
+        self.snapshot([60, 189], distance, prominence)
 
     def signal(self):
         self.trend()
