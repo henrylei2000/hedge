@@ -370,35 +370,30 @@ class WaveStrategy(Strategy):
                         if wavelength > 3:
                             a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
                             a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
-                            if a_prices < 0 < a_adlines:
-                                print(f"linear regression: {a_prices:.3f} {a_adlines:.3f} [{start}, {end}] @{count}")
                             price_ratio = (prices.iloc[end] - prices.iloc[start])
                             ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
-                            if price_ratio < 0 < ad_ratio:
-                                print(f"ratio: {price_ratio:.6f} {ad_ratio:.3f} [{start}, {end}] @ {count}")
 
                             if a_prices < 0 < a_adlines and price_ratio < -0.002 < 0.2 < ad_ratio:
-                                next_peak = False
                                 interval = wavelength // 3
                                 if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
                                     entry = count
-                                    patience = count - start
+                                    patience = end - start
+                                    print(f"patience {patience} @ {count}")
                                     if not hold:
                                         position = 1
                                         hold = True
-                                        print(f"buying @{count} {price} wavelength {wavelength} "
+                                        print(f"buying @{count} {price} patience {patience} "
                                           f"price roc: {price_ratio:.5f} "
                                           f"ad roc: {ad_ratio:.5f} {a_adlines}")
-
-                            if hold and (a_prices > 0 > a_adlines or ad_ratio < 0):
-                                next_peak = True
+                                        break
 
             # from a price peak
             if hold:
                 if peak_indices.size > 1 and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
-                    first_peak_after_buy = np.searchsorted(valley_indices, entry, side='right')
-                    differences = np.diff(valley_indices)
-                    if next_peak or (len(valley_indices) - first_peak_after_buy > patience // np.mean(differences)):
+                    first_peak_after_buy = np.searchsorted(peak_indices, entry, side='right')
+                    differences = np.diff(peak_indices)
+                    print(f"patience: {patience} @ {count} - mean peak gap: {np.mean(differences)} and will be sold after {patience // max(10, np.mean(differences))} peaks since {first_peak_after_buy}")
+                    if len(peak_indices) - first_peak_after_buy > patience // max(10, np.mean(differences)):
                         position = -1
                         hold = False
                         print(f"selling @{count} {row['close']} wavelength: {wavelength}")
@@ -407,7 +402,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([60, 189], distance, prominence)
+        self.snapshot([180, 333], distance, prominence)
 
     def signal(self):
         self.trend()
