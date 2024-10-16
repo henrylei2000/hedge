@@ -370,7 +370,7 @@ class WaveStrategy(Strategy):
                 dips = valley_indices[valley_indices > wavestart]
                 if len(dips) < 5:
                     dips = valley_indices[-3:]
-                if 278 < count < 283:
+                if 87 < count < 89:
                     print(f"dips {dips} @ {count}")
                 best_ad, selected_pos = 0, 0
                 for i in range(dips.size - 1):
@@ -388,43 +388,44 @@ class WaveStrategy(Strategy):
                                     if ad_ratio > best_ad:
                                         best_ad = ad_ratio
                                         patience = end - start
-                                else:
-                                    if 278 < count < 283:
+                                    if 87 < count < 89:
                                         print(f"{a_prices} < 0 < {a_adlines} with a divergence of {price_ratio * ad_ratio:.5f}")
-                if 278 < count < 283:
+                if 87 < count < 89:
                     print(f"best ad ratio {best_ad} @ {count}")
                 if best_ad > 0:
-                    if price < buy_price:
+                    if hold and price < buy_price:
                         entry = valley_indices[-1]
                         print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
                     if not hold:
+                        entry = valley_indices[-1]
                         position = 1
                         hold = True
                         buy_price = price
-                        print(f"buying @{count} {price} patience {patience} "
+                        print(f"buying @{count} {price} patience {patience} [{entry-patience}, {entry}] "
                           f"price roc: {price_ratio:.5f} "
                           f"ad roc: {ad_ratio:.5f} {a_adlines}")
 
             # from a price peak
             if hold:
                 if peak_indices.size > 1 and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
-                    differences = np.diff(peak_indices[-5:])
+                    # differences = np.diff(peak_indices[-5:])
                     num_peaks = len(peak_indices[(peak_indices > entry - patience) & (peak_indices < entry)])
                     print(
-                        f"patience: {patience} @ {count} - mean peak gap: {np.mean(differences)} and will be sold after {num_peaks} peaks since {entry}")
-                    if 215 < count < 238:
+                        f"patience: {patience} @ {count} to be sold after {num_peaks} peaks since {entry}")
+                    if 87 < count < 89:
                         print(f"{peak_indices[-5:]} {num_peaks} {entry} {patience} @ {count}")
                     if len(peak_indices[peak_indices > entry]) >= num_peaks: # patience // max(10, np.mean(differences)):
                         print(f"{len(peak_indices)} {peak_indices[peak_indices > entry]} last peak {peak_indices[-1]}")
                         position = -1
                         hold = False
+                        buy_price = 0
                         print(f"selling @{count} {row['close']} wavelength: {wavelength}")
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
-        self.snapshot([170, 320], distance, prominence)
+        self.snapshot([80, 200], distance, prominence)
 
     def signal(self):
         self.trend()
