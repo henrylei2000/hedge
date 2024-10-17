@@ -3,40 +3,6 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
-from itertools import combinations
-
-
-def weighted_average_recent_peaks(prices, obvs, recent_peaks):
-
-    current_index = len(prices) - 1
-    recent_peaks = recent_peaks[recent_peaks > current_index - 30]
-
-    if len(recent_peaks) == 0:
-        # If no peaks in the recent 30 time points, return the current price
-        return prices.iloc[-1]
-
-    # Calculate weights: linearly prorated by their distance to the most recent time point
-    # Assign weight proportional to index distance, more recent -> higher weight
-    base = recent_peaks[0]
-    time_weights = [(i - base) + 1 for i in recent_peaks]
-
-    # Normalize time weights so their sum equals 1
-    time_weights = time_weights / sum(time_weights)
-
-    # Extract the peak prices and volumes
-    peak_prices = prices.iloc[recent_peaks]
-    peak_volumes = obvs.iloc[recent_peaks]
-
-    # Calculate combined weights: time weight * volume
-    combined_weights = time_weights * peak_volumes
-
-    # Normalize combined weights so their sum equals 1
-    combined_weights = combined_weights / sum(combined_weights)
-
-    # Calculate the weighted average with price, time weight, and volume
-    weighted_avg = np.dot(peak_prices, combined_weights)
-
-    return weighted_avg
 
 
 def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
@@ -95,6 +61,54 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
 
     return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
 
+
+def smooth(prices, valleys, peaks):
+
+    # Thresholds
+    min_price_change = 0.5  # Minimum price change to consider significant
+    min_time_diff = 3  # Minimum time (or index) difference between peaks/valleys
+
+    # Initialize lists to store the significant peaks and valleys
+    significant_valleys = []
+    significant_peaks = []
+    filtered_valleys = np.array([])
+    filtered_peaks = np.array([])
+
+    # Step 1: Price change filtering
+    for i in range(min(len(peaks), len(valleys))):
+        idx1, idx2 = valleys[i], peaks[i]
+        # Calculate price change between the peak and the valley
+        price_change = abs(prices.iloc[idx2] - prices.iloc[idx1])
+
+        # Only keep the peak-valley pair if the price change is significant
+        if price_change >= min_price_change:
+            significant_valleys.append(idx1)
+            significant_peaks.append(idx2)
+
+    if len(significant_valleys) or len(significant_peaks):
+        # Convert lists to arrays
+        significant_valleys = np.array(significant_valleys)
+        significant_peaks = np.array(significant_peaks)
+
+        # Step 2: Minimum time filtering (for both peaks and valleys)
+        filtered_valleys = [significant_valleys[0]]  # Start with the first valley
+        filtered_peaks = [significant_peaks[0]]  # Start with the first peak
+
+        for i in range(1, len(significant_valleys)):
+            if significant_valleys[i] - filtered_valleys[-1] >= min_time_diff:
+                filtered_valleys.append(significant_valleys[i])
+
+        for i in range(1, len(significant_peaks)):
+            if significant_peaks[i] - filtered_peaks[-1] >= min_time_diff:
+                filtered_peaks.append(significant_peaks[i])
+
+        # Convert to arrays
+        filtered_valleys = np.array(filtered_valleys)
+        filtered_peaks = np.array(filtered_peaks)
+
+    return filtered_valleys, filtered_peaks
+
+
 def standout(values):
     base = values.iloc[-1]
     high, low = 0, 0
@@ -110,6 +124,7 @@ def standout(values):
                 low += 1
 
     return high, low
+
 
 def ad_line(prices, high, low, volume):
     # Money Flow Multiplier calculation
@@ -180,13 +195,9 @@ class WaveStrategy(Strategy):
         valley_prices = prices.iloc[valleys]
 
         corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
+        # valley_indices, peak_indices = smooth(prices, valley_indices, peak_indices)
         peak_prices = prices.iloc[peak_indices]
         valley_prices = prices.iloc[valley_indices]
-
-        # Perform linear regression on peaks
-        a_peaks, b_peaks = np.polyfit(peak_indices[-5:], peak_prices[-5:], 1)
-        # Perform linear regression on valleys
-        a_valleys, b_valleys = np.polyfit(valley_indices[-5:], valley_prices[-5:], 1)
 
         indicator = 'a/d'
         obvs = rows[indicator]
@@ -209,9 +220,6 @@ class WaveStrategy(Strategy):
             # Perform linear regression on valleys
             obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
 
-            w_price = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
-            print(f"!!! {w_price} {(prices.iloc[obv_peak_indices[-1]] * obvs.iloc[obv_peak_indices[-1]] + prices.iloc[obv_peak_indices[-2]] * obvs.iloc[obv_peak_indices[-2]]) / (obvs.iloc[obv_peak_indices[-1]] + obvs.iloc[obv_peak_indices[-2]])}")
-
         # debugging info
         dips = []
         for i in range(valley_indices.size - 1):
@@ -219,7 +227,8 @@ class WaveStrategy(Strategy):
             # print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
             if valley_indices[i] > valley_indices[-1] - 60:
                 dips.append((valley_indices[i], valley_indices[-1]))
-        print(f"{dips}")
+
+        print(f"[SNAPSHOT] {dips}")
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] == 1]
@@ -244,8 +253,6 @@ class WaveStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax1.plot(prices.index, a_peaks * np.arange(len(prices)) + b_peaks, 'r--', label='Peaks Linear Fit')
-        ax1.plot(prices.index, a_valleys * np.arange(len(prices)) + b_valleys, 'g--', label='Valleys Linear Fit')
         # Plot buy and sell signals
         ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
         ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
@@ -296,8 +303,7 @@ class WaveStrategy(Strategy):
         b_peaks = 1000000
         count = 0
         distance = 3
-        prominence = data.iloc[0]['close'] * 0.00169 + 0.003
-
+        prominence = data.iloc[0]['close'] * 0.0039 + 0.0047
 
         for index, row in data.iterrows():
             position = 0
@@ -319,6 +325,7 @@ class WaveStrategy(Strategy):
                 corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
                                                                                         peak_indices, peak_prices,
                                                                                         prices.iloc[0])
+                # valley_indices, peak_indices = smooth(prices, valley_indices, peak_indices)
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
@@ -347,7 +354,6 @@ class WaveStrategy(Strategy):
                                                                                                     obvs.iloc[0])
                 obv_peak_prices = obvs.iloc[obv_peak_indices]
                 obv_valley_prices = obvs.iloc[obv_valley_indices]
-                price_agreed = weighted_average_recent_peaks(prices, obvs, obv_peak_indices[-5:])
 
             if len(peak_indices) > 1:
                 # Perform linear regression on peaks
@@ -360,18 +366,14 @@ class WaveStrategy(Strategy):
                 valley_projected = a_valleys * count + b_valleys
 
             # from a valley
-
             if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
                 high, low = standout(valley_prices)
                 if low > 5:
                     wavestart = valley_indices[-1]
-
                 wavestart = max(wavestart, valley_indices[-1] - 60)
-                dips = valley_indices[valley_indices > wavestart]
+                dips = valley_indices[valley_indices > wavestart]  # TODO: fake wave!
                 if len(dips) < 5:
                     dips = valley_indices[-3:]
-                if 87 < count < 89:
-                    print(f"dips {dips} @ {count}")
                 best_ad, selected_pos = 0, 0
                 for i in range(dips.size - 1):
                         start, end = dips[i], dips[-1]
@@ -388,9 +390,9 @@ class WaveStrategy(Strategy):
                                     if ad_ratio > best_ad:
                                         best_ad = ad_ratio
                                         patience = end - start
-                                    if 87 < count < 89:
+                                    if 20 < count < 30:
                                         print(f"{a_prices} < 0 < {a_adlines} with a divergence of {price_ratio * ad_ratio:.5f}")
-                if 87 < count < 89:
+                if 20 < count < 30:
                     print(f"best ad ratio {best_ad} @ {count}")
                 if best_ad > 0:
                     if hold and price < buy_price:
@@ -407,15 +409,30 @@ class WaveStrategy(Strategy):
 
             # from a price peak
             if hold:
+                to_sell = False
                 if peak_indices.size > 1 and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
-                    # differences = np.diff(peak_indices[-5:])
                     num_peaks = len(peak_indices[(peak_indices > entry - patience) & (peak_indices < entry)])
                     print(
                         f"patience: {patience} @ {count} to be sold after {num_peaks} peaks since {entry}")
-                    if 87 < count < 89:
+                    if 20 < count < 30:
                         print(f"{peak_indices[-5:]} {num_peaks} {entry} {patience} @ {count}")
-                    if len(peak_indices[peak_indices > entry]) >= num_peaks: # patience // max(10, np.mean(differences)):
+
+                    pokes = peak_indices[peak_indices > entry]
+                    print(f"{pokes}")
+                    for i in range(pokes.size - 1):
+                        start, end = pokes[i], pokes[-1]
+                        price_ratio = (prices.iloc[end] - prices.iloc[start])
+                        ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
+                        if ad_ratio < 0 < price_ratio:
+                            print(f"!!!!!!! {ad_ratio} < 0 < {price_ratio} @ {count}")
+                            to_sell = True
+                            break
+
+                    if len(peak_indices[peak_indices > entry]) >= num_peaks:
                         print(f"{len(peak_indices)} {peak_indices[peak_indices > entry]} last peak {peak_indices[-1]}")
+                        to_sell = True
+
+                    if to_sell:
                         position = -1
                         hold = False
                         buy_price = 0
@@ -425,7 +442,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([80, 200], distance, prominence)
+        self.snapshot([0, 119], distance, prominence)
 
     def signal(self):
         self.trend()
