@@ -89,8 +89,8 @@ def ad_line(prices, high, low, volume):
     return ad_line
 
 
-class WaveStrategy(Strategy):
-    def wave_simple(self):
+class FlowStrategy(Strategy):
+    def flow_simple(self):
         short_window, long_window, signal_window = 9, 21, 6  # 12, 26, 9
         dataset = [self.data]
         if self.reference:
@@ -122,20 +122,63 @@ class WaveStrategy(Strategy):
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
             data['rolling_volume'] = data['obv'].rolling(window=3).mean()
             data['a/d'] = ad_line(data['close'], data['high'], data['low'], data['volume'])
-            self.normalize_column('a/d')
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
 
-    def normalize_column(self, column_name):
-        # Extract the column to be normalized
-        col = self.data[column_name]
+    def macd_divergence(self, divergence_window=5, crossover_confirmation=False):
+        self.flow_simple()
+        data = self.data
+        positions = []
+        data['position'] = 0
+        hold = False
+        count = 0
 
-        # Normalize the column to range from 0 to 100
-        normalized_col = (col - col.min()) / (col.max() - col.min()) * 100
+        for index, row in data.iterrows():
+            position = 0
+            price = row['close']
+            # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
+            visible_rows = data.loc[:index]  # recent rows
+            prices = visible_rows['close']
+            macds = visible_rows['macd']
+            strengths = visible_rows['strength']
+            adlines = visible_rows['a/d']
 
-        # Create a new column with the normalized values
-        self.data['normalized_' + column_name] = normalized_col
+            # Iterate over the data points to detect divergence
+            for i in range(divergence_window, len(prices)):
+                # Look back over the divergence window to compare MACD and price lows/highs
+                recent_prices = prices[i - divergence_window:i + 1]
+                recent_macd = macds[i - divergence_window:i + 1]
+
+                # Bullish Divergence: Price makes lower lows, MACD makes higher lows
+                if min(recent_prices) == prices.iloc[i] and min(recent_macd) < macds.iloc[i - divergence_window]:
+                    # Optional crossover confirmation
+                    if crossover_confirmation:
+                        if strengths.iloc[i] > 0:  # Confirm with MACD crossover
+                            position = 1
+                            hold = True
+                    else:
+                        position = 1
+                        hold = True
+
+                # Bearish Divergence: Price makes higher highs, MACD makes lower highs
+                elif max(recent_prices) == prices.iloc[i] and max(recent_macd) > macds.iloc[i - divergence_window]:
+                    # Optional crossover confirmation
+                    if crossover_confirmation:
+                        if strengths.iloc[i] < 0:  # Confirm with MACD crossover
+                            position = -1
+                            hold = False
+                    else:
+                        position = -1
+                        hold = False
+                else:
+                    position = 0
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
+
 
     def snapshot(self, interval, indicator, distance, prominence):
         if interval[1] - interval[0] < 30:
@@ -246,7 +289,7 @@ class WaveStrategy(Strategy):
         plt.show()
 
     def trend(self):
-        self.wave_simple()
+        self.flow_simple()
         data = self.data
         positions = []
         data['position'] = 0
@@ -391,4 +434,4 @@ class WaveStrategy(Strategy):
         self.snapshot([0, 159], indicator, distance, prominence)
 
     def signal(self):
-        self.trend()
+        self.macd_divergence(15, False)
