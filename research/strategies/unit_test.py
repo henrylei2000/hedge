@@ -331,10 +331,9 @@ def detect_divergence(prices, indicators, valleys):
 
         # Check if price has a higher low and MACD has a lower low
         if prices.iloc[curr_valley] > prices.iloc[prev_valley] and indicators.iloc[curr_valley] < indicators.iloc[prev_valley]:
-            print(f"---- {i}")
-            divergence_points.append((curr_valley, 'bullish divergence'))
-        elif prices.iloc[curr_valley] < prices.iloc[prev_valley] and indicators.iloc[curr_valley] > indicators.iloc[prev_valley]:
             divergence_points.append((curr_valley, 'bearish divergence'))
+        elif prices.iloc[curr_valley] < prices.iloc[prev_valley] and indicators.iloc[curr_valley] > indicators.iloc[prev_valley]:
+            divergence_points.append((curr_valley, 'bullish divergence'))
         else:
             divergence_points.append((curr_valley, 'no divergence'))
 
@@ -367,10 +366,10 @@ def generate_signals(prices, macd, ad_line, obv):
         # Determine OBV trend at this index (uptrend if positive, downtrend if negative)
         obv_direction = "up" if obv_trend.iloc[i] > 0 else "down" if obv_trend.iloc[i] < 0 else "flat"
 
-        if macd_div_point == 'bullish divergence' or ad_div_point == 'bullish divergence':  # and obv_direction == "up":
+        if macd_div_point == 'bullish divergence' and ad_div_point == 'bullish divergence':  # and obv_direction == "up":
             buy_signals.append((prices.index[i], prices.iloc[i]))
             signals.append("Buy")  # Strong buy signal with confirmation from OBV
-        elif macd_div_point == 'bearish divergence':  # and ad_div_point == 'bearish divergence' and obv_direction == "down":
+        elif macd_div_point == 'bearish divergence' or ad_div_point == 'bearish divergence':  # and obv_direction == "down":
             sell_signals.append((prices.index[i], prices.iloc[i]))
             signals.append("Sell")  # Strong sell signal with confirmation from OBV
         else:
