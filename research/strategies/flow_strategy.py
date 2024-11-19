@@ -5,6 +5,54 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 
+def calculate_recent_macd_divergence_with_crossover(price_data, macd_data, divergence_window=5):
+    recent_prices = price_data[-divergence_window:]
+    recent_macd = macd_data[-divergence_window:]
+
+    macd_divergence = None
+
+    # Bullish MACD Divergence: Price makes lower lows, MACD makes higher lows
+    if min(recent_prices) == recent_prices.iloc[-1] and min(recent_macd) < recent_macd.iloc[0]:
+        macd_divergence = 'bullish'
+
+    # Bearish MACD Divergence: Price makes higher highs, MACD makes lower highs
+    elif max(recent_prices) == recent_prices.iloc[-1] and max(recent_macd) > recent_macd.iloc[0]:
+        macd_divergence = 'bearish'
+
+    return macd_divergence
+
+
+def detect_recent_ad_line_divergence(prices, ads, divergence_window=5):
+    recent_prices = prices[-divergence_window:]
+    recent_ads = ads[-divergence_window:]
+
+    if min(recent_prices) == recent_prices.iloc[-1] and min(recent_ads) < recent_ads.iloc[0]:
+        return 'buy'
+    elif max(recent_prices) == recent_prices.iloc[-1] and max(recent_ads) > recent_ads.iloc[0]:
+        return 'sell'
+    else:
+        return None
+
+
+def calculate_recent_fibonacci_levels(price_data, peaks, valleys, divergence_window=5):
+    most_recent_peak = peaks[peaks < len(price_data)].max() if len(peaks) > 0 else None
+    most_recent_valley = valleys[valleys < len(price_data)].max() if len(valleys) > 0 else None
+    recent_fib_levels = None
+
+    if most_recent_valley is not None and most_recent_valley > most_recent_peak:
+        high = price_data[most_recent_peak]
+        low = price_data[most_recent_valley]
+        recent_fib_levels = {f"{int(ratio * 100)}%": high - (high - low) * ratio for ratio in
+                             [0.236, 0.382, 0.5, 0.618, 1.0]}
+
+    elif most_recent_peak is not None and most_recent_valley is not None and most_recent_peak > most_recent_valley:
+        high = price_data[most_recent_peak]
+        low = price_data[most_recent_valley]
+        recent_fib_levels = {f"{int(ratio * 100)}%": low + (high - low) * ratio for ratio in
+                             [1.0, 1.272, 1.618, 2.0, 2.618]}
+
+    return recent_fib_levels
+
 def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
     # Convert lists to numpy arrays if they aren't already
     valley_indices = np.array(valley_indices)
@@ -61,24 +109,6 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
 
     return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
 
-
-def standout(values):
-    base = values.iloc[-1]
-    high, low = 0, 0
-    high_stop, low_stop = False, False
-    for v in values[-2::-1]:
-        if v <= base:
-            low_stop = True
-            if not high_stop:
-                high += 1
-        elif v > base:
-            high_stop = True
-            if not low_stop:
-                low += 1
-
-    return high, low
-
-
 def ad_line(prices, high, low, volume):
     # Money Flow Multiplier calculation
     money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
@@ -126,7 +156,7 @@ class FlowStrategy(Strategy):
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
 
-    def macd_divergence(self, divergence_window=5, crossover_confirmation=False):
+    def macd_divergence(self, divergence_window=15, crossover_confirmation=False):
         self.flow_simple()
         data = self.data
         positions = []
@@ -144,41 +174,114 @@ class FlowStrategy(Strategy):
             strengths = visible_rows['strength']
             adlines = visible_rows['a/d']
 
-            # Iterate over the data points to detect divergence
-            for i in range(divergence_window, len(prices)):
-                # Look back over the divergence window to compare MACD and price lows/highs
-                recent_prices = prices[i - divergence_window:i + 1]
-                recent_macd = macds[i - divergence_window:i + 1]
+            if len(prices) < divergence_window or len(macds) < divergence_window:
+                positions.append(position)
+                count += 1
+                continue
 
-                # Bullish Divergence: Price makes lower lows, MACD makes higher lows
-                if min(recent_prices) == prices.iloc[i] and min(recent_macd) < macds.iloc[i - divergence_window]:
-                    # Optional crossover confirmation
-                    if crossover_confirmation:
-                        if strengths.iloc[i] > 0:  # Confirm with MACD crossover
-                            position = 1
-                            hold = True
-                    else:
-                        position = 1
-                        hold = True
+            # Get the most recent window of prices and MACD values
+            recent_prices = prices[-divergence_window:]
+            recent_macd = macds[-divergence_window:]
 
-                # Bearish Divergence: Price makes higher highs, MACD makes lower highs
-                elif max(recent_prices) == prices.iloc[i] and max(recent_macd) > macds.iloc[i - divergence_window]:
-                    # Optional crossover confirmation
-                    if crossover_confirmation:
-                        if strengths.iloc[i] < 0:  # Confirm with MACD crossover
-                            position = -1
-                            hold = False
-                    else:
-                        position = -1
-                        hold = False
-                else:
-                    position = 0
+            # Bullish MACD Divergence: Price makes lower lows, MACD makes higher lows
+            if min(recent_prices) == recent_prices.iloc[-1] and min(recent_macd) < recent_macd.iloc[0]:
+                position = 1
+                hold = True
+
+           # Bearish MACD Divergence: Price makes higher highs, MACD makes lower highs
+            elif max(recent_prices) == recent_prices.iloc[-1] and max(recent_macd) > recent_macd.iloc[0]:
+                position = -1
+                hold = False
+            else:
+                position = 0
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
 
+    def ad_divergence(self, divergence_window=5):
+        self.flow_simple()
+        data = self.data
+        positions = []
+        data['position'] = 0
+        hold = False
+        count = 0
+
+        for index, row in data.iterrows():
+            position = 0
+            price = row['close']
+            # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
+            visible_rows = data.loc[:index]  # recent rows
+            prices = visible_rows['close']
+            ads = visible_rows['a/d']
+
+            if len(prices) < divergence_window or len(ads) < divergence_window:
+                positions.append(position)
+                count += 1
+                continue
+
+            # Get the most recent window of prices and MACD values
+            recent_prices = prices[-divergence_window:]
+            recent_ads = ads[-divergence_window:]
+
+            # Bullish MACD Divergence: Price makes lower lows, MACD makes higher lows
+            if min(recent_prices) == recent_prices.iloc[-1] and min(recent_ads) < recent_ads.iloc[0]:
+                position = 1
+                hold = True
+
+            # Bearish MACD Divergence: Price makes higher highs, MACD makes lower highs
+            elif max(recent_prices) == recent_prices.iloc[-1] and max(recent_ads) > recent_ads.iloc[0]:
+                position = -1
+                hold = False
+            else:
+                position = 0
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
+
+    def flow(self, divergence_window = 5):
+        self.flow_simple()
+        data = self.data
+        positions = []
+        data['position'] = 0
+        hold = False
+        count = 0
+
+        for index, row in data.iterrows():
+            position = 0
+            price = row['close']
+            # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
+            visible_rows = data.loc[:index]  # recent rows
+            prices = visible_rows['close']
+            prices = visible_rows['close']
+            macds = visible_rows['macd']
+            ads = visible_rows['a/d']
+
+            macd_divergence = calculate_recent_macd_divergence_with_crossover(prices, macds, divergence_window)
+            ad_divergence = detect_recent_ad_line_divergence(prices, ads, divergence_window)
+
+            peaks, _ = find_peaks(prices, distance=divergence_window)
+            valleys, _ = find_peaks(-prices, distance=divergence_window)
+            fib_levels = calculate_recent_fibonacci_levels(prices, peaks, valleys, divergence_window)
+
+            # Generate buy/sell signals based on combined logic
+            if macd_divergence == 'bullish' and ad_divergence == 'buy' and fib_levels:
+                if '61%' in fib_levels and prices.iloc[-1] >= fib_levels['61%'] or True:
+                    position = 1
+                    hold = True
+
+            elif macd_divergence == 'bearish' and ad_divergence == 'sell' and fib_levels:
+                if '161%' in fib_levels and prices.iloc[-1] <= fib_levels['161%'] or True:
+                    position = -1
+                    hold = False
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
 
     def snapshot(self, interval, indicator, distance, prominence):
         if interval[1] - interval[0] < 30:
@@ -222,8 +325,6 @@ class FlowStrategy(Strategy):
         # debugging info
         dips = []
         for i in range(valley_indices.size - 1):
-            high, low = standout(valley_prices.iloc[:i+1])
-            # print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
             if valley_indices[i] > valley_indices[-1] - 60:
                 dips.append((valley_indices[i], valley_indices[-1]))
 
@@ -355,9 +456,6 @@ class FlowStrategy(Strategy):
 
             # from a valley
             if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
-                high, low = standout(valley_prices)
-                if low > 5:
-                    wavestart = valley_indices[-1]
                 wavestart = max(wavestart, valley_indices[-1] - 60)
                 dips = valley_indices[valley_indices > wavestart]  # TODO: fake wave!
                 if len(dips) < 5:
@@ -434,4 +532,4 @@ class FlowStrategy(Strategy):
         self.snapshot([0, 159], indicator, distance, prominence)
 
     def signal(self):
-        self.macd_divergence(15, False)
+        self.ad_divergence()
