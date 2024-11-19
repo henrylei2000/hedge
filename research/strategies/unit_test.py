@@ -318,28 +318,7 @@ def calculate_ad_line(high, low, close, volume):
     ad_line = money_flow_volume.cumsum()
     return ad_line
 
-
-def detect_divergence(price_peaks, price_valleys, indicator_peaks, indicator_valleys):
-    """
-mKngn m,fzeb hnmn m<>n m<WX  Detect divergence by comparing price peaks/valleys with indicator peaks/valleys.
-    """
-    divergence_points = []
-    # Comparing price and indicator peaks
-    for peak in price_peaks:
-        if peak in indicator_peaks:
-            divergence_points.append((peak, 'no divergence'))
-        elif peak not in indicator_peaks:
-            divergence_points.append((peak, 'bearish divergence'))
-    # Comparing price and indicator valleys
-    for valley in price_valleys:
-        if valley in indicator_valleys:
-            divergence_points.append((valley, 'no divergence'))
-        elif valley not in indicator_valleys:
-            divergence_points.append((valley, 'bullish divergence'))
-    return divergence_points
-
-
-def detect_improved_divergence(prices, indicators, valleys):
+def detect_divergence(prices, indicators, valleys):
     """
     Improved divergence detection by comparing higher/lower lows between consecutive valleys.
     """
@@ -362,21 +341,23 @@ def detect_improved_divergence(prices, indicators, valleys):
     return divergence_points
 
 
-def generate_signals_with_enhanced_divergence(prices, macd, ad_line, obv):
+def generate_signals(prices, macd, ad_line, obv):
     """
     Generate buy/sell signals based on improved divergence detection in MACD and A/D line with OBV confirmation.
     """
     # Identify valleys for prices and MACD
-    price_peaks, price_valleys = identify_peaks_valleys(prices)
+    peaks, valleys = identify_peaks_valleys(prices)
     macd_peaks, macd_valleys = identify_peaks_valleys(macd)
     ad_peaks, ad_valleys = identify_peaks_valleys(ad_line)
 
     # Detect improved divergence for MACD and A/D line
-    macd_divergence = detect_improved_divergence(prices, macd, price_valleys)
-    ad_divergence = detect_improved_divergence(prices, ad_line, ad_valleys)
+    macd_divergence = detect_divergence(prices, macd, valleys)
+    ad_divergence = detect_divergence(prices, ad_line, ad_valleys)
 
     # Signal generation logic with OBV trend consideration
     signals = []
+    buy_signals = []
+    sell_signals = []
     obv_trend = obv.diff()  # Identify OBV trend as the change in OBV over time
 
     for i in range(len(prices)):
@@ -387,61 +368,49 @@ def generate_signals_with_enhanced_divergence(prices, macd, ad_line, obv):
         obv_direction = "up" if obv_trend.iloc[i] > 0 else "down" if obv_trend.iloc[i] < 0 else "flat"
 
         if macd_div_point == 'bullish divergence' or ad_div_point == 'bullish divergence':  # and obv_direction == "up":
-            print(f"--- signal {i}")
+            buy_signals.append((prices.index[i], prices.iloc[i]))
             signals.append("Buy")  # Strong buy signal with confirmation from OBV
         elif macd_div_point == 'bearish divergence':  # and ad_div_point == 'bearish divergence' and obv_direction == "down":
+            sell_signals.append((prices.index[i], prices.iloc[i]))
             signals.append("Sell")  # Strong sell signal with confirmation from OBV
         else:
             signals.append("Hold")
 
-    return signals
+    # Plotting
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 
+    # Plot price data and linear regression lines
+    ax1.plot(prices, label='Price', color='blue')
+    ax1.plot(prices.index[peaks], prices.iloc[peaks], 'ro', label='Peaks')
+    ax1.plot(prices.index[valleys], prices.iloc[valleys], 'go', label='Valleys')
+    for peak in peaks[-2:]:
+        ax1.text(prices.index[peak], prices.iloc[peak], prices.index[peak].strftime('%Y-%m-%d'),
+                 horizontalalignment='left', size='small', color='red', weight='semibold')
+    for valley in valleys[-2:]:
+        ax1.text(prices.index[valley], prices.iloc[valley], prices.index[valley].strftime('%Y-%m-%d'),
+                 horizontalalignment='left', size='small', color='green', weight='semibold')
 
-# Example usage:
-# signals_with_enhanced_divergence = generate_signals_with_enhanced_divergence(prices, macd, ad_line, obv)
+    # Plot buy and sell signals
+    for b in buy_signals:
+        ax1.plot(b[0], b[1], 'g^', markersize=12, alpha=.5, label='Buy Signal')
+    for s in sell_signals:
+        ax1.plot(s[0], s[1], 'rv', markersize=12, alpha=.5, label='Sell Signal')
+    ax1.set_title(f'Price Flow')
+    ax1.set_ylabel('Price')
+    ax1.legend()
 
+    # Plot OBV data
+    ax2.plot(macd, label='macd', color='purple')
+    ax2.set_title('MACD')
+    ax2.set_xlabel('Date')
+    ax2.set_ylabel('macd')
+    ax2.legend()
 
-def generate_signals(prices, macd, ad_line, obv):
-    """
-    Generate buy/sell signals based on MACD, A/D line divergence, and OBV trend.
-    """
-    # Identify peaks and valleys for prices, MACD, and A/D Line
-    price_peaks, price_valleys = identify_peaks_valleys(prices)
-    macd_peaks, macd_valleys = identify_peaks_valleys(macd)
-    ad_peaks, ad_valleys = identify_peaks_valleys(ad_line)
-
-    # Detect divergence for MACD and A/D line
-    macd_divergence = detect_divergence(price_peaks, price_valleys, macd_peaks, macd_valleys)
-    ad_divergence = detect_divergence(price_peaks, price_valleys, ad_peaks, ad_valleys)
-
-    # Signal generation logic with OBV trend consideration
-    signals = []
-    obv_trend = obv.diff()  # Identify OBV trend as the change in OBV over time
-
-    for i in range(len(prices)):
-        macd_div_point = next((point[1] for point in macd_divergence if point[0] == i), None)
-        ad_div_point = next((point[1] for point in ad_divergence if point[0] == i), None)
-
-        # Determine OBV trend at this index (uptrend if positive, downtrend if negative)
-        obv_direction = "up" if obv_trend.iloc[i] > 0 else "down" if obv_trend.iloc[i] < 0 else "flat"
-
-        if macd_div_point == 'bullish divergence' and ad_div_point == 'bullish divergence':  # and obv_direction == "up":
-            signals.append("Buy")  # Strong buy signal with confirmation from OBV
-        elif macd_div_point == 'bearish divergence' and ad_div_point == 'bearish divergence':  # and obv_direction == "down":
-            print(f"{i} --- selling")
-            signals.append("Sell")  # Strong sell signal with confirmation from OBV
-        else:
-            signals.append("Hold")
+    plt.tight_layout()
+    plt.show()
 
     return signals
 
-# Example usage:
-# prices, high, low, close, and volume should be loaded as pandas Series from market data
-# prices = pd.Series(np.random.rand(100))  # Sample price data
-# high = prices + 0.02
-# low = prices - 0.02
-# close = prices
-# volume = pd.Series(np.random.randint(1000, 5000, size=len(prices)))
 
 end_date = pd.to_datetime('2024-07-30', format='%Y-%m-%d')
 start_date = end_date - pd.DateOffset(months=6)
@@ -459,5 +428,5 @@ ad_line = calculate_ad_line(high, low, close, volume)
 obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()  # Simple OBV calculation
 
 # Generate buy/sell signals
-signals = generate_signals_with_enhanced_divergence(prices, macd, ad_line, obv)
+signals = generate_signals(prices, macd, ad_line, obv)
 print(signals)
