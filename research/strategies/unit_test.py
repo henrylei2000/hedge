@@ -284,11 +284,6 @@ def predict_next_day_peak_valley(ticker='TQQQ', next_day='2024-07-30', months=6)
 # trends = analyze_trends(ticker, d_day, distance=5)
 
 
-import pandas as pd
-import numpy as np
-from scipy.signal import find_peaks
-
-
 def identify_peaks_valleys(series, distance=5):
     """
     Identify peaks and valleys in a given series.
@@ -318,24 +313,45 @@ def calculate_ad_line(high, low, close, volume):
     ad_line = money_flow_volume.cumsum()
     return ad_line
 
-def detect_divergence(prices, indicators, valleys):
+
+def detect_divergence(prices, indicators, peaks, valleys):
     """
-    Improved divergence detection by comparing higher/lower lows between consecutive valleys.
+    Improved divergence detection by comparing higher/lower highs (peaks) and lows (valleys)
+    between consecutive observation points in half-wave cycles.
     """
+    # Combine peaks and valleys and sort by index
+    points = [(index, 'peak') for index in peaks] + [(index, 'valley') for index in valleys]
+    points = sorted(points, key=lambda x: x[0])  # Sort by index
+
     divergence_points = []
 
-    # Iterate through each pair of valleys for price and MACD
-    for i in range(1, len(valleys)):
-        prev_valley = valleys[i - 1]
-        curr_valley = valleys[i]
+    # Analyze each pair of consecutive points
+    for i in range(1, len(points)):
+        prev_index, prev_type = points[i - 1]
+        curr_index, curr_type = points[i]
 
-        # Check if price has a higher low and MACD has a lower low
-        if prices.iloc[curr_valley] > prices.iloc[prev_valley] and indicators.iloc[curr_valley] < indicators.iloc[prev_valley]:
-            divergence_points.append((curr_valley, 'bearish divergence'))
-        elif prices.iloc[curr_valley] < prices.iloc[prev_valley] and indicators.iloc[curr_valley] > indicators.iloc[prev_valley]:
-            divergence_points.append((curr_valley, 'bullish divergence'))
-        else:
-            divergence_points.append((curr_valley, 'no divergence'))
+        # Analyze divergence based on point types (peak → valley or valley → peak)
+        if prev_type == 'peak' and curr_type == 'valley':
+            # Peak → Valley: Check for bearish divergence
+            if prices.iloc[curr_index] < prices.iloc[prev_index] and indicators.iloc[curr_index] > indicators.iloc[
+                prev_index]:
+                divergence_points.append((curr_index, 'bearish divergence'))
+            elif prices.iloc[curr_index] > prices.iloc[prev_index] and indicators.iloc[curr_index] < indicators.iloc[
+                prev_index]:
+                divergence_points.append((curr_index, 'bullish divergence'))
+            else:
+                divergence_points.append((curr_index, 'no divergence'))
+
+        elif prev_type == 'valley' and curr_type == 'peak':
+            # Valley → Peak: Check for bullish divergence
+            if prices.iloc[curr_index] > prices.iloc[prev_index] and indicators.iloc[curr_index] < indicators.iloc[
+                prev_index]:
+                divergence_points.append((curr_index, 'bullish divergence'))
+            elif prices.iloc[curr_index] < prices.iloc[prev_index] and indicators.iloc[curr_index] > indicators.iloc[
+                prev_index]:
+                divergence_points.append((curr_index, 'bearish divergence'))
+            else:
+                divergence_points.append((curr_index, 'no divergence'))
 
     return divergence_points
 
@@ -350,8 +366,8 @@ def generate_signals(prices, macd, ad_line, obv):
     ad_peaks, ad_valleys = identify_peaks_valleys(ad_line)
 
     # Detect improved divergence for MACD and A/D line
-    macd_divergence = detect_divergence(prices, macd, valleys)
-    ad_divergence = detect_divergence(prices, ad_line, ad_valleys)
+    macd_divergence = detect_divergence(prices, macd, peaks, valleys)
+    ad_divergence = detect_divergence(prices, ad_line, peaks, valleys)
 
     # Signal generation logic with OBV trend consideration
     signals = []
@@ -369,7 +385,7 @@ def generate_signals(prices, macd, ad_line, obv):
         if macd_div_point == 'bullish divergence' and ad_div_point == 'bullish divergence':  # and obv_direction == "up":
             buy_signals.append((prices.index[i], prices.iloc[i]))
             signals.append("Buy")  # Strong buy signal with confirmation from OBV
-        elif macd_div_point == 'bearish divergence' or ad_div_point == 'bearish divergence':  # and obv_direction == "down":
+        elif macd_div_point == 'bearish divergence' and ad_div_point == 'bearish divergence':  # and obv_direction == "down":
             sell_signals.append((prices.index[i], prices.iloc[i]))
             signals.append("Sell")  # Strong sell signal with confirmation from OBV
         else:
@@ -391,9 +407,9 @@ def generate_signals(prices, macd, ad_line, obv):
 
     # Plot buy and sell signals
     for b in buy_signals:
-        ax1.plot(b[0], b[1], 'g^', markersize=12, alpha=.5, label='Buy Signal')
+        ax1.plot(b[0], b[1], 'g^', markersize=12, alpha=.5)
     for s in sell_signals:
-        ax1.plot(s[0], s[1], 'rv', markersize=12, alpha=.5, label='Sell Signal')
+        ax1.plot(s[0], s[1], 'rv', markersize=12, alpha=.5)
     ax1.set_title(f'Price Flow')
     ax1.set_ylabel('Price')
     ax1.legend()
@@ -411,9 +427,13 @@ def generate_signals(prices, macd, ad_line, obv):
     return signals
 
 
-end_date = pd.to_datetime('2024-07-30', format='%Y-%m-%d')
+end_date = pd.to_datetime('2024-11-21', format='%Y-%m-%d')
 start_date = end_date - pd.DateOffset(months=6)
-data = yf.download('TQQQ', start=start_date, end=end_date, interval='1d')
+open = '2024-11-25 09:30'
+close = '2024-11-25 16:00'
+start_date = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
+end_date = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
+data = yf.download('TQQQ', start=start_date, end=end_date, interval='1m')
 prices = data['Close']
 high = data['High']
 low = data['Low']

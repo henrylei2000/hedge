@@ -109,6 +109,7 @@ def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_pric
 
     return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
 
+
 def ad_line(prices, high, low, volume):
     # Money Flow Multiplier calculation
     money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
@@ -532,4 +533,4 @@ class FlowStrategy(Strategy):
         self.snapshot([0, 159], indicator, distance, prominence)
 
     def signal(self):
-        self.ad_divergence()
+        self.trend()
