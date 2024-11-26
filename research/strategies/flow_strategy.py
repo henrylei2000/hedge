@@ -429,7 +429,7 @@ class FlowStrategy(Strategy):
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
-            indicator = 'rsi'
+            indicator = 'a/d'
             obvs = visible_rows[indicator]
             obv_prominence = self.data.iloc[0][indicator] * 0.1
 
