@@ -284,7 +284,7 @@ class FlowStrategy(Strategy):
 
         data['position'] = positions
 
-    def snapshot(self, interval, indicator, distance, prominence):
+    def snapshot(self, interval, distance, prominence):
         if interval[1] - interval[0] < 30:
             return
         rows = self.data.iloc[interval[0]:interval[1]]
@@ -302,14 +302,14 @@ class FlowStrategy(Strategy):
         peak_prices = prices.iloc[peak_indices]
         valley_prices = prices.iloc[valley_indices]
 
-        # indicator = 'a/d'
+        indicator = 'a/d'
         obvs = rows[indicator]
-        obv_prominence = self.data.iloc[0][indicator] * 0.1
+        obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
         # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
+        obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
         obv_peak_indices = np.array(obv_peaks)
         obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
+        obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         obv_valley_prices = obvs.iloc[obv_valleys]
 
@@ -335,7 +335,7 @@ class FlowStrategy(Strategy):
         buy_signals = rows[rows['position'] == 1]
         sell_signals = rows[rows['position'] == -1]
         # Plotting
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
         ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
@@ -387,6 +387,50 @@ class FlowStrategy(Strategy):
         ax2.set_ylabel(f"{indicator}")
         ax2.legend()
 
+        indicator = 'macd'
+        obvs = rows[indicator]
+        obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
+        # Identify peaks and valleys
+        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
+        obv_peak_indices = np.array(obv_peaks)
+        obv_peak_prices = obvs.iloc[obv_peaks]
+        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
+        obv_valley_indices = np.array(obv_valleys)
+        obv_valley_prices = obvs.iloc[obv_valleys]
+
+        obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices,
+                                                                                            obv_valley_prices,
+                                                                                            obv_peak_indices,
+                                                                                            obv_peak_prices,
+                                                                                            obvs.iloc[0])
+        obv_peak_prices = obvs.iloc[obv_peak_indices]
+        obv_valley_prices = obvs.iloc[obv_valley_indices]
+        ax3.plot(rows[indicator], label=f"{indicator}", color='purple')
+        ax3.plot(obvs.iloc[obv_peak_indices], 'ro', label='Peaks')
+        # Annotate each peak with its value
+        for peak in obv_peak_indices:
+            ax3.annotate(f'{interval[0] + peak}',
+                         (obvs.index[peak], obvs.iloc[peak]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9)  # You can adjust the font size if needed
+        ax3.plot(obvs.iloc[obv_valley_indices], 'go', label='Valleys')
+        for valley in obv_valley_indices:
+            ax3.annotate(f'{interval[0] + valley}',
+                         (obvs.index[valley], obvs.iloc[valley]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9)  # You can adjust the font size if needed
+        # if len(obv_peak_indices):
+        #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
+        #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
+        ax3.set_title(f"{indicator}")
+        ax3.set_xlabel('Time')
+        ax3.set_ylabel(f"{indicator}")
+        ax3.legend()
+
         plt.tight_layout()
         plt.show()
 
@@ -413,6 +457,7 @@ class FlowStrategy(Strategy):
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
             adlines = visible_rows['a/d']
+            macds = visible_rows['macd']
 
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -429,31 +474,6 @@ class FlowStrategy(Strategy):
                 peak_prices = prices.iloc[peak_indices]
                 valley_prices = prices.iloc[valley_indices]
 
-            indicator = 'a/d'
-            obvs = visible_rows[indicator]
-            obv_prominence = self.data.iloc[0][indicator] * 0.1
-
-            previous_avg = np.mean(obvs[:index])
-            if row['volume'] > 7 * previous_avg:
-                pass
-                # print(f"Spike found {row['volume']} vs {previous_avg}")
-
-            # Identify peaks and valleys
-            obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
-            obv_peak_indices = np.array(obv_peaks)
-            obv_peak_prices = obvs.iloc[obv_peaks]
-            obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
-            obv_valley_indices = np.array(obv_valleys)
-            obv_valley_prices = obvs.iloc[obv_valleys]
-
-            if len(obv_valley_indices) and len(obv_peak_indices):
-                obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices,
-                                                                                                    obv_valley_prices,
-                                                                                                    obv_peak_indices,
-                                                                                                    obv_peak_prices,
-                                                                                                    obvs.iloc[0])
-                obv_peak_prices = obvs.iloc[obv_peak_indices]
-                obv_valley_prices = obvs.iloc[obv_valley_indices]
 
             # from a valley
             if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
@@ -468,6 +488,7 @@ class FlowStrategy(Strategy):
                         if wavelength > 3:
                             a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
                             a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                            a_macd, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
                             price_ratio = (prices.iloc[end] - prices.iloc[start])
                             ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
 
@@ -481,7 +502,7 @@ class FlowStrategy(Strategy):
                                         print(f"{a_prices} < 0 < {a_adlines} with a divergence of {price_ratio * ad_ratio:.5f}")
                 if 20 < count < 30:
                     print(f"best ad ratio {best_ad} @ {count}")
-                if best_ad > 0:
+                if best_ad > 0 and a_macd > 0:
                     if hold and price < buy_price:
                         entry = valley_indices[-1]
                         print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
@@ -530,7 +551,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 159], indicator, distance, prominence)
+        self.snapshot([100, 219], distance, prominence)
 
     def signal(self):
         self.trend()
