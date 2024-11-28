@@ -439,13 +439,9 @@ class FlowStrategy(Strategy):
         data = self.data
         positions = []
         data['position'] = 0
-
-        obv_bullish, macd_bullish, price_bullish = False, False, False
         hold = False
         wavelength, wavestart, entry, patience, next_peak = 0, 0, 0, 0, False
         buy_price = 0
-        a_peaks = 1000000
-        b_peaks = 1000000
         count = 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
@@ -456,8 +452,8 @@ class FlowStrategy(Strategy):
             # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
-            adlines = visible_rows['a/d']
             macds = visible_rows['macd']
+            adlines = visible_rows['a/d']
 
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -471,38 +467,30 @@ class FlowStrategy(Strategy):
                 corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
                                                                                         peak_indices, peak_prices,
                                                                                         prices.iloc[0])
-                peak_prices = prices.iloc[peak_indices]
-                valley_prices = prices.iloc[valley_indices]
 
-
-            # from a valley
-            if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
+            if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:  # from a valley
                 wavestart = max(wavestart, valley_indices[-1] - 60)
                 dips = valley_indices[valley_indices > wavestart]  # TODO: fake wave!
-                if len(dips) < 5:
-                    dips = valley_indices[-3:]
-                best_ad, selected_pos = 0, 0
+                best_macd, best_ad, selected_pos = 0, 0, 0
                 for i in range(dips.size - 1):
-                        start, end = dips[i], dips[-1]
-                        wavelength = end - start
-                        if wavelength > 3:
-                            a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
-                            a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
-                            a_macd, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
-                            price_ratio = (prices.iloc[end] - prices.iloc[start])
-                            ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
+                    start, end = dips[i], dips[-1]
+                    wavelength = end - start
+                    if wavelength > 3:
+                        a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
+                        a_macd, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
+                        a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                        price_ratio = (prices.iloc[end] - prices.iloc[start]) / prices.iloc[start]
+                        macd_ratio = (macds.iloc[end] - macds.iloc[start]) / abs(macds.iloc[start])
+                        ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
 
-                            if price_ratio < 0 < ad_ratio and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
-                                interval = wavelength // 3
-                                if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
-                                    if ad_ratio > best_ad:
-                                        best_ad = ad_ratio
-                                        patience = end - start
-                                    if 20 < count < 30:
-                                        print(f"{a_prices} < 0 < {a_adlines} with a divergence of {price_ratio * ad_ratio:.5f}")
-                if 20 < count < 30:
-                    print(f"best ad ratio {best_ad} @ {count}")
-                if best_ad > 0 and a_macd > 0:
+                        if price_ratio < 0 < ad_ratio:  # and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
+                            interval = wavelength // 3
+                            if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
+                                if ad_ratio > best_ad:
+                                    best_ad = ad_ratio
+                                    patience = end - start
+
+                if best_ad > 0 or best_macd > 0:
                     if hold and price < buy_price:
                         entry = valley_indices[-1]
                         print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
@@ -521,10 +509,7 @@ class FlowStrategy(Strategy):
                 print(f"Peaks {peak_indices} Valleys {valley_indices} @ {count}")
                 if peak_indices.size > 1 and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
                     num_peaks = len(peak_indices[(peak_indices > entry - patience) & (peak_indices < entry)])
-                    print(
-                        f"patience: {patience} @ {count} to be sold after {num_peaks} peaks since {entry}")
-                    if 20 < count < 30:
-                        print(f"{peak_indices[-5:]} {num_peaks} {entry} {patience} @ {count}")
+                    print(f"patience: {patience} @ {count} to be sold after {num_peaks} peaks since {entry}")
 
                     pokes = peak_indices[peak_indices > entry]
                     print(f"{pokes}")
