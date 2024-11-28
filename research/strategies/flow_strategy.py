@@ -423,9 +423,6 @@ class FlowStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        # if len(obv_peak_indices):
-        #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
-        #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
         ax3.set_title(f"{indicator}")
         ax3.set_xlabel('Time')
         ax3.set_ylabel(f"{indicator}")
@@ -490,7 +487,7 @@ class FlowStrategy(Strategy):
                                     best_ad = ad_ratio
                                     patience = end - start
 
-                if best_ad > 0 or best_macd > 0:
+                if best_ad > 0 and a_macd > 0:
                     if hold and price < buy_price:
                         entry = valley_indices[-1]
                         print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
