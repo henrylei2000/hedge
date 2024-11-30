@@ -451,6 +451,7 @@ class FlowStrategy(Strategy):
             prices = visible_rows['close']
             macds = visible_rows['macd']
             adlines = visible_rows['a/d']
+            obvs = visible_rows['obv']
 
             # Identify peaks and valleys
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -460,45 +461,52 @@ class FlowStrategy(Strategy):
             valley_indices = np.array(valleys)
             valley_prices = prices.iloc[valleys]
 
-            if len(peak_indices) and len(valley_indices):
+            if len(peak_indices) > 1 and len(valley_indices):
                 corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
                                                                                         peak_indices, peak_prices,
                                                                                         prices.iloc[0])
 
-            if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:  # from a valley
-                wavestart = max(wavestart, valley_indices[-1] - 60)
-                dips = valley_indices[valley_indices > wavestart]  # TODO: fake wave!
-                best_macd, best_ad, selected_pos = 0, 0, 0
-                for i in range(dips.size - 1):
-                    start, end = dips[i], dips[-1]
-                    wavelength = end - start
-                    if wavelength > 3:
-                        a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
-                        a_macd, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
-                        a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
-                        price_ratio = (prices.iloc[end] - prices.iloc[start]) / prices.iloc[start]
-                        macd_ratio = (macds.iloc[end] - macds.iloc[start]) / abs(macds.iloc[start])
-                        ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
+                if valley_indices[-1] > peak_indices[-1]:  # from a valley
+                    wavestart = max(wavestart, valley_indices[-1] - 60)
+                    dips = valley_indices[valley_indices > wavestart]
+                    best_macd, best_ad, selected_pos = 0, 0, 0
+                    for i in range(dips.size - 1):
+                        start, end = dips[i], dips[-1]
+                        wavelength = end - start
+                        if wavelength > 3:
+                            a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
+                            a_macd, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
+                            a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                            price_ratio = (prices.iloc[end] - prices.iloc[start]) / prices.iloc[start]
+                            macd_ratio = (macds.iloc[end] - macds.iloc[start]) / abs(macds.iloc[start])
+                            ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
 
-                        if price_ratio < 0 < ad_ratio:  # and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
-                            interval = wavelength // 3
-                            if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
-                                if ad_ratio > best_ad:
-                                    best_ad = ad_ratio
-                                    patience = end - start
+                            if price_ratio < 0 < macd_ratio:
+                                interval = wavelength // 3
+                                if macds[start:start + interval].sum() < macds[start + interval*2:end].sum():
+                                    if macd_ratio > best_macd:
+                                        best_macd = macd_ratio
+                                        patience = end - start
 
-                if best_ad > 0 and a_macd > 0:
-                    if hold and price < buy_price:
-                        entry = valley_indices[-1]
-                        print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
-                    if not hold:
-                        entry = valley_indices[-1]
-                        position = 1
-                        hold = True
-                        buy_price = price
-                        print(f"buying @{count} {price} patience {patience} [{entry-patience}, {entry}] "
-                          f"price roc: {price_ratio:.5f} "
-                          f"ad roc: {ad_ratio:.5f} {a_adlines}")
+                            if price_ratio < 0 < ad_ratio:  # and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
+                                interval = wavelength // 3
+                                if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
+                                    if ad_ratio > best_ad:
+                                        best_ad = ad_ratio
+                                        patience = end - start
+
+                    if best_ad > 0 and a_macd > 0:
+                        if hold and price < buy_price:
+                            entry = valley_indices[-1]
+                            print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
+                        if not hold:
+                            entry = valley_indices[-1]
+                            position = 1
+                            hold = True
+                            buy_price = price
+                            print(f"buying @{count} {price} patience {patience} [{entry-patience}, {entry}] "
+                              f"price roc: {price_ratio:.5f} "
+                              f"ad roc: {ad_ratio:.5f} {a_adlines}")
 
             # from a price peak
             if hold:
@@ -510,6 +518,7 @@ class FlowStrategy(Strategy):
 
                     pokes = peak_indices[peak_indices > entry]
                     print(f"{pokes}")
+
                     for i in range(pokes.size - 1):
                         start, end = pokes[i], pokes[-1]
                         price_ratio = (prices.iloc[end] - prices.iloc[start])
