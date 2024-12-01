@@ -53,6 +53,7 @@ def calculate_recent_fibonacci_levels(price_data, peaks, valleys, divergence_win
 
     return recent_fib_levels
 
+
 def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
     # Convert lists to numpy arrays if they aren't already
     valley_indices = np.array(valley_indices)
@@ -317,12 +318,6 @@ class FlowStrategy(Strategy):
         obv_peak_prices = obvs.iloc[obv_peak_indices]
         obv_valley_prices = obvs.iloc[obv_valley_indices]
 
-        if len(obv_peak_indices):
-            # Perform linear regression on peaks
-            obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-5:], obv_peak_prices[-5:], 1)
-            # Perform linear regression on valleys
-            obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
-
         # debugging info
         dips = []
         for i in range(valley_indices.size - 1):
@@ -468,6 +463,8 @@ class FlowStrategy(Strategy):
 
                 if valley_indices[-1] > peak_indices[-1]:  # from a valley
                     wavestart = max(wavestart, valley_indices[-1] - 60)
+                    last_sell = max([i for i, value in enumerate(positions) if value < 0], default=-1)
+                    wavestart = max(wavestart, last_sell)
                     dips = valley_indices[valley_indices > wavestart]
                     best_macd, best_ad, selected_pos = 0, 0, 0
                     for i in range(dips.size - 1):
@@ -482,20 +479,16 @@ class FlowStrategy(Strategy):
                             ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
 
                             if price_ratio < 0 < macd_ratio:
-                                interval = wavelength // 3
-                                if macds[start:start + interval].sum() < macds[start + interval*2:end].sum():
-                                    if macd_ratio > best_macd:
-                                        best_macd = macd_ratio
-                                        patience = end - start
+                                if macd_ratio > best_macd:
+                                    best_macd = macd_ratio
+                                    patience = end - start
 
                             if price_ratio < 0 < ad_ratio:  # and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
-                                interval = wavelength // 3
-                                if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
-                                    if ad_ratio > best_ad:
-                                        best_ad = ad_ratio
-                                        patience = end - start
+                                if ad_ratio > best_ad:
+                                    best_ad = ad_ratio
+                                    patience = end - start
 
-                    if best_ad > 0 and a_macd > 0:
+                    if best_macd > 0:
                         if hold and price < buy_price:
                             entry = valley_indices[-1]
                             print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
@@ -542,7 +535,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([100, 219], distance, prominence)
+        self.snapshot([30, 150], distance, prominence)
 
     def signal(self):
         self.trend()
