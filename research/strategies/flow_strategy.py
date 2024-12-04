@@ -466,29 +466,24 @@ class FlowStrategy(Strategy):
                     last_sell = max([i for i, value in enumerate(positions) if value < 0], default=-1)
                     wavestart = max(wavestart, last_sell)
                     dips = valley_indices[valley_indices > wavestart]
-                    best_macd, best_ad, selected_pos = 0, 0, 0
                     for i in range(dips.size - 1):
+                        patience = 0
                         start, end = dips[i], dips[-1]
                         wavelength = end - start
-                        if wavelength > 3:
+                        if wavelength > 9:  # long enough to identify the trend
                             a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
-                            a_macd, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
+                            a_macds, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
                             a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                            a_obvs, _ = np.polyfit(np.arange(end - start), obvs[start:end], 1)
                             price_ratio = (prices.iloc[end] - prices.iloc[start]) / prices.iloc[start]
                             macd_ratio = (macds.iloc[end] - macds.iloc[start]) / abs(macds.iloc[start])
                             ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
 
-                            if price_ratio < 0 < macd_ratio:
-                                if macd_ratio > best_macd:
-                                    best_macd = macd_ratio
-                                    patience = end - start
+                            if a_prices < 0 < a_macds and macd_ratio > 0 and (a_adlines > 0 or a_obvs > 0):
+                                patience = end - start
+                                break
 
-                            if price_ratio < 0 < ad_ratio:  # and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
-                                if ad_ratio > best_ad:
-                                    best_ad = ad_ratio
-                                    patience = end - start
-
-                    if best_macd > 0:
+                    if patience > 9:
                         if hold and price < buy_price:
                             entry = valley_indices[-1]
                             print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
