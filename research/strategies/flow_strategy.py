@@ -466,9 +466,10 @@ class FlowStrategy(Strategy):
                     last_sell = max([i for i, value in enumerate(positions) if value < 0], default=-1)
                     wavestart = max(wavestart, last_sell)
                     dips = valley_indices[valley_indices > wavestart]
+
                     for i in range(dips.size - 1):
                         patience = 0
-                        start, end = dips[i], dips[-1]
+                        start, end = dips[i], dips[-1]  # max wavelength, TODO: max magnitude
                         wavelength = end - start
                         if wavelength > 9:  # long enough to identify the trend
                             a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
@@ -484,13 +485,14 @@ class FlowStrategy(Strategy):
                                 break
 
                     if patience > 9:
-                        if hold and price < buy_price:
+                        if hold:
                             entry = valley_indices[-1]
                             print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
-                        if not hold:
+                        if not hold and count < 380:
                             entry = valley_indices[-1]
                             position = 1
                             hold = True
+                            buy_point = count
                             buy_price = price
                             print(f"buying @{count} {price} patience {patience} [{entry-patience}, {entry}] "
                               f"price roc: {price_ratio:.5f} "
@@ -501,36 +503,40 @@ class FlowStrategy(Strategy):
                 to_sell = False
                 print(f"Peaks {peak_indices} Valleys {valley_indices} @ {count}")
                 if peak_indices.size > 1 and valley_indices.size and peak_indices[-1] > valley_indices[-1]:
-                    num_peaks = len(peak_indices[(peak_indices > entry - patience) & (peak_indices < entry)])
+                    num_peaks = len(peak_indices[(peak_indices >= entry - patience) & (peak_indices <= entry)])
                     print(f"patience: {patience} @ {count} to be sold after {num_peaks} peaks since {entry}")
 
-                    pokes = peak_indices[peak_indices > entry]
+                    pokes = peak_indices[peak_indices > buy_point]
                     print(f"{pokes}")
 
-                    for i in range(pokes.size - 1):
-                        start, end = pokes[i], pokes[-1]
-                        price_ratio = (prices.iloc[end] - prices.iloc[start])
-                        ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
-                        if ad_ratio < 0 < price_ratio:
-                            print(f"!!!!!!! {ad_ratio} < 0 < {price_ratio} @ {count}")
-                            to_sell = True
-                            break
+                    # for i in range(pokes.size - 1):
+                    #     start, end = pokes[i], pokes[-1]
+                    #     price_ratio = (prices.iloc[end] - prices.iloc[start])
+                    #     ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
+                    #     if ad_ratio < 0 < price_ratio:
+                    #         print(f"!!!!!!! {ad_ratio} < 0 < {price_ratio} @ {count}")
+                    #         to_sell = True
+                    #         break
 
-                    if len(peak_indices[peak_indices > entry]) >= num_peaks:
-                        print(f"{len(peak_indices)} {peak_indices[peak_indices > entry]} last peak {peak_indices[-1]}")
+                    if len(peak_indices[peak_indices > buy_point]) >= num_peaks:
+                        print(f"{len(peak_indices)} {peak_indices[peak_indices > buy_point]} last peak {peak_indices[-1]}")
+                        to_sell = True
+
+                    if count == 389:
                         to_sell = True
 
                     if to_sell:
                         position = -1
                         hold = False
                         buy_price = 0
+                        patience = 0
                         print(f"selling @{count} {row['close']} wavelength: {wavelength}")
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
-        self.snapshot([30, 150], distance, prominence)
+        self.snapshot([220, 389], distance, prominence)
 
     def signal(self):
         self.trend()
