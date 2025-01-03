@@ -456,13 +456,6 @@ class MACDStrategy(Strategy):
             rsi = row['rolling_rsi']
             macd = row['normalized_rolling_macd']
 
-            # coe_rp = self.linear(rpeaks[-3:])
-            # coe_rv = self.linear(rvalleys[-3:])
-            # print(f"-------- Thinking {index} {data.index.get_loc(index)} ----  [rsi coe] {coe_rp:6.2f} {coe_rv:6.2f} -----")
-            # coe_mp = self.linear(mpeaks)
-            # coe_mv = self.linear(mvalleys)
-            # print(f"-------- Thinking {index} {data.index.get_loc(index)} ---- [macd coe] {coe_mp:6.2f} {coe_mv:6.2f} -----")
-            # print()
 
             """
             process macd and rsi signals

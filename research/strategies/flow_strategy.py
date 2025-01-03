@@ -40,14 +40,14 @@ def calculate_recent_fibonacci_levels(price_data, peaks, valleys, divergence_win
     recent_fib_levels = None
 
     if most_recent_valley is not None and most_recent_valley > most_recent_peak:
-        high = price_data[most_recent_peak]
-        low = price_data[most_recent_valley]
+        high = price_data.iloc[most_recent_peak]
+        low = price_data.iloc[most_recent_valley]
         recent_fib_levels = {f"{int(ratio * 100)}%": high - (high - low) * ratio for ratio in
                              [0.236, 0.382, 0.5, 0.618, 1.0]}
 
     elif most_recent_peak is not None and most_recent_valley is not None and most_recent_peak > most_recent_valley:
-        high = price_data[most_recent_peak]
-        low = price_data[most_recent_valley]
+        high = price_data.iloc[most_recent_peak]
+        low = price_data.iloc[most_recent_valley]
         recent_fib_levels = {f"{int(ratio * 100)}%": low + (high - low) * ratio for ratio in
                              [1.0, 1.272, 1.618, 2.0, 2.618]}
 
@@ -119,6 +119,22 @@ def ad_line(prices, high, low, volume):
     # Accumulation/Distribution Line (cumulative sum of money flow volume)
     ad_line = money_flow_volume.cumsum()
     return ad_line
+
+def standout(values):
+    base = values.iloc[-1]
+    high, low = 0, 0
+    high_stop, low_stop = False, False
+    for v in values[-2::-1]:
+        if v <= base:
+            low_stop = True
+            if not high_stop:
+                high += 1
+        elif v > base:
+            high_stop = True
+            if not low_stop:
+                low += 1
+
+    return high, low
 
 
 class FlowStrategy(Strategy):
@@ -258,7 +274,6 @@ class FlowStrategy(Strategy):
             # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
             visible_rows = data.loc[:index]  # recent rows
             prices = visible_rows['close']
-            prices = visible_rows['close']
             macds = visible_rows['macd']
             ads = visible_rows['a/d']
 
@@ -267,18 +282,66 @@ class FlowStrategy(Strategy):
 
             peaks, _ = find_peaks(prices, distance=divergence_window)
             valleys, _ = find_peaks(-prices, distance=divergence_window)
-            fib_levels = calculate_recent_fibonacci_levels(prices, peaks, valleys, divergence_window)
+            if len(peaks) and len(valleys):
+                fib_levels = calculate_recent_fibonacci_levels(prices, peaks, valleys, divergence_window)
 
-            # Generate buy/sell signals based on combined logic
-            if macd_divergence == 'bullish' and ad_divergence == 'buy' and fib_levels:
-                if '61%' in fib_levels and prices.iloc[-1] >= fib_levels['61%'] or True:
-                    position = 1
-                    hold = True
+                # Generate buy/sell signals based on combined logic
+                if macd_divergence == 'bullish' and ad_divergence == 'buy' and fib_levels:
+                    if '61%' in fib_levels and prices.iloc[-1] >= fib_levels['61%'] or True:
+                        position = 1
+                        hold = True
 
-            elif macd_divergence == 'bearish' and ad_divergence == 'sell' and fib_levels:
-                if '161%' in fib_levels and prices.iloc[-1] <= fib_levels['161%'] or True:
-                    position = -1
-                    hold = False
+                elif macd_divergence == 'bearish' and ad_divergence == 'sell' and fib_levels:
+                    if '161%' in fib_levels and prices.iloc[-1] <= fib_levels['161%'] or True:
+                        position = -1
+                        hold = False
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
+
+    def deep_v(self, lookback=5, lookforward=3, decline_threshold=0.003, recovery_threshold=0.003):
+        self.flow_simple()
+        data = self.data
+        positions = []
+        data['position'] = 0
+        hold = False
+        count = 0
+
+        for index, row in data.iterrows():
+            position = 0
+            price = row['close']
+            visible_rows = data.loc[:index]  # recent rows
+            prices = visible_rows['close']
+            volumes = visible_rows['volume']
+            macds = visible_rows['macd']
+            ads = visible_rows['a/d']
+
+            peaks, _ = find_peaks(prices, distance=lookback)
+            valleys, _ = find_peaks(-prices, distance=lookback)
+
+            for valley in valleys:
+                # Check Volume Spike
+                avg_volume = volumes.iloc[max(0, valley - lookback):valley].mean()
+                if volumes.iloc[valley] < avg_volume * 1.0:  # At least 1.5x average volume
+                    continue
+
+                if valley < lookback or valley + lookforward >= len(prices):
+                    continue  # Not enough data for analysis
+
+                # Calculate pre-valley decline
+                pre_valley_price = prices.iloc[valley - lookback:valley].max()
+                pre_decline = (pre_valley_price - prices.iloc[valley]) / pre_valley_price
+
+                # Calculate post-valley recovery
+                post_valley_price = prices.iloc[valley + 1:valley + 1 + lookforward].max()
+                post_recovery = (post_valley_price - prices.iloc[valley]) / prices.iloc[valley]
+                # Check thresholds for both decline and recovery
+                if pre_decline >= decline_threshold and post_recovery >= recovery_threshold:
+                    if not hold:
+                        position = 1
+                        hold = True
 
             positions.append(position)
             count += 1
@@ -462,6 +525,12 @@ class FlowStrategy(Strategy):
                                                                                         prices.iloc[0])
 
                 if valley_indices[-1] > peak_indices[-1]:  # from a valley
+                    # if len(valley_indices) > 3:
+                    #     _, low = standout(valley_prices[:-2])
+                    #     high, _ = standout(valley_prices)
+                    #     if low > len(valley_indices) * .618:
+                    #         wavestart = valley_indices[-2]
+
                     wavestart = max(wavestart, valley_indices[-1] - 60)
                     last_sell = max([i for i, value in enumerate(positions) if value < 0], default=-1)
                     wavestart = max(wavestart, last_sell)
@@ -488,7 +557,8 @@ class FlowStrategy(Strategy):
                         if hold:
                             entry = valley_indices[-1]
                             print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
-                        if not hold and count < 380:
+                        if not hold and count < 386:
+                            print(f"current dips: {dips}")
                             entry = valley_indices[-1]
                             position = 1
                             hold = True
@@ -536,7 +606,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([220, 389], distance, prominence)
+        self.snapshot([0, 189], distance, prominence)
 
     def signal(self):
-        self.trend()
+        self.deep_v()

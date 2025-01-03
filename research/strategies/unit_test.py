@@ -426,26 +426,124 @@ def generate_signals(prices, macd, ad_line, obv):
 
     return signals
 
+def test_flow():
+    # Calculate MACD, A/D Line, and OBV
+    macd, _ = calculate_macd(prices)
+    ad_line = calculate_ad_line(high, low, close, volumes)
+    obv = (np.sign(close.diff()) * volumes).fillna(0).cumsum()  # Simple OBV calculation
 
-end_date = pd.to_datetime('2024-11-21', format='%Y-%m-%d')
+    # Generate buy/sell signals
+    signals = generate_signals(prices, macd, ad_line, obv)
+    print(signals)
+
+    valleys, _ = find_peaks(-prices, distance=3)
+    return valleys
+
+
+def detect_deep_v_shape(prices, valley_index, lookback=5, lookforward=3, decline_threshold=0.003,
+                        recovery_threshold=0.003):
+    """
+    Detects a deep V-shape around a given valley.
+
+    Args:
+        prices (pd.Series): Price data.
+        valley_index (int): Index of the valley to evaluate.
+        lookback (int): Number of points to consider before the valley.
+        lookforward (int): Number of points to consider after the valley.
+        decline_threshold (float): Minimum percentage decline for the pre-valley drop.
+        recovery_threshold (float): Minimum percentage recovery for the post-valley rebound.
+
+    Returns:
+        bool: True if a deep V-shape is detected, False otherwise.
+    """
+    if valley_index < lookback or valley_index + lookforward >= len(prices):
+        return False  # Not enough data for analysis
+
+    # Calculate pre-valley decline
+    pre_valley_price = prices.iloc[valley_index - lookback:valley_index].max()
+    pre_decline = (pre_valley_price - prices.iloc[valley_index]) / pre_valley_price
+
+    # Calculate post-valley recovery
+    post_valley_price = prices.iloc[valley_index + 1:valley_index + 1 + lookforward].max()
+    post_recovery = (post_valley_price - prices.iloc[valley_index]) / prices.iloc[valley_index]
+    print(f"post recovery: {post_recovery}")
+    # Check thresholds for both decline and recovery
+    if pre_decline >= decline_threshold and post_recovery >= recovery_threshold:
+        return True
+    return False
+
+
+def is_significant_valley(prices, volumes, valleys, lookback=5):
+    """
+    Identify significant valleys based on price reversal, volume, and momentum.
+    """
+    significant_valleys = []
+
+    for valley in valleys:
+        # Check Volume Spike
+        avg_volume = volumes.iloc[max(0, valley - lookback):valley].mean()
+        if volumes.iloc[valley] < avg_volume * 1.0:  # At least 1.5x average volume
+            continue
+
+        # Check Price Reversal Strength
+        pre_valley_price = prices.iloc[max(0, valley - lookback):valley].max()
+        post_valley_price = prices.iloc[valley:min(len(prices), valley + lookback)].max()
+        # if post_valley_price <= pre_valley_price:  # No strong upward reversal
+        #     continue
+
+        # pre_valley_macd = macd.iloc[max(0, valley - lookback):valley].mean()
+        # post_valley_macd = macd.iloc[valley:min(len(macd), valley + lookback)].mean()
+        #
+        # if post_valley_macd <= pre_valley_macd:
+        #     continue
+
+        # Add Significant Valley
+        if detect_deep_v_shape(prices, valley):
+            significant_valleys.append(valley)
+
+    return significant_valleys
+
+
+def generate_entry_signal(prices, volumes, macd):
+
+    peaks, valleys = identify_peaks_valleys(prices)
+    macd_peaks, macd_valleys = identify_peaks_valleys(macd)
+    signals = is_significant_valley(prices, volumes, valleys)
+
+    # Plotting
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+
+    ax1.plot(prices, label='Price', color='blue')
+    ax1.plot(prices.iloc[peaks], 'ro', label='Peaks')
+    ax1.plot(prices.iloc[valleys], 'go', label='Valleys')
+    for b in signals:
+        ax1.plot(prices.index[b], prices.iloc[b], 'g^', markersize=12, alpha=.5)
+    ax1.set_ylabel('Price')
+    ax1.legend()
+
+
+    ax2.plot(macd, label='MACD', color='purple')
+    ax2.set_title('MACD')
+    ax2.set_xlabel('Time')
+    ax2.set_ylabel('MACD')
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+end_date = pd.to_datetime('2024-12-21', format='%Y-%m-%d')
 start_date = end_date - pd.DateOffset(months=6)
-open = '2024-11-25 09:30'
-close = '2024-11-25 16:00'
+open = '2024-12-19 09:30'
+close = '2024-12-19 16:00'
 start_date = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
 end_date = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
-data = yf.download('TQQQ', start=start_date, end=end_date, interval='1m')
+data = yf.download('SQQQ', start=start_date, end=end_date, interval='1m')
 prices = data['Close']
 high = data['High']
 low = data['Low']
 close = prices
-volume = data['Volume']
+volumes = data['Volume']
+macd = prices.ewm(span=12).mean() - prices.ewm(span=26).mean()
 
-
-# Calculate MACD, A/D Line, and OBV
-macd, _ = calculate_macd(prices)
-ad_line = calculate_ad_line(high, low, close, volume)
-obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()  # Simple OBV calculation
-
-# Generate buy/sell signals
-signals = generate_signals(prices, macd, ad_line, obv)
-print(signals)
+generate_entry_signal(prices, volumes, macd)
