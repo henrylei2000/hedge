@@ -162,29 +162,22 @@ class Strategy:
         if 'position' not in self.data.columns:
             self.data['position'] = self.data['signal']
         for index, row in self.data.iterrows():
-            # position = 0
-            if shares_held > 0 and row['position'] == -1:
-                # Sell signal
-                position = -1
+            if shares_held > 0 and row['position'] < 0:
                 trades += 1
                 balance += row['close'] * shares_held
                 print(f"Sold at: ${row['close']:.2f} x {shares_held}  @{index}")
                 print(f"Trade {trades} ------------- Balance: ${balance:.2f} [macd {row['macd']*100:.3f}]")
                 shares_held = 0
 
-            elif balance > 0 and row['position'] == 1:
+            elif balance > 0 and row['position'] > 0:
                 # Buy signal
-                shares_bought = balance // row['close']
+                shares_bought = balance / row['close'] / 2
                 balance -= row['close'] * shares_bought
                 shares_held += shares_bought
                 if shares_bought:
                     print(f"share bought: {shares_bought:.2f}")
                     position = 1
                     print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd']*100:.3f}]")
-
-            # positions.append(position)
-
-        # self.data['position'] = positions
 
         # Calculate final balance
         final_balance = balance + (shares_held * self.data['close'].iloc[-1])

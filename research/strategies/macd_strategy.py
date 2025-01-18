@@ -343,28 +343,23 @@ class MACDStrategy(Strategy):
 
     def zero_crossing(self):
         self.macd_simple()
-        self.normalized()
-        self.normalized(column='rsi', mid=50)
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 3 signals
         positions = []  # Store updated signals
-
+        hold = False
         # Initialize Signal column with zeros
         data['position'] = 0
 
         for index, row in data.iterrows():
             position = 0
-
             current = row['macd']
-
             if len(previous):
-
-                if previous[-1] > 0 > current:
+                if previous[-1] < 0 < current and not hold:
                     position = 1
-
-                if previous[-1] < 0 < current:
+                    hold = True
+                if previous[-1] > 0 > current and hold:
                     position = -1
-
+                    hold = False
             positions.append(position)
             previous.append(current)
 

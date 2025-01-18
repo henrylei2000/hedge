@@ -1,4 +1,5 @@
 from strategy import Strategy
+from collections import deque
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
@@ -120,6 +121,28 @@ def ad_line(prices, high, low, volume):
     ad_line = money_flow_volume.cumsum()
     return ad_line
 
+
+def adaptive_macd(prices, turning_points):
+    wave_lengths = [turning_points[i] - turning_points[i - 1] for i in range(1, len(turning_points))]
+    signal_window = sum(wave_lengths[-2:]) if len(wave_lengths) >= 2 else 9
+    long_window = sum(wave_lengths[-5:]) if len(wave_lengths) >= 5 else 26
+    short_window = sum(wave_lengths[-3:]) if len(wave_lengths) >= 3 else 12
+    short_ema = prices.ewm(span=short_window, adjust=False).mean()
+    long_ema = prices.ewm(span=long_window, adjust=False).mean()
+    macd_line = short_ema - long_ema
+    signal_line = macd_line.ewm(span=signal_window, adjust=False).mean()
+    return macd_line, signal_line
+
+
+def wave_macd(prices):
+    short_window, long_window, signal_window = 2, 3, 1
+    short_ema = prices.ewm(span=short_window, adjust=False).mean()
+    long_ema = prices.ewm(span=long_window, adjust=False).mean()
+    macd_line = short_ema - long_ema
+    signal_line = macd_line.ewm(span=signal_window, adjust=False).mean()
+    return macd_line, signal_line
+
+
 def standout(values):
     base = values.iloc[-1]
     high, low = 0, 0
@@ -139,7 +162,7 @@ def standout(values):
 
 class FlowStrategy(Strategy):
     def flow_simple(self):
-        short_window, long_window, signal_window = 9, 21, 6  # 12, 26, 9
+        short_window, long_window, signal_window = 12, 26, 9   # 9, 21, 6
         dataset = [self.data]
         if self.reference:
             dataset += [self.qqq, self.spy, self.dia]
@@ -173,6 +196,65 @@ class FlowStrategy(Strategy):
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
+
+    def zero_crossing(self):
+        self.flow_simple()
+        data = self.data
+        previous = deque(maxlen=3)  # Keep track of the last 3 signals
+        prev_peak = deque(maxlen=3)
+        prev_valley = deque(maxlen=3)
+        positions = []  # Store updated signals
+        hold = False
+        # Initialize Signal column with zeros
+        data['position'] = 0
+        distance = 9
+        prominence = data.iloc[0]['close'] * 0.002
+
+        for index, row in data.iterrows():
+            position = 0
+            current, current_peak, current_valley = 0, 0, 0
+            visible_rows = data.loc[:index]  # recent rows
+            prices = visible_rows['close']
+
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+            peak_indices = np.array(peaks)
+            peak_prices = prices.iloc[peaks]
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+            valley_indices = np.array(valleys)
+            valley_prices = prices.iloc[valleys]
+
+            if len(peak_indices) > 1 and len(valley_indices):
+                corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
+                                                                                        peak_indices, peak_prices,
+                                                                                        prices.iloc[0])
+
+                macd_peak, signal_peak = adaptive_macd(prices, peak_indices)
+                macd_valley, signal_valley = adaptive_macd(prices, valley_indices)
+                macd = macd_peak.iloc[-1] + macd_valley.iloc[-1]
+                signal = signal_peak.iloc[-1] + signal_valley.iloc[-1]
+
+                macd_peak, signal_peak = wave_macd(peak_prices)
+                macd_valley, signal_valley = wave_macd(valley_prices)
+
+                current_peak = macd_peak.iloc[-1]  # - signal_peak.iloc[-1]
+                current_valley = macd_valley.iloc[-1]  # - signal_valley.iloc[-1]
+                # current = row['strength']
+                if len(prev_peak):
+                    if prev_peak[-1] > 0 > current_peak and hold:
+                        position = -1
+                        hold = False
+                if len(prev_valley):
+                    if prev_valley[-1] < 0 < current_valley and not hold:
+                        position = 1
+                        hold = True
+
+            positions.append(position)
+            previous.append(current)
+            prev_peak.append(current_peak)
+            prev_valley.append(current_valley)
+
+        data['position'] = positions
+        self.snapshot([0, 89], distance, prominence)
 
     def macd_divergence(self, divergence_window=15, crossover_confirmation=False):
         self.flow_simple()
@@ -301,13 +383,16 @@ class FlowStrategy(Strategy):
 
         data['position'] = positions
 
-    def deep_v(self, lookback=5, lookforward=3, decline_threshold=0.003, recovery_threshold=0.003):
+    def deep_v(self, lookback=5, lookforward=3, decline_threshold=0.002, recovery_threshold=0.003):
         self.flow_simple()
         data = self.data
         positions = []
         data['position'] = 0
         hold = False
         count = 0
+
+        distance = 3
+        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
 
         for index, row in data.iterrows():
             position = 0
@@ -318,35 +403,59 @@ class FlowStrategy(Strategy):
             macds = visible_rows['macd']
             ads = visible_rows['a/d']
 
-            peaks, _ = find_peaks(prices, distance=lookback)
-            valleys, _ = find_peaks(-prices, distance=lookback)
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+            peak_indices = np.array(peaks)
+            peak_prices = prices.iloc[peaks]
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+            valley_indices = np.array(valleys)
+            valley_prices = prices.iloc[valleys]
 
-            for valley in valleys:
-                # Check Volume Spike
-                avg_volume = volumes.iloc[max(0, valley - lookback):valley].mean()
-                if volumes.iloc[valley] < avg_volume * 1.0:  # At least 1.5x average volume
-                    continue
+            if len(peak_indices) > 1 and len(valley_indices):
+                corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
+                                                                                        peak_indices, peak_prices,
+                                                                                        prices.iloc[0])
 
-                if valley < lookback or valley + lookforward >= len(prices):
-                    continue  # Not enough data for analysis
+                if valley_indices[-1] > peak_indices[-1]:  # from a valley
+                    valley = valley_indices[-1]
+                    is_deep_v = True
 
-                # Calculate pre-valley decline
-                pre_valley_price = prices.iloc[valley - lookback:valley].max()
-                pre_decline = (pre_valley_price - prices.iloc[valley]) / pre_valley_price
+                    if len(prices) < valley + lookforward:
+                        is_deep_v = False
 
-                # Calculate post-valley recovery
-                post_valley_price = prices.iloc[valley + 1:valley + 1 + lookforward].max()
-                post_recovery = (post_valley_price - prices.iloc[valley]) / prices.iloc[valley]
-                # Check thresholds for both decline and recovery
-                if pre_decline >= decline_threshold and post_recovery >= recovery_threshold:
-                    if not hold:
-                        position = 1
-                        hold = True
+                    # Check Volume Spike
+                    pre_volume = volumes.iloc[max(0, valley - lookback):valley].max()
+                    post_volume = volumes.iloc[valley+1:valley + lookforward].max()
+                    # if post_volume < pre_volume and volumes.iloc[valley] < pre_volume:  # At least 1.5x average volume
+                    #     is_deep_v = False
+
+                    pre_macd = macds.iloc[max(0, valley - lookback):valley].mean()
+                    post_macd = macds.iloc[valley + 1:valley + lookforward].mean()
+                    # if post_macd < pre_macd:  # At least 1.5x average volume
+                    #     is_deep_v = False
+
+                    # Calculate pre-valley decline
+                    pre_valley_price = prices.iloc[valley - lookback:valley].max()
+                    pre_decline = (pre_valley_price - prices.iloc[valley]) / pre_valley_price
+
+                    # Calculate post-valley recovery
+                    post_valley_price = prices.iloc[valley + 1:valley + 1 + lookforward].max()
+                    post_recovery = (post_valley_price - prices.iloc[valley]) / prices.iloc[valley]
+                    # Check thresholds for both decline and recovery
+                    if pre_decline >= decline_threshold and post_recovery >= recovery_threshold and is_deep_v:
+                        if not hold and (macds.iloc[valley] > 0 or ads.iloc[valley] > 0):
+                            position = 1
+                            hold = True
+
+                if peak_indices[-1] > valley_indices[-1]:
+                    if hold:
+                        position = -1
+                        hold = False
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
+        self.snapshot([120, 289], distance, prominence)
 
     def snapshot(self, interval, distance, prominence):
         if interval[1] - interval[0] < 30:
@@ -366,7 +475,7 @@ class FlowStrategy(Strategy):
         peak_prices = prices.iloc[peak_indices]
         valley_prices = prices.iloc[valley_indices]
 
-        indicator = 'a/d'
+        indicator = 'rsi'
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
         # Identify peaks and valleys
@@ -419,8 +528,8 @@ class FlowStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
-        ax2.plot(rows[indicator], label=f"{indicator}", color='purple')
-        ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='Peaks')
+        ax2.plot(rows[indicator], label=f"{indicator}", color='lightblue')
+        ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
         # Annotate each peak with its value
         for peak in obv_peak_indices:
             ax2.annotate(f'{interval[0] + peak}',
@@ -429,7 +538,7 @@ class FlowStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='Valleys')
+        ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
         for valley in obv_valley_indices:
             ax2.annotate(f'{interval[0] + valley}',
                          (obvs.index[valley], obvs.iloc[valley]),
@@ -440,12 +549,9 @@ class FlowStrategy(Strategy):
         # if len(obv_peak_indices):
         #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
         #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
-        ax2.set_title(f"{indicator}")
-        ax2.set_xlabel('Time')
-        ax2.set_ylabel(f"{indicator}")
         ax2.legend()
 
-        indicator = 'macd'
+        indicator = 'a/d'
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
         # Identify peaks and valleys
@@ -463,8 +569,8 @@ class FlowStrategy(Strategy):
                                                                                             obvs.iloc[0])
         obv_peak_prices = obvs.iloc[obv_peak_indices]
         obv_valley_prices = obvs.iloc[obv_valley_indices]
-        ax3.plot(rows[indicator], label=f"{indicator}", color='purple')
-        ax3.plot(obvs.iloc[obv_peak_indices], 'ro', label='Peaks')
+        ax3.plot(rows[indicator], label=f"{indicator}", color='pink')
+        ax3.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
         # Annotate each peak with its value
         for peak in obv_peak_indices:
             ax3.annotate(f'{interval[0] + peak}',
@@ -473,7 +579,7 @@ class FlowStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax3.plot(obvs.iloc[obv_valley_indices], 'go', label='Valleys')
+        ax3.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
         for valley in obv_valley_indices:
             ax3.annotate(f'{interval[0] + valley}',
                          (obvs.index[valley], obvs.iloc[valley]),
@@ -481,9 +587,6 @@ class FlowStrategy(Strategy):
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9)  # You can adjust the font size if needed
-        ax3.set_title(f"{indicator}")
-        ax3.set_xlabel('Time')
-        ax3.set_ylabel(f"{indicator}")
         ax3.legend()
 
         plt.tight_layout()
@@ -606,7 +709,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 189], distance, prominence)
+        self.snapshot([20, 189], distance, prominence)
 
     def signal(self):
         self.deep_v()
