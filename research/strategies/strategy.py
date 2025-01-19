@@ -171,7 +171,7 @@ class Strategy:
 
             elif balance > 0 and row['position'] > 0:
                 # Buy signal
-                shares_bought = balance / row['close'] / 2
+                shares_bought = balance / row['close']
                 balance -= row['close'] * shares_bought
                 shares_held += shares_bought
                 if shares_bought:
@@ -200,31 +200,29 @@ class Strategy:
             price = row['close']  # Assuming the 'close' column has the stock price
             position = row['position']
 
-            if position == 1:  # Buy signal
-                for bucket in buckets:
-                    if not bucket['in_use']:
-                        bucket['in_use'] = True
-                        bucket['shares'] = bucket['bucket_value'] / price
-                        bucket['buy_price'] = price
-                        # print(f"BUY  ${price:.3f} x {bucket['shares']:.2f}  @{i}")
-                        self.trades += 1
-                        break  # Exit after finding the first available bucket
+            if position > 0:  # Buy signal
+                num_buckets_to_buy = int(position)
+                available_buckets = [bucket for bucket in buckets if not bucket['in_use']]
+                buckets_to_buy = min(num_buckets_to_buy, len(available_buckets))
+                for bucket in available_buckets[:buckets_to_buy]:
+                    bucket['in_use'] = True
+                    bucket['buy_price'] = price
+                    bucket['shares'] = bucket['bucket_value'] / price
+                    self.trades += 1
 
-            elif position == -1:  # Sell signal
-                for bucket in buckets:
-                    if bucket['in_use']:
-                        # Calculate the value after selling shares
-                        # print(f"SELL ${price:.3f} x {bucket['shares']:.2f}  @{i}")
-                        sell_value = bucket['shares'] * price
-                        # Calculate PnL for this bucket
-                        pnl = sell_value - bucket['bucket_value']
-                        total_balance += pnl  # Update total balance
-                        # Reset bucket for the next trade
-                        bucket['in_use'] = False
-                        bucket['shares'] = 0
-                        bucket['buy_price'] = 0
-                        bucket['bucket_value'] = sell_value  # Update bucket value with the result of the trade
-                        break  # Assume one sell signal sells the shares from one bucket only
+            elif position < 0:  # Sell signal
+                num_buckets_to_sell = -int(position)
+                in_use_buckets = [bucket for bucket in buckets if bucket['in_use']]
+                buckets_to_sell = min(num_buckets_to_sell, len(in_use_buckets))  # Ensure num_buckets_to_sell is valid
+
+                for bucket in in_use_buckets[:buckets_to_sell]:
+                    sell_value = bucket['shares'] * price
+                    pnl = sell_value - bucket['bucket_value']
+                    total_balance += pnl  # Update total balance
+                    bucket['in_use'] = False
+                    bucket['shares'] = 0
+                    bucket['buy_price'] = 0
+                    bucket['bucket_value'] = sell_value  # Update bucket value with the result of the trade
 
         # Calculate the final balance by adding up the remaining bucket values
         final_balance = sum(bucket['bucket_value'] for bucket in buckets if not bucket['in_use']) + \
