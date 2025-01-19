@@ -383,7 +383,7 @@ class FlowStrategy(Strategy):
 
         data['position'] = positions
 
-    def deep_v(self, lookback=5, lookforward=3, decline_threshold=0.002, recovery_threshold=0.003):
+    def deep_v(self, lookback=5, lookforward=3, decline_threshold=0.005, recovery_threshold=0.003):
         self.flow_simple()
         data = self.data
         positions = []
@@ -401,6 +401,7 @@ class FlowStrategy(Strategy):
             prices = visible_rows['close']
             volumes = visible_rows['volume']
             macds = visible_rows['macd']
+            rsis = visible_rows['rsi']
             ads = visible_rows['a/d']
 
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
@@ -414,48 +415,49 @@ class FlowStrategy(Strategy):
                 corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
                                                                                         peak_indices, peak_prices,
                                                                                         prices.iloc[0])
+                valley, peak = valley_indices[-1], peak_indices[-1]
+                if valley > peak and len(prices) < valley + lookforward:  # from a valley
+                    deep_v = 0
 
-                if valley_indices[-1] > peak_indices[-1]:  # from a valley
-                    valley = valley_indices[-1]
-                    is_deep_v = True
-
-                    if len(prices) < valley + lookforward:
-                        is_deep_v = False
+                    pre_volume = volumes.iloc[max(0, valley - lookback):valley].mean()
+                    post_volume = volumes.iloc[valley + 1:valley + lookforward].max()
+                    if post_volume > pre_volume * 1.5:  # At least 1.5x average volume
+                        deep_v += 1
 
                     # Check Volume Spike
-                    pre_volume = volumes.iloc[max(0, valley - lookback):valley].max()
-                    post_volume = volumes.iloc[valley+1:valley + lookforward].max()
-                    # if post_volume < pre_volume and volumes.iloc[valley] < pre_volume:  # At least 1.5x average volume
-                    #     is_deep_v = False
-
                     pre_macd = macds.iloc[max(0, valley - lookback):valley].mean()
                     post_macd = macds.iloc[valley + 1:valley + lookforward].mean()
-                    # if post_macd < pre_macd:  # At least 1.5x average volume
-                    #     is_deep_v = False
+                    if post_macd > pre_macd:  # At least 1.5x average volume
+                        deep_v += 1
 
-                    # Calculate pre-valley decline
+                    if rsis.iloc[valley] < 30:
+                        deep_v += 1
+
                     pre_valley_price = prices.iloc[valley - lookback:valley].max()
                     pre_decline = (pre_valley_price - prices.iloc[valley]) / pre_valley_price
-
-                    # Calculate post-valley recovery
                     post_valley_price = prices.iloc[valley + 1:valley + 1 + lookforward].max()
                     post_recovery = (post_valley_price - prices.iloc[valley]) / prices.iloc[valley]
                     # Check thresholds for both decline and recovery
-                    if pre_decline >= decline_threshold and post_recovery >= recovery_threshold and is_deep_v:
-                        if not hold and (macds.iloc[valley] > 0 or ads.iloc[valley] > 0):
-                            position = 1
-                            hold = True
+                    if pre_decline >= decline_threshold and post_recovery >= recovery_threshold:
+                        deep_v += 1
+                    else:
+                        deep_v = 0
 
-                if peak_indices[-1] > valley_indices[-1]:
-                    if hold:
-                        position = -1
+                    if deep_v > 0:
+                        position = deep_v
+                        print(f"---- deep_v scored {deep_v} @ {count}")
+                        hold = True
+
+                if peak > valley:
+                    if hold and rsis.iloc[peak] > 70:
+                        position = -4
                         hold = False
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
-        self.snapshot([120, 289], distance, prominence)
+        self.snapshot([180, 249], distance, prominence)
 
     def snapshot(self, interval, distance, prominence):
         if interval[1] - interval[0] < 30:
@@ -499,8 +501,8 @@ class FlowStrategy(Strategy):
         print(f"[SNAPSHOT] {dips}")
 
         # Get positions for buy (1) and sell (-1) signals
-        buy_signals = rows[rows['position'] == 1]
-        sell_signals = rows[rows['position'] == -1]
+        buy_signals = rows[rows['position'] > 0]
+        sell_signals = rows[rows['position'] < 0]
         # Plotting
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2, 2]})
 

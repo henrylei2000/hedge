@@ -19,7 +19,7 @@ class Strategy:
         self.pnl = 0.00
         self.trades = 0
         self.init_balance = 10000
-        self.num_buckets = 1
+        self.num_buckets = 4
 
     def backtest(self):
         # prediction = self.predict()
@@ -254,9 +254,9 @@ class Strategy:
         ax.plot(np.arange(len(r)), r.close, linewidth=1)
         ax.scatter(np.where(r.signal == 1)[0], r.close[r.signal == 1], marker='^', color='g', label='Buy Signal')
         ax.scatter(np.where(r.signal == -1)[0], r.close[r.signal == -1], marker='v', color='r', label='Sell Signal')
-        ax.scatter(np.where(r.position == 1)[0], r.close[r.position == 1], marker='o', color='g', alpha=.5, s=120,
+        ax.scatter(np.where(r.position > 0)[0], r.close[r.position > 0], marker='o', color='g', alpha=.5, s=120,
                    label='Buy')
-        ax.scatter(np.where(r.position == -1)[0], r.close[r.position == -1], marker='o', color='r', alpha=.5, s=120,
+        ax.scatter(np.where(r.position < 0)[0], r.close[r.position < 0], marker='o', color='r', alpha=.5, s=120,
                    label='Sell')
         # for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
         #     ax.text(x, y, f"{r.close[i]:.2f}", fontsize=7, ha='right', va='bottom')
