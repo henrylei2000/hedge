@@ -4,6 +4,63 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 
+def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
+    # Convert lists to numpy arrays if they aren't already
+    valley_indices = np.array(valley_indices)
+    valley_prices = np.array(valley_prices)
+    peak_indices = np.array(peak_indices)
+    peak_prices = np.array(peak_prices)
+
+    # Handle scenario 1: if the first peak appears before the first valley
+    if len(peak_indices) and len(valley_indices) and peak_indices[0] < valley_indices[0]:
+        valley_indices = np.insert(valley_indices, 0, 0)
+        valley_prices = np.insert(valley_prices, 0, alternative_valley)
+
+    # Create lists to store the corrected indices, peak indices, and valley indices
+    corrected_indices = []
+    corrected_peak_indices = []
+    corrected_valley_indices = []
+
+    # Start with the first valley
+    i = j = 0
+    while i < len(valley_indices) and j < len(peak_indices):
+        # Handle consecutive valleys using argmin
+        start_i = i
+        while i + 1 < len(valley_indices) and valley_indices[i + 1] < peak_indices[j]:
+            i += 1
+        # Find the valley with the minimum price in the range
+        min_price_idx = start_i + np.argmin(valley_prices[start_i:i + 1])
+        corrected_indices.append(valley_indices[min_price_idx])
+        corrected_valley_indices.append(valley_indices[min_price_idx])
+        i += 1
+
+        # Handle consecutive peaks using argmax
+        start_j = j
+        while j + 1 < len(peak_indices) and i < len(valley_indices) and peak_indices[j + 1] < valley_indices[i]:
+            j += 1
+        # Find the peak with the maximum price in the range
+        max_price_idx = start_j + np.argmax(peak_prices[start_j:j + 1])
+        corrected_indices.append(peak_indices[max_price_idx])
+        corrected_peak_indices.append(peak_indices[max_price_idx])
+        j += 1
+
+    # Handle the case where only valleys are left
+    if i < len(valley_indices):
+        # Find the index with the minimum price among the remaining valleys
+        min_price_idx = i + np.argmin(valley_prices[i:])
+        corrected_indices.append(valley_indices[min_price_idx])
+        corrected_valley_indices.append(valley_indices[min_price_idx])
+
+    # Handle the case where only peaks are left
+    if j < len(peak_indices):
+        # Find the index with the maximum price among the remaining peaks
+        max_price_idx = j + np.argmax(peak_prices[j:])
+        corrected_indices.append(peak_indices[max_price_idx])
+        corrected_peak_indices.append(peak_indices[max_price_idx])
+
+    return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
+
+
 def ad_line(prices, high, low, volume):
     # Money Flow Multiplier calculation
     money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
@@ -21,23 +78,6 @@ def wave_macd(prices):
     macd_line = short_ema - long_ema
     signal_line = macd_line.ewm(span=signal_window, adjust=False).mean()
     return macd_line, signal_line
-
-
-def standout(values):
-    base = values.iloc[-1]
-    high, low = 0, 0
-    high_stop, low_stop = False, False
-    for v in values[-2::-1]:
-        if v <= base:
-            low_stop = True
-            if not high_stop:
-                high += 1
-        elif v > base:
-            high_stop = True
-            if not low_stop:
-                low += 1
-
-    return high, low
 
 
 class FlowStrategy(Strategy):
@@ -77,6 +117,110 @@ class FlowStrategy(Strategy):
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
 
+    def wave3(self):
+        self.flow_simple()
+        data = self.data
+        positions = []
+        data['position'] = 0
+        count = 0
+        buckets_in_use = 0
+        distance = 3
+        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        used_valley, used_peak, wave_1_length = 0, 0, 0
+
+        for index, row in data.iterrows():
+            position = 0
+            price, rsi, macd, strength = row['close'], row['rsi'], row['macd'], row['strength']
+            visible_rows = data.loc[:index]
+            prices = visible_rows['close']
+            volumes = visible_rows['volume']
+            macds = visible_rows['macd']
+            signals = visible_rows['signal_line']
+            rsis = visible_rows['rsi']
+            adlines = visible_rows['a/d']
+            obvs = visible_rows['obv']
+
+            # Identify peaks and valleys
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+            peak_indices = np.array(peaks)
+            peak_prices = prices.iloc[peaks]
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+            valley_indices = np.array(valleys)
+            valley_prices = prices.iloc[valleys]
+
+            corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
+                                                                                    peak_indices, peak_prices,
+                                                                                    prices.iloc[0])
+            peak_prices = prices.iloc[peak_indices]
+            valley_prices = prices.iloc[valley_indices]
+
+            if len(peak_indices) > 1 and len(valley_indices) > 1:
+                # Use the most recent two peaks and valleys
+                valley, prior_valley, peak, prior_peak = valley_indices[-1], valley_indices[-2], peak_indices[-1], peak_indices[-2]
+                # Validate Wave 1 and Wave 2 structure
+                if valley > peak and prices.iloc[valley] > prices.iloc[prior_valley]:  # Wave 2 must come after Wave 1 peak
+
+                    wave_1_start = prior_valley  # Assume the prior valley is the start of Wave 1
+                    wave_1_length = prices.iloc[peak] - prices.iloc[wave_1_start]
+                    wave_2_retracement = (prices.iloc[peak] - prices.iloc[valley]) / wave_1_length if wave_1_length else 0
+
+                    if 0.2 <= wave_2_retracement <= 0.8:
+                        # Validate momentum and volume for Wave 3 entry
+                        is_macd_bullish = macds.iloc[count] > macds.iloc[valley] > 0 or macds.iloc[count] > signals.iloc[count]  # MACD bullish crossover
+                        is_rsi_bullish = rsis.iloc[count] > 50  # RSI above neutral
+                        is_ad_uptrend = adlines.iloc[count] > adlines.iloc[max(0, count - 10)]  # A/D Line rising
+                        is_obv_uptrend = obvs.iloc[count] > obvs.iloc[max(0, count - 20)]  # OBV rising
+
+                        volume_wave_1 = volumes[wave_1_start:peak + 1].mean()
+                        volume_wave_2 = volumes[peak:valley].mean()
+                        volume_wave_3 = volumes[valley:].mean()
+                        is_volume_increasing = volume_wave_3 > volume_wave_1  # Volume increasing
+
+                        if is_macd_bullish and is_volume_increasing:
+                            # print(f"volume wave 3 {valley} - {count}: {volume_wave_3}, volume wave 1 {wave_1_start} - {peak}: {volume_wave_1}")
+                            # Confirm breakout above Wave 1 peak
+                            if prices.iloc[count] > prices.iloc[peak] and macds.iloc[count] > macds.iloc[peak] * 0.995 and valley > used_valley:
+                                print(f"{price} > {prices.iloc[peak]} {peak}")
+                                # Add to Wave 3 entries
+                                position = 4
+                                buckets_in_use += 4
+                                if buckets_in_use > self.num_buckets:
+                                    buckets_in_use = self.num_buckets
+                                used_valley = valley
+                                print(f"Wave 3 start detected at index {count}, price: {prices.iloc[count]}")
+
+                if valley < peak != used_peak and buckets_in_use:
+                    to_sell = 0
+                    is_volume_decline = False
+                    pre_volume = volumes.iloc[used_valley:peak - 1].mean()
+                    post_volume = volumes.iloc[peak]
+                    if post_volume < pre_volume * 0.75:
+                        is_volume_decline = True
+
+                    rolling_max = macds.iloc[count - 9:count].max() if count >= 9 else macds.iloc[:count].max()
+                    is_macd_bearish = macds.iloc[count] < rolling_max
+                    if is_macd_bearish:
+                        to_sell += 4
+
+                    if rsis.iloc[peak] > 75:
+                        to_sell += 4
+                    if adlines.iloc[peak] < adlines.iloc[prior_peak]:
+                        to_sell += 4
+
+                    if is_macd_bearish and to_sell > 0 and price > prices.iloc[used_valley] + wave_1_length * 1.618:
+                        print(f"---- sell signal scored {to_sell} @ {count}")
+                        position = -to_sell
+                        buckets_in_use -= to_sell
+                        if buckets_in_use < 0:
+                            buckets_in_use = 0
+                        used_peak = peak
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
+        self.snapshot([300, 380], distance, prominence, ['macd', 'volume'])
+
     def flow(self):
         self.flow_simple()
         data = self.data
@@ -86,6 +230,7 @@ class FlowStrategy(Strategy):
         buckets_in_use = 0
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        used_valley, used_peak = 0, 0
 
         for index, row in data.iterrows():
             position = 0
@@ -104,10 +249,29 @@ class FlowStrategy(Strategy):
 
             if len(peaks) > 1 and len(valleys) > 1:
                 valley, prior_valley, peak, prior_peak = valleys[-1], valleys[-2], peaks[-1], peaks[-2]
-                if valley > peak and buckets_in_use < self.num_buckets:  # from a valley
+                if valley > peak and buckets_in_use < self.num_buckets and valley != used_valley:  # from a valley
 
-                    reversal = 0
-                    dips = valleys[valleys > valley - 60]
+                    # Wave 1 potential zone: Check if price is moving higher from the valley
+                    valley_price = prices.iloc[valley]
+                    if price > valley_price:  # Upward movement detected
+                        # Confirm if price has exceeded the previous peak
+                        if len(peaks) >= 2:
+                            if price > prices.iloc[prior_peak]:
+                                # Signal a potential entry for Wave 1
+                                # MACD Divergence Confirmation
+                                macd_valley = macds.iloc[valley]
+                                macd_prior_valley = macds.iloc[prior_valley]
+                                price_valley = prices.iloc[valley]
+                                price_prior_valley = prices.iloc[prior_valley]
+
+                                # Check for bullish divergence
+                                if macd_valley > macd_prior_valley:
+                                    # Signal a potential entry for Wave 1
+                                    print(
+                                        f"Wave 1 Entry Signal at index {count} @ {index}, price: {price} (MACD Divergence Confirmed)")
+
+                    start, end, reversal = 0, 0, 0
+                    dips = valleys[valleys > valley - 30]
                     is_macd_divergence = False
                     for i in range(dips.size - 1):
                         start, end = dips[i], dips[-1]
@@ -118,146 +282,77 @@ class FlowStrategy(Strategy):
 
                         if a_prices < 0 < a_macds:
                             is_macd_divergence = True
-                            print(f"{valley} - {count} macd divergence found!")
+                            print(f"{valley} - {count} macd divergence found: {start} - {end}!")
                             break
 
                     is_volume_pike = False
-                    pre_volume = volumes.iloc[prior_valley:valley - 1].mean()
-                    post_volume = volumes.iloc[valley - 1:valley + 1].max()
+                    pre_volume = volumes.iloc[start:end - 1].mean()
+                    post_volume = volumes.iloc[end]
                     if post_volume > pre_volume * 1.5:  # at least 1.5x average volume
                         is_volume_pike = True
 
-                    if is_macd_divergence and is_volume_pike:
+                    if is_macd_divergence:
                         reversal += 1
                         if rsis.iloc[valley] < 30:
                             reversal += 1
+                            print(f"rsi + 1")
+                        if a_obvs > 0:
+                            reversal += 1
+                            print(f"obv + 1")
+                        if a_adlines > 0:
+                            reversal += 1
+                            print(f"ad line + 1")
 
                     if reversal > 0:
                         position = reversal
                         buckets_in_use += reversal
                         if buckets_in_use > self.num_buckets:
                             buckets_in_use = self.num_buckets
-                        print(f"---- buy signal scored {reversal} @ {count}")
+                        used_valley = valley
+                        print(f"---- buy signal scored {reversal} @ {count} {end} {valley}")
 
-                if peak > valley and buckets_in_use:
+                if valley < peak != used_peak and buckets_in_use:
                     to_sell = 0
-                    if rsis.iloc[peak] > 75 and rsi < rsis.iloc[peak]:
-                        to_sell += 1
-                    elif rsi > rsis.iloc[peak]:
-                        to_sell -= 1
+                    is_volume_decline = False
+                    pre_volume = volumes.iloc[used_valley:peak - 1].mean()
+                    post_volume = volumes.iloc[peak]
+                    if post_volume < pre_volume * 0.75:
+                        is_volume_decline = True
+                        print(f"volume decline {count}")
 
-                    pre_macd = macds.iloc[max(0, peak - 5):peak].mean()
-                    post_macd = macds.iloc[peak + 1:count].mean()
-                    if strength < 0 and post_macd < pre_macd:
+                    rolling_max = macds.iloc[count - 9:count].max() if count >= 9 else macds.iloc[:count].max()
+                    is_macd_bearish = macds.iloc[count] < rolling_max
+                    if is_macd_bearish:
+                        print(f"macd bearish @{count} after {peak}")
+
+                    if rsis.iloc[peak] > 75:
                         to_sell += 1
-                    else:
-                        to_sell -= 1
-                    if to_sell > 0:
+                    if adlines.iloc[peak] < adlines.iloc[prior_peak]:
+                        to_sell += 1
+
+                    if is_volume_decline and is_macd_bearish and to_sell > 0:
                         print(f"---- sell signal scored {to_sell} @ {count}")
                         position = -to_sell
                         buckets_in_use -= to_sell
                         if buckets_in_use < 0:
                             buckets_in_use = 0
+                        used_peak = peak
+
+                if buckets_in_use and (price > prices.iloc[used_valley] * 1.015 or price < prices.iloc[used_valley] * 0.085):
+                    print(f"---- sell signal scored FULL @ {count}")
+                    position = -4
+                    buckets_in_use -= 4
+                    if buckets_in_use < 0:
+                        buckets_in_use = 0
+                    used_peak = peak
 
             positions.append(position)
             count += 1
 
         data['position'] = positions
-        self.snapshot([80, 200], distance, prominence)
+        # self.snapshot([20, 199], distance, prominence)
 
-    def deep_v(self, lookback=5, lookforward=3, decline_threshold=0.003, recovery_threshold=0.0035):
-        self.flow_simple()
-        data = self.data
-        positions = []
-        data['position'] = 0
-        hold = False
-        count = 0
-
-        buckets_in_use = 0
-        distance = 3
-        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
-
-        for index, row in data.iterrows():
-            position = 0
-            price, rsi, macd, strength = row['close'], row['rsi'], row['macd'], row['strength']
-            visible_rows = data.loc[:index]  # recent rows
-            prices = visible_rows['close']
-            volumes = visible_rows['volume']
-            macds = visible_rows['macd']
-            rsis = visible_rows['rsi']
-            ads = visible_rows['a/d']
-
-            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
-            peak_indices = np.array(peaks)
-            peak_prices = prices.iloc[peaks]
-            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
-            valley_indices = np.array(valleys)
-            valley_prices = prices.iloc[valleys]
-
-            if len(peak_indices) > 1 and len(valley_indices):
-
-                valley, peak = valley_indices[-1], peak_indices[-1]
-                if valley > peak and len(prices) < valley + lookforward and buckets_in_use < self.num_buckets:  # from a valley
-                    deep_v = 0
-
-                    pre_volume = volumes.iloc[max(0, valley - lookback):valley - 1].mean()
-                    post_volume = volumes.iloc[valley - 1:valley + lookforward].max()
-                    if post_volume > pre_volume * 1.5:  # at least 1.5x average volume
-                        deep_v += 1
-
-                    # Check Volume Spike
-                    pre_macd = macds.iloc[max(0, valley - lookback):valley].mean()
-                    post_macd = macds.iloc[valley + 1:valley + lookforward].mean()
-                    if post_macd > pre_macd:  # At least 1.5x average volume
-                        deep_v += 1
-
-                    if rsis.iloc[valley] < 30:
-                        deep_v += 1
-
-                    pre_valley_price = prices.iloc[valley - lookback:valley].max()
-                    pre_decline = (pre_valley_price - prices.iloc[valley]) / pre_valley_price
-                    post_valley_price = prices.iloc[valley + 1:valley + 1 + lookforward].max()
-                    post_recovery = (post_valley_price - prices.iloc[valley]) / prices.iloc[valley]
-                    # Check thresholds for both decline and recovery
-                    if pre_decline >= decline_threshold and post_recovery >= recovery_threshold:
-                        deep_v += 1
-                    else:
-                        deep_v = 0
-
-                    if deep_v > 0:
-                        position = deep_v
-                        buckets_in_use += deep_v
-                        if buckets_in_use > self.num_buckets:
-                            buckets_in_use = self.num_buckets
-                        print(f"---- buy signal scored {deep_v} @ {count}")
-
-                if peak > valley and buckets_in_use:
-                    to_sell = 0
-                    if rsis.iloc[peak] > 75 and rsi < rsis.iloc[peak]:
-                        to_sell += 1
-                    elif rsi > rsis.iloc[peak]:
-                        to_sell -= 1
-
-                    pre_macd = macds.iloc[max(0, peak - lookback):peak].mean()
-                    post_macd = macds.iloc[peak + 1:count].mean()
-                    if strength < 0 and post_macd < pre_macd:
-                        to_sell += 1
-                    else:
-                        to_sell -= 1
-                    if to_sell > 0:
-                        print(f"---- sell signal scored {to_sell} @ {count}")
-                        position = -to_sell
-                        buckets_in_use -= to_sell
-                        if buckets_in_use < 0:
-                            buckets_in_use = 0
-
-            positions.append(position)
-            count += 1
-
-        data['position'] = positions
-        self.snapshot([80, 200], distance, prominence)
-
-    def snapshot(self, interval, distance, prominence):
+    def snapshot(self, interval, distance, prominence, indicators = ['volume', 'macd']):
         if interval[1] - interval[0] < 30:
             return
         rows = self.data.iloc[interval[0]:interval[1]]
@@ -266,10 +361,18 @@ class FlowStrategy(Strategy):
         # Identify peaks and valleys
         peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
         peak_indices = np.array(peaks)
+        peak_prices = prices.iloc[peaks]
         valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
         valley_indices = np.array(valleys)
+        valley_prices = prices.iloc[valleys]
 
-        indicator = 'macd'
+        corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
+                                                                                peak_indices, peak_prices,
+                                                                                prices.iloc[0])
+        peak_prices = prices.iloc[peak_indices]
+        valley_prices = prices.iloc[valley_indices]
+
+        indicator = indicators[0]
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
         # Identify peaks and valleys
@@ -277,14 +380,6 @@ class FlowStrategy(Strategy):
         obv_peak_indices = np.array(obv_peaks)
         obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
-
-        # debugging info
-        dips = []
-        for i in range(valley_indices.size - 1):
-            if valley_indices[i] > valley_indices[-1] - 60:
-                dips.append((valley_indices[i], valley_indices[-1]))
-
-        print(f"[SNAPSHOT] {dips}")
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] > 0]
@@ -312,7 +407,7 @@ class FlowStrategy(Strategy):
         # Plot buy and sell signals
         ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
         ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
-        ax1.set_title(f"{self.start.strftime('%Y-%m-%d')} {interval} Stock Price Analysis")
+        ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
         ax1.set_ylabel('Price')
         ax1.legend()
 
@@ -339,7 +434,7 @@ class FlowStrategy(Strategy):
         #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
         ax2.legend()
 
-        indicator = 'volume'
+        indicator = indicators[1]
         obvs = rows[indicator]
         obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
         # Identify peaks and valleys
@@ -467,4 +562,4 @@ class FlowStrategy(Strategy):
         self.snapshot([20, 189], distance, prominence)
 
     def signal(self):
-        self.flow()
+        self.wave3()

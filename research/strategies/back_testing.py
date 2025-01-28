@@ -6,24 +6,15 @@ import configparser
 
 
 def get_dates():
-    # Load Alpaca API credentials from configuration file
     config = configparser.ConfigParser()
     config.read('config.ini')
-    # Access configuration values
     api_key = config.get('settings', 'API_KEY')
     secret_key = config.get('settings', 'SECRET_KEY')
-    # Initialize Alpaca API
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
-
-    # Define the start and end dates for the market calendar you want to retrieve
-    start_date = '2025-01-15' # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = start_date
-
-    # Get the market calendar
-    calendar = api.get_calendar(start=start_date, end=end_date)
-
-    # Print the market calendar details
     performance = 0.0
+    start_date = '2025-01-27' # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+    end_date = '2025-01-27'
+    calendar = api.get_calendar(start=start_date, end=end_date)
     for day in calendar:
         daily_pnl, trades = 0, 0
         for symbol in ['TQQQ']:

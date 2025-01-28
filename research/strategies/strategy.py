@@ -141,6 +141,7 @@ class Strategy:
                 data = data.between_time('9:30', '15:59')
                 if not data.empty:
                     self.data = data
+                    data.to_csv(f"{self.symbol}.csv")
                 else:
                     return False
             else:
@@ -229,28 +230,11 @@ class Strategy:
                         sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
-        # print(f"---{self.symbol}----- Total PnL Performance ------------ {self.pnl:.2f}")
         return total_pnl
 
     def plot(self):
-        class MyFormatter:
-            def __init__(self, dates, fmt='%Y-%m-%d'):
-                self.dates = dates
-                self.fmt = fmt
-
-            def __call__(self, x, pos=0):
-                'Return the label for time x at position pos'
-                ind = int(np.round(x))
-                if ind >= len(self.dates) or ind < 0:
-                    return ''
-
-                return pd.to_datetime(self.dates[ind]).strftime(self.fmt)
-
         r = self.data.to_records()
-        formatter = MyFormatter(r.timestamp)
-
         fig, ax = plt.subplots(figsize=(18, 6))
-        ax.xaxis.set_major_formatter(formatter)
         ax.plot(np.arange(len(r)), r.close, linewidth=1)
         ax.scatter(np.where(r.signal == 1)[0], r.close[r.signal == 1], marker='^', color='g', label='Buy Signal')
         ax.scatter(np.where(r.signal == -1)[0], r.close[r.signal == -1], marker='v', color='r', label='Sell Signal')
@@ -258,10 +242,6 @@ class Strategy:
                    label='Buy')
         ax.scatter(np.where(r.position < 0)[0], r.close[r.position < 0], marker='o', color='r', alpha=.5, s=120,
                    label='Sell')
-        # for i, (x, y) in enumerate(zip(np.where(r.signal != 0)[0], r.close[r.signal != 0])):
-        #     ax.text(x, y, f"{r.close[i]:.2f}", fontsize=7, ha='right', va='bottom')
-        fig.autofmt_xdate()
-        # fig.tight_layout()
-        plt.title(f"{self.symbol}")
+        plt.title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')}")
         plt.show()
 
