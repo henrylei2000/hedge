@@ -141,11 +141,15 @@ class Strategy:
                 data = data.between_time('9:30', '15:59')
                 if not data.empty:
                     self.data = data
-                    data.to_csv(f"{self.symbol}.csv")
+                    # data.to_csv(f"{self.symbol}.csv")
                 else:
                     return False
             else:
                 return False
+
+        elif api == "offline":
+            data = pd.read_csv('TQQQ.csv')
+            self.data = data
 
         return True
 

@@ -219,7 +219,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([300, 380], distance, prominence, ['macd', 'volume'])
+        self.snapshot([0, 100], distance, prominence, ['macd', 'volume'])
 
     def flow(self):
         self.flow_simple()
@@ -559,7 +559,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([20, 189], distance, prominence)
+        self.snapshot([0, 100], distance, prominence)
 
     def signal(self):
         self.wave3()
