@@ -113,6 +113,7 @@ class FlowStrategy(Strategy):
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
             data['rolling_volume'] = data['obv'].rolling(window=3).mean()
             data['a/d'] = ad_line(data['close'], data['high'], data['low'], data['volume'])
+            data['gap'] = (data['close'] - data['vwap']).rolling(window=signal_window).mean()
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
@@ -219,7 +220,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 100], distance, prominence, ['macd', 'volume'])
+        self.snapshot([0, 100], distance, prominence, ['obv', 'a/d'])
 
     def flow(self):
         self.flow_simple()
@@ -353,8 +354,12 @@ class FlowStrategy(Strategy):
         # self.snapshot([20, 199], distance, prominence)
 
     def snapshot(self, interval, distance, prominence, indicators = ['volume', 'macd']):
+        if interval[1] == -1 or interval[1] > 389:
+            interval[1] == 389
+
         if interval[1] - interval[0] < 30:
             return
+
         rows = self.data.iloc[interval[0]:interval[1]]
         prices = rows['close']
 
@@ -388,22 +393,22 @@ class FlowStrategy(Strategy):
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
-        ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
+        # ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
         for peak in peak_indices:
             ax1.annotate(f'{interval[0] + peak}',
                          (prices.index[peak], prices.iloc[peak]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        ax1.plot(prices.iloc[valley_indices], 'go', label='Valleys')
+                         fontsize=9, color='red')  # You can adjust the font size if needed
+        # ax1.plot(prices.iloc[valley_indices], 'go', label='Valleys')
         for valley in valley_indices:
             ax1.annotate(f'{interval[0] + valley}',
                          (prices.index[valley], prices.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
+                         fontsize=9, color='green')  # You can adjust the font size if needed
         # Plot buy and sell signals
         ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
         ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
@@ -411,8 +416,14 @@ class FlowStrategy(Strategy):
         ax1.set_ylabel('Price')
         ax1.legend()
 
+        # **Plot candles with wicks (High-Low)**
+        ax1.vlines(rows.index, rows['low'], rows['high'], color='black', linewidth=1)
+        colors = rows.apply(lambda row: 'green' if row['close'] > row['open'] else 'red', axis=1)
+        width = 0.8 * (rows.index.to_series().diff().median().total_seconds() / (24 * 3600))
+        ax1.bar(rows.index, rows['close'] - rows['open'], width=width, bottom=rows[['open', 'close']].min(axis=1), color=colors, edgecolor='none')
+
         ax2.plot(rows[indicator], label=f"{indicator}", color='lightblue')
-        ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
+        # ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
         # Annotate each peak with its value
         for peak in obv_peak_indices:
             ax2.annotate(f'{interval[0] + peak}',
@@ -420,15 +431,15 @@ class FlowStrategy(Strategy):
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
+                         fontsize=9, color='red')  # You can adjust the font size if needed
+        # ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
         for valley in obv_valley_indices:
             ax2.annotate(f'{interval[0] + valley}',
                          (obvs.index[valley], obvs.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
+                         fontsize=9, color='green')  # You can adjust the font size if needed
         # if len(obv_peak_indices):
         #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
         #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
@@ -443,7 +454,7 @@ class FlowStrategy(Strategy):
         obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
         obv_valley_indices = np.array(obv_valleys)
         ax3.plot(rows[indicator], label=f"{indicator}", color='pink')
-        ax3.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
+        # ax3.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
         # Annotate each peak with its value
         for peak in obv_peak_indices:
             ax3.annotate(f'{interval[0] + peak}',
@@ -451,15 +462,15 @@ class FlowStrategy(Strategy):
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        ax3.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
+                         fontsize=9, color='red')  # You can adjust the font size if needed
+        # ax3.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
         for valley in obv_valley_indices:
             ax3.annotate(f'{interval[0] + valley}',
                          (obvs.index[valley], obvs.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
+                         fontsize=9, color='green')  # You can adjust the font size if needed
         ax3.legend()
 
         plt.tight_layout()
