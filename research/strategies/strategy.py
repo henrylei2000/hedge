@@ -6,6 +6,7 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
 class Strategy:
     def __init__(self, symbol='TQQQ', open='2024-03-01 09:30', close='2024-03-01 16:00'):  # QQQ, SPY, DIA
         self.symbol = symbol
@@ -24,7 +25,7 @@ class Strategy:
     def backtest(self):
         # prediction = self.predict()
         if True:
-            if self.download():
+            if self.download(api='offline'):
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
@@ -102,7 +103,6 @@ class Strategy:
         return prediction
 
     def download(self, api="alpaca"):
-
         if api == 'yahoo':
             # Download stock data from Yahoo Finance
             self.data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
@@ -158,6 +158,73 @@ class Strategy:
 
     def signal(self):
         pass
+
+    @staticmethod
+    def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
+        # Convert lists to numpy arrays if they aren't already
+        valley_indices = np.array(valley_indices)
+        valley_prices = np.array(valley_prices)
+        peak_indices = np.array(peak_indices)
+        peak_prices = np.array(peak_prices)
+
+        # Handle scenario 1: if the first peak appears before the first valley
+        if len(peak_indices) and len(valley_indices) and peak_indices[0] < valley_indices[0]:
+            valley_indices = np.insert(valley_indices, 0, 0)
+            valley_prices = np.insert(valley_prices, 0, alternative_valley)
+
+        # Create lists to store the corrected indices, peak indices, and valley indices
+        corrected_indices = []
+        corrected_peak_indices = []
+        corrected_valley_indices = []
+
+        # Start with the first valley
+        i = j = 0
+        while i < len(valley_indices) and j < len(peak_indices):
+            # Handle consecutive valleys using argmin
+            start_i = i
+            while i + 1 < len(valley_indices) and valley_indices[i + 1] < peak_indices[j]:
+                i += 1
+            # Find the valley with the minimum price in the range
+            min_price_idx = start_i + np.argmin(valley_prices[start_i:i + 1])
+            corrected_indices.append(valley_indices[min_price_idx])
+            corrected_valley_indices.append(valley_indices[min_price_idx])
+            i += 1
+
+            # Handle consecutive peaks using argmax
+            start_j = j
+            while j + 1 < len(peak_indices) and i < len(valley_indices) and peak_indices[j + 1] < valley_indices[i]:
+                j += 1
+            # Find the peak with the maximum price in the range
+            max_price_idx = start_j + np.argmax(peak_prices[start_j:j + 1])
+            corrected_indices.append(peak_indices[max_price_idx])
+            corrected_peak_indices.append(peak_indices[max_price_idx])
+            j += 1
+
+        # Handle the case where only valleys are left
+        if i < len(valley_indices):
+            # Find the index with the minimum price among the remaining valleys
+            min_price_idx = i + np.argmin(valley_prices[i:])
+            corrected_indices.append(valley_indices[min_price_idx])
+            corrected_valley_indices.append(valley_indices[min_price_idx])
+
+        # Handle the case where only peaks are left
+        if j < len(peak_indices):
+            # Find the index with the maximum price among the remaining peaks
+            max_price_idx = j + np.argmax(peak_prices[j:])
+            corrected_indices.append(peak_indices[max_price_idx])
+            corrected_peak_indices.append(peak_indices[max_price_idx])
+
+        return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
+
+    @staticmethod
+    def ad_line(prices, high, low, volume):
+        # Money Flow Multiplier calculation
+        money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
+        # Money Flow Volume calculation
+        money_flow_volume = money_flow_multiplier * volume
+        # Accumulation/Distribution Line (cumulative sum of money flow volume)
+        ad_line = money_flow_volume.cumsum()
+        return ad_line
 
     def trade(self):
         balance = self.init_balance
@@ -235,6 +302,105 @@ class Strategy:
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
         return total_pnl
+
+    def snapshot(self, interval, indicators = ['volume', 'macd']):
+        if interval[1] == -1 or interval[1] > 389:
+            interval[1] == 389
+
+        if interval[1] - interval[0] < 30:
+            return
+
+        rows = self.data.iloc[interval[0]:interval[1]]
+        prices = rows['close']
+
+        distance = 3
+        prominence = self.data.iloc[0]['close'] * 0.00125 + 0.005
+
+        # Identify peaks and valleys
+        peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+        peak_indices = np.array(peaks)
+        peak_prices = prices.iloc[peaks]
+        valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+        valley_indices = np.array(valleys)
+        valley_prices = prices.iloc[valleys]
+
+        corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,
+                                                                                peak_indices, peak_prices,
+                                                                                prices.iloc[0])
+
+        # Get positions for buy (1) and sell (-1) signals
+        buy_signals = rows[rows['position'] > 0]
+        sell_signals = rows[rows['position'] < 0]
+        # Plotting
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2, 2]})
+
+        ax1.plot(prices, label='Price', color='blue')
+        # ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
+        for peak in peak_indices:
+            ax1.annotate(f'{interval[0] + peak}',
+                         (prices.index[peak], prices.iloc[peak]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9, color='red')  # You can adjust the font size if needed
+        # ax1.plot(prices.iloc[valley_indices], 'go', label='Valleys')
+        for valley in valley_indices:
+            ax1.annotate(f'{interval[0] + valley}',
+                         (prices.index[valley], prices.iloc[valley]),
+                         textcoords="offset points",  # Positioning relative to the peak
+                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         ha='center',  # Center-align the text
+                         fontsize=9, color='green')  # You can adjust the font size if needed
+        # Plot buy and sell signals
+        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
+        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
+        ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
+        ax1.set_ylabel('Price')
+        ax1.legend()
+
+        # **Plot candles with wicks (High-Low)**
+        ax1.vlines(rows.index, rows['low'], rows['high'], color='black', linewidth=1)
+        colors = rows.apply(lambda row: 'green' if row['close'] > row['open'] else 'red', axis=1)
+        ax1.bar(rows.index, rows['close'] - rows['open'], bottom=rows[['open', 'close']].min(axis=1), color=colors, edgecolor='none')
+
+        for i in range(len(indicators)):
+            indicator = indicators[i]
+            ax = ax2 if i == 0 else ax3
+            obvs = rows[indicator]
+            obv_prominence = self.data.iloc[rows[indicator].first_valid_index()][indicator] * 0.00125 + 0.005
+            # Identify peaks and valleys
+            obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
+            obv_peak_indices = np.array(obv_peaks)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
+            obv_valley_indices = np.array(obv_valleys)
+
+            ax.plot(rows[indicator], label=f"{indicator}", color='lightblue')
+            if indicator not in ['rsi', 'volume']:
+                ax.axhline(y=0, color='r', linestyle='--')
+            # ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
+            # Annotate each peak with its value
+            for peak in obv_peak_indices:
+                ax.annotate(f'{interval[0] + peak}',
+                             (obvs.index[peak], obvs.iloc[peak]),
+                             textcoords="offset points",  # Positioning relative to the peak
+                             xytext=(0, 10),  # Offset text by 10 points above the peak
+                             ha='center',  # Center-align the text
+                             fontsize=9, color='red')  # You can adjust the font size if needed
+            # ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
+            for valley in obv_valley_indices:
+                ax.annotate(f'{interval[0] + valley}',
+                             (obvs.index[valley], obvs.iloc[valley]),
+                             textcoords="offset points",  # Positioning relative to the peak
+                             xytext=(0, 10),  # Offset text by 10 points above the peak
+                             ha='center',  # Center-align the text
+                             fontsize=9, color='green')  # You can adjust the font size if needed
+            # if len(obv_peak_indices):
+            #     ax.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
+            #     ax.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
+            ax.legend()
+
+        plt.tight_layout()
+        plt.show()
 
     def plot(self):
         r = self.data.to_records()

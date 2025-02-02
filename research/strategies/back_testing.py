@@ -32,8 +32,8 @@ def get_dates():
 
 def back_test():
     # Backtest MACD strategy
-    macd_strategy = MACDStrategy()
-    macd_strategy.backtest()
+    strategy = FlowStrategy()
+    strategy.backtest()
 
 
 import smtplib
@@ -93,5 +93,5 @@ def email_test():
 
 # Example usage
 if __name__ == "__main__":
-    # back_test()
-    get_dates()
+    back_test()
+    # get_dates()
