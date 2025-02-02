@@ -118,7 +118,7 @@ class FlowStrategy(Strategy):
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")
 
-    def wave3(self):
+    def wave(self):
         self.flow_simple()
         data = self.data
         positions = []
@@ -220,7 +220,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 100], distance, prominence, ['obv', 'a/d'])
+        self.snapshot([200, 300], distance, prominence, ['gap', 'volume'])
 
     def flow(self):
         self.flow_simple()
@@ -258,7 +258,6 @@ class FlowStrategy(Strategy):
                         # Confirm if price has exceeded the previous peak
                         if len(peaks) >= 2:
                             if price > prices.iloc[prior_peak]:
-                                # Signal a potential entry for Wave 1
                                 # MACD Divergence Confirmation
                                 macd_valley = macds.iloc[valley]
                                 macd_prior_valley = macds.iloc[prior_valley]
@@ -374,17 +373,6 @@ class FlowStrategy(Strategy):
         corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
                                                                                 peak_indices, peak_prices,
                                                                                 prices.iloc[0])
-        peak_prices = prices.iloc[peak_indices]
-        valley_prices = prices.iloc[valley_indices]
-
-        indicator = indicators[0]
-        obvs = rows[indicator]
-        obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
-        # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
-        obv_peak_indices = np.array(obv_peaks)
-        obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
-        obv_valley_indices = np.array(obv_valleys)
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] > 0]
@@ -422,56 +410,40 @@ class FlowStrategy(Strategy):
         width = 0.8 * (rows.index.to_series().diff().median().total_seconds() / (24 * 3600))
         ax1.bar(rows.index, rows['close'] - rows['open'], width=width, bottom=rows[['open', 'close']].min(axis=1), color=colors, edgecolor='none')
 
-        ax2.plot(rows[indicator], label=f"{indicator}", color='lightblue')
-        # ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
-        # Annotate each peak with its value
-        for peak in obv_peak_indices:
-            ax2.annotate(f'{interval[0] + peak}',
-                         (obvs.index[peak], obvs.iloc[peak]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9, color='red')  # You can adjust the font size if needed
-        # ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
-        for valley in obv_valley_indices:
-            ax2.annotate(f'{interval[0] + valley}',
-                         (obvs.index[valley], obvs.iloc[valley]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9, color='green')  # You can adjust the font size if needed
-        # if len(obv_peak_indices):
-        #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
-        #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
-        ax2.legend()
+        for i in range(len(indicators)):
+            indicator = indicators[i]
+            ax = ax2 if i == 0 else ax3
+            obvs = rows[indicator]
+            obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
+            # Identify peaks and valleys
+            obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
+            obv_peak_indices = np.array(obv_peaks)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
+            obv_valley_indices = np.array(obv_valleys)
 
-        indicator = indicators[1]
-        obvs = rows[indicator]
-        obv_prominence = self.data.iloc[0][indicator] * 0.00125 + 0.005
-        # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
-        obv_peak_indices = np.array(obv_peaks)
-        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
-        obv_valley_indices = np.array(obv_valleys)
-        ax3.plot(rows[indicator], label=f"{indicator}", color='pink')
-        # ax3.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
-        # Annotate each peak with its value
-        for peak in obv_peak_indices:
-            ax3.annotate(f'{interval[0] + peak}',
-                         (obvs.index[peak], obvs.iloc[peak]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9, color='red')  # You can adjust the font size if needed
-        # ax3.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
-        for valley in obv_valley_indices:
-            ax3.annotate(f'{interval[0] + valley}',
-                         (obvs.index[valley], obvs.iloc[valley]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9, color='green')  # You can adjust the font size if needed
-        ax3.legend()
+            ax.plot(rows[indicator], label=f"{indicator}", color='lightblue')
+            ax.axhline(y=0, color='r', linestyle='--')
+            # ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
+            # Annotate each peak with its value
+            for peak in obv_peak_indices:
+                ax.annotate(f'{interval[0] + peak}',
+                             (obvs.index[peak], obvs.iloc[peak]),
+                             textcoords="offset points",  # Positioning relative to the peak
+                             xytext=(0, 10),  # Offset text by 10 points above the peak
+                             ha='center',  # Center-align the text
+                             fontsize=9, color='red')  # You can adjust the font size if needed
+            # ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
+            for valley in obv_valley_indices:
+                ax.annotate(f'{interval[0] + valley}',
+                             (obvs.index[valley], obvs.iloc[valley]),
+                             textcoords="offset points",  # Positioning relative to the peak
+                             xytext=(0, 10),  # Offset text by 10 points above the peak
+                             ha='center',  # Center-align the text
+                             fontsize=9, color='green')  # You can adjust the font size if needed
+            # if len(obv_peak_indices):
+            #     ax.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
+            #     ax.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
+            ax.legend()
 
         plt.tight_layout()
         plt.show()
@@ -573,4 +545,4 @@ class FlowStrategy(Strategy):
         self.snapshot([0, 100], distance, prominence)
 
     def signal(self):
-        self.wave3()
+        self.wave()
