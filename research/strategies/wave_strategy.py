@@ -2,65 +2,6 @@ from strategy import Strategy
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
-import matplotlib.pyplot as plt
-
-
-def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
-    # Convert lists to numpy arrays if they aren't already
-    valley_indices = np.array(valley_indices)
-    valley_prices = np.array(valley_prices)
-    peak_indices = np.array(peak_indices)
-    peak_prices = np.array(peak_prices)
-
-    # Handle scenario 1: if the first peak appears before the first valley
-    if len(peak_indices) and len(valley_indices) and peak_indices[0] < valley_indices[0]:
-        valley_indices = np.insert(valley_indices, 0, 0)
-        valley_prices = np.insert(valley_prices, 0, alternative_valley)
-
-    # Create lists to store the corrected indices, peak indices, and valley indices
-    corrected_indices = []
-    corrected_peak_indices = []
-    corrected_valley_indices = []
-
-    # Start with the first valley
-    i = j = 0
-    while i < len(valley_indices) and j < len(peak_indices):
-        # Handle consecutive valleys using argmin
-        start_i = i
-        while i + 1 < len(valley_indices) and valley_indices[i + 1] < peak_indices[j]:
-            i += 1
-        # Find the valley with the minimum price in the range
-        min_price_idx = start_i + np.argmin(valley_prices[start_i:i + 1])
-        corrected_indices.append(valley_indices[min_price_idx])
-        corrected_valley_indices.append(valley_indices[min_price_idx])
-        i += 1
-
-        # Handle consecutive peaks using argmax
-        start_j = j
-        while j + 1 < len(peak_indices) and i < len(valley_indices) and peak_indices[j + 1] < valley_indices[i]:
-            j += 1
-        # Find the peak with the maximum price in the range
-        max_price_idx = start_j + np.argmax(peak_prices[start_j:j + 1])
-        corrected_indices.append(peak_indices[max_price_idx])
-        corrected_peak_indices.append(peak_indices[max_price_idx])
-        j += 1
-
-    # Handle the case where only valleys are left
-    if i < len(valley_indices):
-        # Find the index with the minimum price among the remaining valleys
-        min_price_idx = i + np.argmin(valley_prices[i:])
-        corrected_indices.append(valley_indices[min_price_idx])
-        corrected_valley_indices.append(valley_indices[min_price_idx])
-
-    # Handle the case where only peaks are left
-    if j < len(peak_indices):
-        # Find the index with the maximum price among the remaining peaks
-        max_price_idx = j + np.argmax(peak_prices[j:])
-        corrected_indices.append(peak_indices[max_price_idx])
-        corrected_peak_indices.append(peak_indices[max_price_idx])
-
-    return np.array(corrected_indices), np.array(corrected_valley_indices), np.array(corrected_peak_indices)
-
 
 def standout(values):
     base = values.iloc[-1]
@@ -77,16 +18,6 @@ def standout(values):
                 low += 1
 
     return high, low
-
-
-def ad_line(prices, high, low, volume):
-    # Money Flow Multiplier calculation
-    money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
-    # Money Flow Volume calculation
-    money_flow_volume = money_flow_multiplier * volume
-    # Accumulation/Distribution Line (cumulative sum of money flow volume)
-    ad_line = money_flow_volume.cumsum()
-    return ad_line
 
 
 class WaveStrategy(Strategy):
@@ -121,7 +52,7 @@ class WaveStrategy(Strategy):
             # Calculate OBV moving average
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
             data['rolling_volume'] = data['obv'].rolling(window=3).mean()
-            data['a/d'] = ad_line(data['close'], data['high'], data['low'], data['volume'])
+            data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             self.normalize_column('a/d')
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
@@ -136,114 +67,6 @@ class WaveStrategy(Strategy):
 
         # Create a new column with the normalized values
         self.data['normalized_' + column_name] = normalized_col
-
-    def snapshot(self, interval, indicator, distance, prominence):
-        if interval[1] - interval[0] < 30:
-            return
-        rows = self.data.iloc[interval[0]:interval[1]]
-        prices = rows['close']
-
-        # Identify peaks and valleys
-        peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
-        peak_indices = np.array(peaks)
-        peak_prices = prices.iloc[peaks]
-        valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
-        valley_indices = np.array(valleys)
-        valley_prices = prices.iloc[valleys]
-
-        corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, prices.iloc[0])
-        peak_prices = prices.iloc[peak_indices]
-        valley_prices = prices.iloc[valley_indices]
-
-        # indicator = 'a/d'
-        obvs = rows[indicator]
-        obv_prominence = self.data.iloc[0][indicator] * 0.1
-        # Identify peaks and valleys
-        obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
-        obv_peak_indices = np.array(obv_peaks)
-        obv_peak_prices = obvs.iloc[obv_peaks]
-        obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
-        obv_valley_indices = np.array(obv_valleys)
-        obv_valley_prices = obvs.iloc[obv_valleys]
-
-        obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices, obv_valley_prices, obv_peak_indices, obv_peak_prices, obvs.iloc[0])
-        obv_peak_prices = obvs.iloc[obv_peak_indices]
-        obv_valley_prices = obvs.iloc[obv_valley_indices]
-
-        if len(obv_peak_indices):
-            # Perform linear regression on peaks
-            obv_a_peaks, obv_b_peaks = np.polyfit(obv_peak_indices[-5:], obv_peak_prices[-5:], 1)
-            # Perform linear regression on valleys
-            obv_a_valleys, obv_b_valleys = np.polyfit(obv_valley_indices[-5:], obv_valley_prices[-5:], 1)
-
-        # debugging info
-        dips = []
-        for i in range(valley_indices.size - 1):
-            high, low = standout(valley_prices.iloc[:i+1])
-            # print(f"{valley_indices[i]} {valley_prices.iloc[i]} ({high}, {low})")
-            if valley_indices[i] > valley_indices[-1] - 60:
-                dips.append((valley_indices[i], valley_indices[-1]))
-
-        print(f"[SNAPSHOT] {dips}")
-
-        # Get positions for buy (1) and sell (-1) signals
-        buy_signals = rows[rows['position'] == 1]
-        sell_signals = rows[rows['position'] == -1]
-        # Plotting
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2]})
-
-        ax1.plot(prices, label='Price', color='blue')
-        ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
-        for peak in peak_indices:
-            ax1.annotate(f'{interval[0] + peak}',
-                         (prices.index[peak], prices.iloc[peak]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        ax1.plot(prices.iloc[valley_indices], 'go', label='Valleys')
-        for valley in valley_indices:
-            ax1.annotate(f'{interval[0] + valley}',
-                         (prices.index[valley], prices.iloc[valley]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        # Plot buy and sell signals
-        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
-        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
-        ax1.set_title(f"{self.start.strftime('%Y-%m-%d')} {interval} Stock Price Analysis")
-        ax1.set_ylabel('Price')
-        ax1.legend()
-
-        ax2.plot(rows[indicator], label=f"{indicator}", color='purple')
-        ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='Peaks')
-        # Annotate each peak with its value
-        for peak in obv_peak_indices:
-            ax2.annotate(f'{interval[0] + peak}',
-                         (obvs.index[peak], obvs.iloc[peak]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='Valleys')
-        for valley in obv_valley_indices:
-            ax2.annotate(f'{interval[0] + valley}',
-                         (obvs.index[valley], obvs.iloc[valley]),
-                         textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
-                         ha='center',  # Center-align the text
-                         fontsize=9)  # You can adjust the font size if needed
-        # if len(obv_peak_indices):
-        #     ax2.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
-        #     ax2.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
-        ax2.set_title(f"{indicator}")
-        ax2.set_xlabel('Time')
-        ax2.set_ylabel(f"{indicator}")
-        ax2.legend()
-
-        plt.tight_layout()
-        plt.show()
 
     def trend(self):
         self.wave_simple()

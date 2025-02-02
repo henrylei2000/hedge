@@ -4,45 +4,8 @@ from scipy.signal import find_peaks
 
 
 class FlowStrategy(Strategy):
-    def flow_simple(self):
-        short_window, long_window, signal_window = 12, 26, 9   # 9, 21, 6
-        dataset = [self.data]
-        if self.reference:
-            dataset += [self.qqq, self.spy, self.dia]
-        for data in dataset:
-            # Calculate short-term and long-term exponential moving averages
-            data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
-            data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
-
-            # Calculate MACD line
-            data['macd'] = data['short_ma'] - data['long_ma']
-            # Calculate Signal line
-            data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
-            data['strength'] = data['macd'] - data['signal_line']
-
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
-            rs = gain / loss
-            data['rsi'] = 100 - (100 / (1 + rs))
-
-            price_change_ratio = data['close'].pct_change()
-            data['vpt'] = (price_change_ratio * data['volume']).cumsum()
-            data['rolling_vpt'] = data['vpt'].rolling(window=12).mean()
-
-            data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
-                           data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
-            # Calculate OBV moving average
-            data['rolling_obv'] = data['obv'].rolling(window=12).mean()
-            data['rolling_volume'] = data['obv'].rolling(window=3).mean()
-            data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
-            data['gap'] = (data['close'] - data['vwap']).rolling(window=signal_window).mean()
-            # Generate Buy and Sell signals
-            data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-            # data.to_csv(f"{self.symbol}.csv")
 
     def wave(self):
-        self.flow_simple()
         data = self.data
         positions = []
         data['position'] = 0
@@ -146,7 +109,6 @@ class FlowStrategy(Strategy):
         self.snapshot([0, 50], ['gap', 'volume'])
 
     def flow(self):
-        self.flow_simple()
         data = self.data
         positions = []
         data['position'] = 0
@@ -276,7 +238,6 @@ class FlowStrategy(Strategy):
         # self.snapshot([20, 199], distance, prominence)
 
     def trend(self):
-        self.flow_simple()
         data = self.data
         positions = []
         data['position'] = 0

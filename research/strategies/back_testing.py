@@ -31,9 +31,8 @@ def get_dates():
 
 
 def back_test():
-    # Backtest MACD strategy
     strategy = FlowStrategy()
-    strategy.backtest()
+    strategy.backtest('offline')
 
 
 import smtplib
@@ -44,7 +43,6 @@ from email.mime.text import MIMEText
 def send_email(subject, body, to_addr, from_addr, password):
     """
     Send an email.
-
     Parameters:
     - subject: Email subject
     - body: Email body content
@@ -93,5 +91,6 @@ def email_test():
 
 # Example usage
 if __name__ == "__main__":
-    # back_test()
-    get_dates()
+    back_test()
+    # get_dates()
+    # email_test()
