@@ -93,5 +93,5 @@ def email_test():
 
 # Example usage
 if __name__ == "__main__":
-    back_test()
-    # get_dates()
+    # back_test()
+    get_dates()

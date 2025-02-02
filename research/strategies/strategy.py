@@ -25,11 +25,11 @@ class Strategy:
     def backtest(self):
         # prediction = self.predict()
         if True:
-            if self.download(api='offline'):
+            if self.download():
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                self.plot()
+                # self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")
@@ -140,6 +140,8 @@ class Strategy:
                 # Filter rows between 9:30am and 4:00pm EST
                 data = data.between_time('9:30', '15:59')
                 if not data.empty:
+                    data = data.reset_index()  # Converts timestamp index into a column
+                    data.rename(columns={'index': 'timestamp'}, inplace=True)
                     self.data = data
                     # data.to_csv(f"{self.symbol}.csv")
                 else:
@@ -367,7 +369,7 @@ class Strategy:
             indicator = indicators[i]
             ax = ax2 if i == 0 else ax3
             obvs = rows[indicator]
-            obv_prominence = self.data.iloc[rows[indicator].first_valid_index()][indicator] * 0.00125 + 0.005
+            obv_prominence = abs(self.data.iloc[rows[indicator].first_valid_index()][indicator]) * 0.00125 + 0.005
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
@@ -414,4 +416,3 @@ class Strategy:
                    label='Sell')
         plt.title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')}")
         plt.show()
-
