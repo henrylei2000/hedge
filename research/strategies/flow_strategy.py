@@ -106,7 +106,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([290, 389], ['gap', 'volume'])
+        self.snapshot([200, 300], ['rsi', 'volume'])
 
     def flow(self):
         data = self.data
@@ -237,7 +237,7 @@ class FlowStrategy(Strategy):
         data['position'] = positions
         # self.snapshot([20, 199], distance, prominence)
 
-    def trend(self):
+    def divergence(self):
         data = self.data
         positions = []
         data['position'] = 0
@@ -330,7 +330,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 100], distance, prominence)
+        self.snapshot([0, 100])
 
     def signal(self):
-        self.wave()
+        self.divergence()
