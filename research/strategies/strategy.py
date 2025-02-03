@@ -186,8 +186,12 @@ class Strategy:
             # Calculate OBV moving average
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
             data['rolling_volume'] = data['obv'].rolling(window=3).mean()
+            data['volume_sma'] = data['volume'].rolling(window=5, min_periods=1).mean()
+            data['sma_volume_spike'] = data['volume'] > (data['volume_sma'] * 1.618)
+            data['sma_volume_dip'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             data['gap'] = (data['close'] - data['vwap']).rolling(window=signal_window).mean()
+
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
             # data.to_csv(f"{self.symbol}.csv")

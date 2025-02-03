@@ -3,73 +3,311 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 
-def standout(values):
-    base = values.iloc[-1]
-    high, low = 0, 0
-    high_stop, low_stop = False, False
-    for v in values[-2::-1]:
-        if v <= base:
-            low_stop = True
-            if not high_stop:
-                high += 1
-        elif v > base:
-            high_stop = True
-            if not low_stop:
-                low += 1
-
-    return high, low
-
 
 class WaveStrategy(Strategy):
-    def wave_simple(self):
-        short_window, long_window, signal_window = 9, 21, 6  # 12, 26, 9
-        dataset = [self.data]
-        if self.reference:
-            dataset += [self.qqq, self.spy, self.dia]
-        for data in dataset:
-            # Calculate short-term and long-term exponential moving averages
-            data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
-            data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
 
-            # Calculate MACD line
-            data['macd'] = data['short_ma'] - data['long_ma']
-            # Calculate Signal line
-            data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
-            data['strength'] = data['macd'] - data['signal_line']
+    def flow(self):
+        data = self.data
+        positions = []
+        data['position'] = 0
+        count = 0
+        buckets_in_use = 0
+        distance = 3
+        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        used_valley, used_peak = 0, 0
+        volume_spikes = pd.DataFrame(columns=['sma_volume_spike'])
+        volume_dips = pd.DataFrame(columns=['sma_volume_dip'])
 
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
-            rs = gain / loss
-            data['rsi'] = 100 - (100 / (1 + rs))
+        for index, row in data.iterrows():
+            position = 0
+            price, rsi, macd, strength = row['close'], row['rsi'], row['macd'], row['strength']
+            visible_rows = data.loc[:index]
+            prices = visible_rows['close']
+            volumes = visible_rows['volume']
+            macds = visible_rows['macd']
+            rsis = visible_rows['rsi']
+            adlines = visible_rows['a/d']
+            obvs = visible_rows['obv']
 
-            price_change_ratio = data['close'].pct_change()
-            data['vpt'] = (price_change_ratio * data['volume']).cumsum()
-            data['rolling_vpt'] = data['vpt'].rolling(window=12).mean()
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+            volume_peaks, _ = find_peaks(volumes)
 
-            data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
-                           data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
-            # Calculate OBV moving average
-            data['rolling_obv'] = data['obv'].rolling(window=12).mean()
-            data['rolling_volume'] = data['obv'].rolling(window=3).mean()
-            data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
-            self.normalize_column('a/d')
-            # Generate Buy and Sell signals
-            data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-            # data.to_csv(f"{self.symbol}.csv")
+            if len(peaks) > 1 and len(valleys) > 1:
+                valley, prior_valley, peak, prior_peak = valleys[-1], valleys[-2], peaks[-1], peaks[-2]
+                if valley > peak and buckets_in_use < self.num_buckets and valley != used_valley:  # from a valley
 
-    def normalize_column(self, column_name):
-        # Extract the column to be normalized
-        col = self.data[column_name]
+                    # Wave 1 potential zone: Check if price is moving higher from the valley
+                    valley_price = prices.iloc[valley]
+                    if price > valley_price:  # Upward movement detected
+                        # Confirm if price has exceeded the previous peak
+                        if len(peaks) >= 2:
+                            if price > prices.iloc[prior_peak]:
+                                # MACD Divergence Confirmation
+                                macd_valley = macds.iloc[valley]
+                                macd_prior_valley = macds.iloc[prior_valley]
 
-        # Normalize the column to range from 0 to 100
-        normalized_col = (col - col.min()) / (col.max() - col.min()) * 100
+                                # Check for bullish divergence
+                                if macd_valley > macd_prior_valley:
+                                    # Signal a potential entry for Wave 1
+                                    pass
 
-        # Create a new column with the normalized values
-        self.data['normalized_' + column_name] = normalized_col
+                    start, end, reversal = 0, 0, 0
+                    dips = valleys[valleys > valley - 30]
+                    is_macd_divergence = False
+                    for i in range(dips.size - 1):
+                        start, end = dips[i], dips[-1]
+                        a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
+                        a_macds, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
+                        a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                        a_obvs, _ = np.polyfit(np.arange(end - start), obvs[start:end], 1)
+
+                        if a_prices < 0 < a_macds:
+                            is_macd_divergence = True
+                            print(f"{valley} - {count} macd divergence found: {start} - {end}!")
+                            break
+
+                    if is_macd_divergence:
+                        reversal += 1
+                        if rsis.iloc[valley] < 30:
+                            reversal += 1
+                            print(f"rsi + 1")
+
+                    if reversal > 0:
+                        position = reversal
+                        buckets_in_use += reversal
+                        if buckets_in_use > self.num_buckets:
+                            buckets_in_use = self.num_buckets
+                        used_valley = valley
+                        print(f"---- buy signal scored {reversal} @ {count} {end} {valley}")
+
+                if valley < peak != used_peak and buckets_in_use:
+                    to_sell = 0
+                    is_volume_decline = False
+                    pre_volume = volumes.iloc[used_valley:peak - 1].mean()
+                    post_volume = volumes.iloc[peak]
+                    if post_volume < pre_volume * 0.75:
+                        is_volume_decline = True
+                        print(f"volume decline {count}")
+
+                    rolling_max = macds.iloc[count - 9:count].max() if count >= 9 else macds.iloc[:count].max()
+                    is_macd_bearish = macds.iloc[count] < rolling_max
+                    if is_macd_bearish:
+                        print(f"macd bearish @{count} after {peak}")
+
+                    if rsis.iloc[peak] > 75:
+                        to_sell += 1
+                    if adlines.iloc[peak] < adlines.iloc[prior_peak]:
+                        to_sell += 1
+
+                    if is_volume_decline and is_macd_bearish and to_sell > 0:
+                        print(f"---- sell signal scored {to_sell} @ {count}")
+                        position = -to_sell
+                        buckets_in_use -= to_sell
+                        if buckets_in_use < 0:
+                            buckets_in_use = 0
+                        used_peak = peak
+
+                if buckets_in_use and (
+                        price > prices.iloc[used_valley] * 1.015 or price < prices.iloc[used_valley] * 0.085):
+                    print(f"---- sell signal scored FULL @ {count}")
+                    position = -4
+                    buckets_in_use -= 4
+                    if buckets_in_use < 0:
+                        buckets_in_use = 0
+                    used_peak = peak
+
+            positions.append(position)
+            count += 1
+
+        print(data[data['sma_volume_spike']].index)
+        print(data[data['sma_volume_dip']].index)
+
+        data['position'] = positions
+        self.snapshot([290, -1], ['volume', 'gap'])
+
+    def wave3(self):
+        data = self.data
+        positions = []
+        data['position'] = 0
+        count = 0
+        buckets_in_use = 0
+        distance = 3
+        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+        used_valley, used_peak, wave_1_length = 0, 0, 0
+
+        for index, row in data.iterrows():
+            position = 0
+            price, rsi, macd, strength = row['close'], row['rsi'], row['macd'], row['strength']
+            visible_rows = data.loc[:index]
+            prices = visible_rows['close']
+            volumes = visible_rows['volume']
+            macds = visible_rows['macd']
+            signals = visible_rows['signal_line']
+            rsis = visible_rows['rsi']
+            adlines = visible_rows['a/d']
+
+            # Identify peaks and valleys
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+            peak_indices = np.array(peaks)
+            peak_prices = prices.iloc[peaks]
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+            valley_indices = np.array(valleys)
+            valley_prices = prices.iloc[valleys]
+
+            corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices,
+                                                                                             valley_prices,
+                                                                                             peak_indices, peak_prices,
+                                                                                             prices.iloc[0])
+
+            if len(peak_indices) > 1 and len(valley_indices) > 1:
+                # Use the most recent two peaks and valleys
+                valley, prior_valley = valley_indices[-1], valley_indices[-2]
+                peak, prior_peak = peak_indices[-1], peak_indices[-2]
+                # Validate Wave 1 and Wave 2 structure
+                if valley > peak and prices.iloc[valley] > prices.iloc[prior_valley]:
+                    wave_1_start = prior_valley  # Assume the prior valley is the start of Wave 1
+                    wave_1_length = prices.iloc[peak] - prices.iloc[wave_1_start]
+                    wave_2_retracement = (prices.iloc[peak] - prices.iloc[
+                        valley]) / wave_1_length if wave_1_length else 0
+
+                    if 0.2 <= wave_2_retracement <= 0.8:
+                        # Validate momentum and volume for Wave 3 entry
+                        is_macd_bullish = macds.iloc[count] > macds.iloc[valley] > 0 or macds.iloc[count] > \
+                                          signals.iloc[count]  # MACD bullish crossover
+
+                        volume_wave_1 = volumes[wave_1_start:peak + 1].mean()
+                        volume_wave_2 = volumes[peak:valley].mean()
+                        volume_wave_3 = volumes[valley:].mean()
+                        is_volume_increasing = volume_wave_3 > volume_wave_1 and volume_wave_3 > volume_wave_2
+
+                        if is_macd_bullish and is_volume_increasing and valley > used_valley:
+                            if price <= prices.iloc[peak] or macds.iloc[count] <= macds.iloc[peak] * 0.995:
+                                continue
+                            # Confirm breakout above Wave 1 peak
+                            print(f"{price} > {prices.iloc[peak]} {peak}")
+                            # Add to Wave 3 entries
+                            position = 4
+                            buckets_in_use += 4
+                            if buckets_in_use > self.num_buckets:
+                                buckets_in_use = self.num_buckets
+                            used_valley = valley
+                            print(f"Wave 3 start detected at index {count}, price: {prices.iloc[count]}")
+
+                if valley < peak != used_peak and buckets_in_use:
+                    to_sell = 0
+
+                    rolling_max = macds.iloc[count - 9:count].max() if count >= 9 else macds.iloc[:count].max()
+                    is_macd_bearish = macds.iloc[count] < rolling_max
+                    if is_macd_bearish:
+                        to_sell += 4
+
+                    if rsis.iloc[peak] > 75:
+                        to_sell += 4
+                    if adlines.iloc[peak] < adlines.iloc[prior_peak]:
+                        to_sell += 4
+
+                    if is_macd_bearish and to_sell > 0 and price > prices.iloc[used_valley] + wave_1_length * 1.618:
+                        print(f"---- sell signal scored {to_sell} @ {count}")
+                        position = -to_sell
+                        buckets_in_use -= to_sell
+                        if buckets_in_use < 0:
+                            buckets_in_use = 0
+                        used_peak = peak
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
+        self.snapshot([200, 300], ['rsi', 'volume'])
+
+    def divergence(self):
+        data = self.data
+        positions = []
+        data['position'] = 0
+        hold = False
+        wavelength, wavestart, entry, patience, next_peak = 0, 0, 0, 0, False
+        buy_point = 0
+        count = 0
+        distance = 3
+        prominence = data.iloc[0]['close'] * 0.00125 + 0.005
+
+        for index, row in data.iterrows():
+            position = 0
+            visible_rows = data.loc[:index]  # recent rows
+            prices = visible_rows['close']
+            macds = visible_rows['macd']
+            adlines = visible_rows['a/d']
+            obvs = visible_rows['obv']
+
+            # Identify peaks and valleys
+            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+
+            if len(peaks) > 1 and len(valleys):
+                if valleys[-1] > peaks[-1]:  # from a valley
+                    wavestart = max(wavestart, valleys[-1] - 60)
+                    last_sell = max([i for i, value in enumerate(positions) if value < 0], default=-1)
+                    wavestart = max(wavestart, last_sell)
+                    dips = valleys[valleys > wavestart]
+
+                    for i in range(dips.size - 1):
+                        patience = 0
+                        start, end = dips[i], dips[-1]  # max wavelength, max magnitude
+                        wavelength = end - start
+                        if wavelength > 9:  # long enough to identify the trend
+                            a_prices, _ = np.polyfit(np.arange(end - start), prices[start:end], 1)
+                            a_macds, _ = np.polyfit(np.arange(end - start), macds[start:end], 1)
+                            a_adlines, _ = np.polyfit(np.arange(end - start), adlines[start:end], 1)
+                            a_obvs, _ = np.polyfit(np.arange(end - start), obvs[start:end], 1)
+                            macd_ratio = (macds.iloc[end] - macds.iloc[start]) / abs(macds.iloc[start])
+
+                            if a_prices < 0 < a_macds and macd_ratio > 0 and (a_adlines > 0 or a_obvs > 0):
+                                patience = end - start
+                                break
+
+                    if patience > 9:
+                        if hold:
+                            entry = valleys[-1]
+                            print(f"entry changed to {entry}, patience changed to {patience} @ {count}")
+                        if not hold and count < 386:
+                            print(f"current dips: {dips}")
+                            entry = valleys[-1]
+                            position = 1
+                            hold = True
+                            buy_point = count
+
+            # from a price peak
+            if hold:
+                to_sell = False
+                print(f"Peaks {peaks} Valleys {valleys} @ {count}")
+                if len(peaks) > 1 and len(valleys) and peaks[-1] > valleys[-1]:
+                    num_peaks = len(peaks[(peaks >= entry - patience) & (peaks <= entry)])
+                    print(f"patience: {patience} @ {count} to be sold after {num_peaks} peaks since {entry}")
+
+                    pokes = peaks[peaks > buy_point]
+                    print(f"{pokes}")
+
+                    if len(peaks[peaks > buy_point]) >= num_peaks:
+                        print(f"{len(peaks)} {peaks[peaks > buy_point]} last peak {peaks[-1]}")
+                        to_sell = True
+
+                    if count == 389:
+                        to_sell = True
+
+                    if to_sell:
+                        position = -1
+                        hold = False
+                        patience = 0
+                        print(f"selling @{count} {row['close']} wavelength: {wavelength}")
+
+            positions.append(position)
+            count += 1
+
+        data['position'] = positions
+        self.snapshot([0, 100])
 
     def trend(self):
-        self.wave_simple()
         data = self.data
         positions = []
         data['position'] = 0
@@ -135,9 +373,7 @@ class WaveStrategy(Strategy):
 
             # from a valley
             if valley_indices.size > 1 and peak_indices.size and valley_indices[-1] > peak_indices[-1]:
-                high, low = standout(valley_prices)
-                if low > 5:
-                    wavestart = valley_indices[-1]
+                wavestart = valley_indices[-1]
                 wavestart = max(wavestart, valley_indices[-1] - 60)
                 dips = valley_indices[valley_indices > wavestart]  # TODO: fake wave!
                 if len(dips) < 5:
@@ -152,7 +388,7 @@ class WaveStrategy(Strategy):
                             price_ratio = (prices.iloc[end] - prices.iloc[start])
                             ad_ratio = (adlines.iloc[end] - adlines.iloc[start]) / abs(adlines.iloc[start])
 
-                            if price_ratio < 0 < ad_ratio and price_ratio * ad_ratio < -0.01:  # TODO: alternative way to describe the divergence
+                            if price_ratio < 0 < ad_ratio and price_ratio * ad_ratio < -0.01:
                                 interval = wavelength // 3
                                 if adlines[start:start + interval].sum() < adlines[start + interval*2:end].sum():
                                     if ad_ratio > best_ad:
@@ -214,4 +450,4 @@ class WaveStrategy(Strategy):
         self.snapshot([0, 159])
 
     def signal(self):
-        self.trend()
+        self.flow()

@@ -1,6 +1,6 @@
 from macd_strategy import MACDStrategy
 from wave_strategy import WaveStrategy
-from flow_strategy import FlowStrategy
+from raft_strategy import RaftStrategy
 import alpaca_trade_api as tradeapi
 import configparser
 
@@ -18,7 +18,7 @@ def get_dates():
     for day in calendar:
         daily_pnl, trades = 0, 0
         for symbol in ['TQQQ']:
-            strategy = FlowStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
+            strategy = RaftStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
             strategy.backtest()
             if strategy.trades:
                 print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")
@@ -31,7 +31,7 @@ def get_dates():
 
 
 def back_test():
-    strategy = FlowStrategy()
+    strategy = RaftStrategy()
     strategy.backtest('offline')
 
 
