@@ -124,7 +124,7 @@ class RaftStrategy(Strategy):
         print(data[data['sma_volume_dip']].index)
 
         data['position'] = positions
-        self.snapshot([290, -1], ['volume', 'gap'])
+        self.snapshot([80, 150], ['volume', 'gap'])
 
     def signal(self):
         self.raft()

@@ -36,14 +36,7 @@ class Strategy:
                 print("No data found, please verify symbol and date range.")
 
     def predict(self):
-        """
-        Predicts the next day's peak and valley based on one year of daily prices and linear regression.
-        Parameters:
-        - ticker: The stock ticker symbol (default is 'TQQQ').
 
-        Returns:
-        - A dictionary containing the predicted peak and valley prices for the next day.
-        """
         day = self.start.strftime('%Y-%m-%d')
         end_date = pd.to_datetime(day) - pd.DateOffset(days=1)
         print(end_date)
@@ -277,7 +270,7 @@ class Strategy:
         if 'position' not in self.data.columns:
             self.data['position'] = self.data['signal']
         for index, row in self.data.iterrows():
-            if shares_held > 0 and row['position'] < 0:
+            if shares_held > 0 > row['position']:
                 trades += 1
                 balance += row['close'] * shares_held
                 print(f"Sold at: ${row['close']:.2f} x {shares_held}  @{index}")
@@ -394,17 +387,17 @@ class Strategy:
                          xytext=(0, 10),  # Offset text by 10 points above the peak
                          ha='center',  # Center-align the text
                          fontsize=9, color='green')  # You can adjust the font size if needed
-        # Plot buy and sell signals
-        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=.5, label='Buy Signal')
-        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=.5, label='Sell Signal')
+
+        # **Plot candles with wicks (High-Low)**
+        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=18, alpha=1, label='Buy Signal')
+        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=18, alpha=1, label='Sell Signal')
+        ax1.vlines(rows.index, rows['low'], rows['high'], color='black', alpha=.5, linewidth=1)
+        colors = rows.apply(lambda row: 'green' if row['close'] > row['open'] else 'red', axis=1)
+        ax1.bar(rows.index, abs(rows['close'] - rows['open']), bottom=rows[['open', 'close']].min(axis=1), color=colors, alpha=.5, edgecolor='none')
+
         ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
         ax1.set_ylabel('Price')
         ax1.legend()
-
-        # **Plot candles with wicks (High-Low)**
-        ax1.vlines(rows.index, rows['low'], rows['high'], color='black', linewidth=1)
-        colors = rows.apply(lambda row: 'green' if row['close'] > row['open'] else 'red', axis=1)
-        ax1.bar(rows.index, abs(rows['close'] - rows['open']), bottom=rows[['open', 'close']].min(axis=1), color=colors, edgecolor='none')
 
         for i in range(len(indicators)):
             indicator = indicators[i]
