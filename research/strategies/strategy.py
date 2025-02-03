@@ -344,7 +344,7 @@ class Strategy:
 
     def snapshot(self, interval, indicators=['volume', 'macd']):
         if interval[1] == -1 or interval[1] > 389:
-            interval[1] == 389
+            interval[1] = 389
 
         if interval[1] - interval[0] < 30:
             return

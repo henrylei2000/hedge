@@ -101,7 +101,7 @@ class WaveStrategy(Strategy):
             valley_prices = prices.iloc[valleys]
 
             if len(peak_indices) and len(valley_indices):
-                corrected_indices, valley_indices, peak_indices = rearrange_valley_peak(valley_indices, valley_prices,
+                corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,
                                                                                         peak_indices, peak_prices,
                                                                                         prices.iloc[0])
                 peak_prices = prices.iloc[peak_indices]
@@ -125,7 +125,7 @@ class WaveStrategy(Strategy):
             obv_valley_prices = obvs.iloc[obv_valleys]
 
             if len(obv_valley_indices) and len(obv_peak_indices):
-                obv_corrected_indices, obv_valley_indices, obv_peak_indices = rearrange_valley_peak(obv_valley_indices,
+                obv_corrected_indices, obv_valley_indices, obv_peak_indices = Strategy.rearrange_valley_peak(obv_valley_indices,
                                                                                                     obv_valley_prices,
                                                                                                     obv_peak_indices,
                                                                                                     obv_peak_prices,
@@ -211,7 +211,7 @@ class WaveStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 159], indicator, distance, prominence)
+        self.snapshot([0, 159])
 
     def signal(self):
         self.trend()

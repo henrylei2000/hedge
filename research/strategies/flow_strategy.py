@@ -2,10 +2,30 @@ from strategy import Strategy
 import numpy as np
 from scipy.signal import find_peaks
 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+# Function to detect volume spikes using multiple methods (SMA-based, RVOL, VWAP+Volume)
+def detect_volume_spikes(data, volume_window=5, volume_multiplier=1.618):
+
+    df = data.copy()
+
+    # Compute VWAP
+    df['vwap'] = (df['volume'] * (df['high'] + df['low'] + df['close']) / 3).cumsum() / df['volume'].cumsum()
+
+    # Compute SMA-based Volume Spike
+    df['volume_sma'] = df['volume'].rolling(window=volume_window, min_periods=1).mean()
+    df['sma_volume_spike'] = df['volume'] > (df['volume_sma'] * volume_multiplier)
+    df['sma_volume_dip'] = df['volume'] < (df['volume_sma'] / volume_multiplier)
+
+    return df[['sma_volume_spike', 'sma_volume_dip']]
+
 
 class FlowStrategy(Strategy):
 
-    def wave(self):
+    def flow(self):
         data = self.data
         positions = []
         data['position'] = 0
@@ -108,7 +128,7 @@ class FlowStrategy(Strategy):
         data['position'] = positions
         self.snapshot([200, 300], ['rsi', 'volume'])
 
-    def flow(self):
+    def wave(self):
         data = self.data
         positions = []
         data['position'] = 0
@@ -117,6 +137,7 @@ class FlowStrategy(Strategy):
         distance = 3
         prominence = data.iloc[0]['close'] * 0.00125 + 0.005
         used_valley, used_peak = 0, 0
+        volume_spikes, volume_dips = pd.DataFrame(columns=['sma_volume_spike']), pd.DataFrame(columns=['sma_volume_dip'])
 
         for index, row in data.iterrows():
             position = 0
@@ -134,6 +155,9 @@ class FlowStrategy(Strategy):
             volume_peaks, _ = find_peaks(volumes)
 
             if len(peaks) > 1 and len(valleys) > 1:
+                df = detect_volume_spikes(visible_rows)
+                volume_spikes = df[df['sma_volume_spike']]
+                volume_dips = df[df['sma_volume_dip']]
                 valley, prior_valley, peak, prior_peak = valleys[-1], valleys[-2], peaks[-1], peaks[-2]
                 if valley > peak and buckets_in_use < self.num_buckets and valley != used_valley:  # from a valley
 
@@ -234,8 +258,11 @@ class FlowStrategy(Strategy):
             positions.append(position)
             count += 1
 
+        print(volume_spikes.index)
+        print(volume_dips.index)
+
         data['position'] = positions
-        # self.snapshot([20, 199], distance, prominence)
+        self.snapshot([290, -1], ['volume', 'gap'])
 
     def divergence(self):
         data = self.data
@@ -333,4 +360,4 @@ class FlowStrategy(Strategy):
         self.snapshot([0, 100])
 
     def signal(self):
-        self.divergence()
+        self.wave()
