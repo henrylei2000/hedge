@@ -42,36 +42,29 @@ class Strategy:
         print(end_date)
         start_date = end_date - pd.DateOffset(months=3)
 
-        # Download one year of daily price data
         data = yf.download(self.symbol, start=start_date, end=end_date, interval='1d')
         prices = data['Close']
 
-        # Identify peaks and valleys
         peaks, _ = find_peaks(prices, distance=5, prominence=0.5)
         valleys, _ = find_peaks(-prices, distance=5, prominence=0.5)
 
-        # Perform linear regression on peaks
         peak_indices = np.array(peaks)
         peak_prices = prices.iloc[peaks]
         a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
 
-        # Perform linear regression on valleys
         valley_indices = np.array(valleys)
         valley_prices = prices.iloc[valleys]
         a_valleys, b_valleys = np.polyfit(valley_indices, valley_prices, 1)
 
-        # Predict the next day's peak and valley
         next_day_index = len(prices)
         predicted_peak = a_peaks * next_day_index + b_peaks
         predicted_valley = a_valleys * next_day_index + b_valleys
 
-        # Indicate whether the next day is predicted to be a peak or a valley
         if predicted_peak > predicted_valley:
             next_day_prediction = 'Peak'
         else:
             next_day_prediction = 'Valley'
 
-            # Determine the type of the last recognized abnormal day
         last_peak_index = peak_indices[-1] if len(peak_indices) > 0 else -1
         last_valley_index = valley_indices[-1] if len(valley_indices) > 0 else -1
 
@@ -80,7 +73,6 @@ class Strategy:
         else:
             last_abnormal_day = 'Valley'
 
-        # Indicate whether the next day is predicted to be a peak or a valley based on the last abnormal day
         if last_abnormal_day == 'Peak':
             next_day_prediction = 'Valley'
         else:
@@ -92,12 +84,10 @@ class Strategy:
             'Predicted Valley': predicted_valley,
             'Prediction Type': next_day_prediction
         }
-        print(prediction)
         return prediction
 
     def download(self, api="alpaca"):
         if api == 'yahoo':
-            # Download stock data from Yahoo Finance
             self.data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
             dataset = [self.data]
             if self.reference:
@@ -115,28 +105,20 @@ class Strategy:
                     return False
 
         elif api == 'alpaca':
-            # Load Alpaca API credentials from configuration file
             config = configparser.ConfigParser()
             config.read('config.ini')
-            # Access configuration values
             api_key = config.get('settings', 'API_KEY')
             secret_key = config.get('settings', 'SECRET_KEY')
-            # Initialize Alpaca API
             api = tradeapi.REST(api_key, secret_key, api_version='v2')
-
-            # Retrieve stock price data from Alpaca
             data = api.get_bars(self.symbol, '1T', start=self.start.isoformat(), end=self.end.isoformat()).df
 
             if not data.empty:
-                # Convert timestamp index to Eastern Timezone (EST)
-                data.index = data.index.tz_convert('US/Eastern')
-                # Filter rows between 9:30am and 4:00pm EST
-                data = data.between_time('9:30', '15:59')
+                data.index = data.index.tz_convert('US/Eastern')  # convert timestamp index to Eastern Timezone (EST)
+                data = data.between_time('9:30', '15:59')  # filter rows between 9:30am and 4:00pm EST
                 if not data.empty:
-                    data = data.reset_index()  # Converts timestamp index into a column
+                    data = data.reset_index()  # converts timestamp index into a column
                     data.rename(columns={'index': 'timestamp'}, inplace=True)
                     self.data = data
-                    # data.to_csv(f"{self.symbol}.csv")
                 else:
                     return False
             else:
@@ -154,13 +136,10 @@ class Strategy:
         if self.reference:
             dataset += [self.qqq, self.spy, self.dia]
         for data in dataset:
-            # Calculate short-term and long-term exponential moving averages
             data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
             data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
 
-            # Calculate MACD line
             data['macd'] = data['short_ma'] - data['long_ma']
-            # Calculate Signal line
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
 
@@ -176,18 +155,16 @@ class Strategy:
 
             data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
                            data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
-            # Calculate OBV moving average
+
             data['rolling_obv'] = data['obv'].rolling(window=12).mean()
             data['rolling_volume'] = data['obv'].rolling(window=3).mean()
             data['volume_sma'] = data['volume'].rolling(window=5, min_periods=1).mean()
-            data['sma_volume_spike'] = data['volume'] > (data['volume_sma'] * 1.618)
-            data['sma_volume_dip'] = data['volume'] < (data['volume_sma'] / 1.618)
+            data['volume_spike'] = data['volume'] > (data['volume_sma'] * 1.618)
+            data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
-            data['gap'] = (data['close'] - data['vwap']).rolling(window=signal_window).mean()
+            data['gap'] = (data['close'] - data['vwap'])
 
-            # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-            # data.to_csv(f"{self.symbol}.csv")
 
     def sanitize(self):
         pass
@@ -197,7 +174,6 @@ class Strategy:
 
     @staticmethod
     def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
-        # Convert lists to numpy arrays if they aren't already
         valley_indices = np.array(valley_indices)
         valley_prices = np.array(valley_prices)
         peak_indices = np.array(peak_indices)
@@ -254,11 +230,8 @@ class Strategy:
 
     @staticmethod
     def ad_line(prices, high, low, volume):
-        # Money Flow Multiplier calculation
         money_flow_multiplier = ((prices - low) - (high - prices)) / (high - low)
-        # Money Flow Volume calculation
         money_flow_volume = money_flow_multiplier * volume
-        # Accumulation/Distribution Line (cumulative sum of money flow volume)
         ad_line = money_flow_volume.cumsum()
         return ad_line
 
@@ -277,7 +250,6 @@ class Strategy:
                 shares_held = 0
 
             elif balance > 0 and row['position'] > 0:
-                # Buy signal
                 shares_bought = balance / row['close']
                 balance -= row['close'] * shares_bought
                 shares_held += shares_bought
@@ -286,9 +258,7 @@ class Strategy:
                     position = 1
                     print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd'] * 100:.3f}]")
 
-        # Calculate final balance
         final_balance = balance + (shares_held * self.data['close'].iloc[-1])
-        # Print results
         self.pnl = final_balance - self.init_balance
         print(f"Initial Balance: ${self.init_balance:.2f} -------- Final Balance: ${final_balance:.2f} "
               f"\n-------{self.symbol}---------- PnL: ${self.pnl:.2f}")
@@ -406,9 +376,9 @@ class Strategy:
             obvs = rows[indicator]
             obv_prominence = abs(self.data.iloc[rows[indicator].first_valid_index()][indicator]) * 0.00125 + 0.005
             # Identify peaks and valleys
-            obv_peaks, _ = find_peaks(obvs, distance=distance * 3, prominence=obv_prominence)
+            obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
-            obv_valleys, _ = find_peaks(-obvs, distance=distance * 3, prominence=obv_prominence)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
             obv_valley_indices = np.array(obv_valleys)
 
             ax.plot(rows[indicator], label=f"{indicator}", color='lightblue')
