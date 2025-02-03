@@ -125,7 +125,7 @@ class Strategy:
             api = tradeapi.REST(api_key, secret_key, api_version='v2')
 
             # Retrieve stock price data from Alpaca
-            data = api.get_bars(self.symbol, '1Min', start=self.start.isoformat(), end=self.end.isoformat()).df
+            data = api.get_bars(self.symbol, '1T', start=self.start.isoformat(), end=self.end.isoformat()).df
 
             if not data.empty:
                 # Convert timestamp index to Eastern Timezone (EST)
@@ -266,7 +266,6 @@ class Strategy:
         balance = self.init_balance
         shares_held = 0
         trades = 0
-        positions = []  # Store updated signals
         if 'position' not in self.data.columns:
             self.data['position'] = self.data['signal']
         for index, row in self.data.iterrows():
@@ -274,7 +273,7 @@ class Strategy:
                 trades += 1
                 balance += row['close'] * shares_held
                 print(f"Sold at: ${row['close']:.2f} x {shares_held}  @{index}")
-                print(f"Trade {trades} ------------- Balance: ${balance:.2f} [macd {row['macd']*100:.3f}]")
+                print(f"Trade {trades} ------------- Balance: ${balance:.2f} [macd {row['macd'] * 100:.3f}]")
                 shares_held = 0
 
             elif balance > 0 and row['position'] > 0:
@@ -285,7 +284,7 @@ class Strategy:
                 if shares_bought:
                     print(f"share bought: {shares_bought:.2f}")
                     position = 1
-                    print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd']*100:.3f}]")
+                    print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd'] * 100:.3f}]")
 
         # Calculate final balance
         final_balance = balance + (shares_held * self.data['close'].iloc[-1])
@@ -339,10 +338,11 @@ class Strategy:
         self.pnl = total_pnl
         return total_pnl
 
-    def snapshot(self, interval, indicators=['volume', 'macd']):
+    def snapshot(self, interval, indicators=None):
+        if indicators is None:
+            indicators = ['volume', 'macd']
         if interval[1] == -1 or interval[1] > 389:
             interval[1] = 389
-
         if interval[1] - interval[0] < 30:
             return
 
@@ -361,16 +361,20 @@ class Strategy:
         valley_prices = prices.iloc[valleys]
 
         corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,
-                                                                                peak_indices, peak_prices,
-                                                                                prices.iloc[0])
+                                                                                         peak_indices, peak_prices,
+                                                                                         prices.iloc[0])
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] > 0]
         sell_signals = rows[rows['position'] < 0]
         # Plotting
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [3, 2, 2]})
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True,
+                                            gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
+        ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
+        ax1.set_ylabel('Price')
+        ax1.legend()
         # ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
         for peak in peak_indices:
             ax1.annotate(f'{interval[0] + peak}',
@@ -389,15 +393,12 @@ class Strategy:
                          fontsize=9, color='green')  # You can adjust the font size if needed
 
         # **Plot candles with wicks (High-Low)**
-        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=18, alpha=1, label='Buy Signal')
-        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=18, alpha=1, label='Sell Signal')
+        ax1.plot(buy_signals.index, buy_signals['close'], 'g^', markersize=12, alpha=1, label='Buy Signal')
+        ax1.plot(sell_signals.index, sell_signals['close'], 'rv', markersize=12, alpha=1, label='Sell Signal')
         ax1.vlines(rows.index, rows['low'], rows['high'], color='black', alpha=.5, linewidth=1)
         colors = rows.apply(lambda row: 'green' if row['close'] > row['open'] else 'red', axis=1)
-        ax1.bar(rows.index, abs(rows['close'] - rows['open']), bottom=rows[['open', 'close']].min(axis=1), color=colors, alpha=.5, edgecolor='none')
-
-        ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
-        ax1.set_ylabel('Price')
-        ax1.legend()
+        ax1.bar(rows.index, abs(rows['close'] - rows['open']), bottom=rows[['open', 'close']].min(axis=1), color=colors,
+                alpha=.5, edgecolor='none')
 
         for i in range(len(indicators)):
             indicator = indicators[i]
@@ -405,9 +406,9 @@ class Strategy:
             obvs = rows[indicator]
             obv_prominence = abs(self.data.iloc[rows[indicator].first_valid_index()][indicator]) * 0.00125 + 0.005
             # Identify peaks and valleys
-            obv_peaks, _ = find_peaks(obvs, distance=distance*3, prominence=obv_prominence)
+            obv_peaks, _ = find_peaks(obvs, distance=distance * 3, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
-            obv_valleys, _ = find_peaks(-obvs, distance=distance*3, prominence=obv_prominence)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance * 3, prominence=obv_prominence)
             obv_valley_indices = np.array(obv_valleys)
 
             ax.plot(rows[indicator], label=f"{indicator}", color='lightblue')
@@ -417,22 +418,19 @@ class Strategy:
             # Annotate each peak with its value
             for peak in obv_peak_indices:
                 ax.annotate(f'{interval[0] + peak}',
-                             (obvs.index[peak], obvs.iloc[peak]),
-                             textcoords="offset points",  # Positioning relative to the peak
-                             xytext=(0, 10),  # Offset text by 10 points above the peak
-                             ha='center',  # Center-align the text
-                             fontsize=9, color='red')  # You can adjust the font size if needed
+                            (obvs.index[peak], obvs.iloc[peak]),
+                            textcoords="offset points",  # Positioning relative to the peak
+                            xytext=(0, 10),  # Offset text by 10 points above the peak
+                            ha='center',  # Center-align the text
+                            fontsize=9, color='red')  # You can adjust the font size if needed
             # ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
             for valley in obv_valley_indices:
                 ax.annotate(f'{interval[0] + valley}',
-                             (obvs.index[valley], obvs.iloc[valley]),
-                             textcoords="offset points",  # Positioning relative to the peak
-                             xytext=(0, 10),  # Offset text by 10 points above the peak
-                             ha='center',  # Center-align the text
-                             fontsize=9, color='green')  # You can adjust the font size if needed
-            # if len(obv_peak_indices):
-            #     ax.plot(obvs.index, obv_a_peaks * np.arange(len(obvs)) + obv_b_peaks, 'r--', label='Peaks Linear Fit')
-            #     ax.plot(obvs.index, obv_a_valleys * np.arange(len(obvs)) + obv_b_valleys, 'g--', label='Valleys Linear Fit')
+                            (obvs.index[valley], obvs.iloc[valley]),
+                            textcoords="offset points",  # Positioning relative to the peak
+                            xytext=(0, 10),  # Offset text by 10 points above the peak
+                            ha='center',  # Center-align the text
+                            fontsize=9, color='green')  # You can adjust the font size if needed
             ax.legend()
 
         plt.tight_layout()
