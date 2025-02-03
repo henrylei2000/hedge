@@ -106,7 +106,7 @@ class FlowStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 50], ['gap', 'volume'])
+        self.snapshot([290, 389], ['gap', 'volume'])
 
     def flow(self):
         data = self.data

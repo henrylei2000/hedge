@@ -30,7 +30,7 @@ class Strategy:
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                # self.plot()
+                self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")
@@ -342,7 +342,7 @@ class Strategy:
         self.pnl = total_pnl
         return total_pnl
 
-    def snapshot(self, interval, indicators = ['volume', 'macd']):
+    def snapshot(self, interval, indicators=['volume', 'macd']):
         if interval[1] == -1 or interval[1] > 389:
             interval[1] == 389
 
@@ -400,7 +400,7 @@ class Strategy:
         # **Plot candles with wicks (High-Low)**
         ax1.vlines(rows.index, rows['low'], rows['high'], color='black', linewidth=1)
         colors = rows.apply(lambda row: 'green' if row['close'] > row['open'] else 'red', axis=1)
-        ax1.bar(rows.index, rows['close'] - rows['open'], bottom=rows[['open', 'close']].min(axis=1), color=colors, edgecolor='none')
+        ax1.bar(rows.index, abs(rows['close'] - rows['open']), bottom=rows[['open', 'close']].min(axis=1), color=colors, edgecolor='none')
 
         for i in range(len(indicators)):
             indicator = indicators[i]
