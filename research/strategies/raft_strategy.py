@@ -30,14 +30,14 @@ class RaftStrategy(Strategy):
             if len(peaks) > 1 and len(valleys) > 1 and len(volume_peaks) and len(volume_valleys):
 
                 valley, prior_valley, peak, prior_peak = valleys[-1], valleys[-2], peaks[-1], peaks[-2]
-                spike_mean = volumes.iloc[volume_peaks].mean() // 1000
-                drop_mean = volumes.iloc[volume_valleys].mean() // 1000
+                spike_mean = int(volumes.iloc[volume_peaks].mean()) // 1000
+                drop_mean = int(volumes.iloc[volume_valleys].mean()) // 1000
                 valley_volume = volumes.iloc[valley] // 1000
                 peak_volume = volumes.iloc[peak] // 1000
 
                 if valley > peak and buckets_in_use < self.num_buckets and valley != used_valley:  # from a valley
                     if valley_volume > spike_mean and valley > checked_valley:
-                        print(f"{count} spike {spike_mean}, drop {drop_mean}, {valley_volume} @ {valley}")
+                        print(f"{count} [{drop_mean} - {spike_mean}] {valley_volume} valley@{valley}")
                         checked_valley = valley
 
                     if valley == checked_valley:
@@ -51,7 +51,7 @@ class RaftStrategy(Strategy):
                 if valley < peak != used_peak and buckets_in_use:
                     if peak_volume < drop_mean and peak > checked_peak:
                         checked_peak = peak
-                        print(f"{count} spike {spike_mean}, drop {drop_mean}, {peak_volume} @ {peak}")
+                        print(f"{count} [{drop_mean} - {spike_mean}] {peak_volume} peak@{peak}")
                         print(f"---- sell signal @ {count}")
                         position = -1
                         buckets_in_use -= 1
@@ -59,7 +59,7 @@ class RaftStrategy(Strategy):
                             buckets_in_use = 0
                         used_peak = peak
 
-                stop_loss = price > prices.iloc[used_valley] * 1.015 or price < prices.iloc[used_valley] * 0.085
+                stop_loss = price > prices.iloc[used_valley] * 1.02 or price < prices.iloc[used_valley] * 0.09
                 if buckets_in_use and stop_loss:
                     position = -4
                     buckets_in_use -= 4
@@ -71,7 +71,7 @@ class RaftStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([200, 250], ['volume', 'gap'])
+        self.snapshot([200, 280], ['volume', 'gap'])
 
     def signal(self):
         self.raft()
