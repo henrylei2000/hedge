@@ -41,12 +41,14 @@ class RaftStrategy(Strategy):
                         checked_valley = valley
 
                     if valley == checked_valley:
-                        position = 1
-                        buckets_in_use += 1
-                        if buckets_in_use > self.num_buckets:
-                            buckets_in_use = self.num_buckets
                         used_valley = valley
-                        print(f"---- buy signal @ {count} from valley {valley}")
+                        print(f"{valley} {visible_rows.iloc[valley]['candle_size']}")
+                        if True or visible_rows.iloc[valley]['candle_size'] != 'Large' or visible_rows.iloc[valley]['close'] > visible_rows.iloc[valley]['open']:
+                            position = 1
+                            buckets_in_use += 1
+                            if buckets_in_use > self.num_buckets:
+                                buckets_in_use = self.num_buckets
+                            print(f"---- buy signal @ {count} from valley {valley}")
 
                 if valley < peak != used_peak and buckets_in_use:
                     if peak_volume < drop_mean and peak > checked_peak:

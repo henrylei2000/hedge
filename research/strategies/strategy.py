@@ -164,6 +164,13 @@ class Strategy:
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             data['gap'] = (data['close'] - data['vwap'])
             data['pattern'] = self.candlestick()
+            data['body'] = abs(data['close'] - data['open'])
+            data['range'] = data['high'] - data['low']
+            data['avg_body'] = data['body'].rolling(window=signal_window).mean()
+            data['candle_size'] = 'Normal'
+            data.loc[data['body'] > data['avg_body'], 'candle_size'] = 'Large'
+            data.loc[data['body'] < data['avg_body'], 'candle_size'] = 'Small'
+
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
     def sanitize(self):
