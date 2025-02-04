@@ -163,7 +163,7 @@ class Strategy:
             data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             data['gap'] = (data['close'] - data['vwap'])
-
+            data['pattern'] = self.candlestick()
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
     def sanitize(self):
@@ -307,6 +307,46 @@ class Strategy:
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
         return total_pnl
+
+    def candlestick(self):
+        data = self.data
+        patterns = []
+
+        for i in range(len(data)):
+            pattern = None
+            open_price = data['open'].iloc[i]
+            high = data['high'].iloc[i]
+            low = data['low'].iloc[i]
+            close = data['close'].iloc[i]
+
+            prev_open = data['open'].iloc[i - 1] if i > 0 else None
+            prev_close = data['close'].iloc[i - 1] if i > 0 else None
+            prev2_close = data['close'].iloc[i - 2] if i > 1 else None
+            prev2_open = data['open'].iloc[i - 2] if i > 1 else None
+
+            # Identify Hammer
+            body = abs(close - open_price)
+            lower_shadow = open_price - low if close > open_price else close - low
+            upper_shadow = high - close if close > open_price else high - open_price
+            if lower_shadow > 2 * body and upper_shadow < body:
+                pattern = "hammer"
+
+            # Identify Bullish Engulfing
+            if i > 0 and prev_close < prev_open and close > open_price and close > prev_open and open_price < prev_close:
+                pattern = "bullish_engulfing"
+
+            # Identify Morning Star (Three-candle pattern)
+            if i > 1:
+                first_bearish = prev2_close < prev2_open
+                small_body = abs(prev_close - prev_open) < (abs(prev2_close - prev2_open) * 0.5)
+                strong_bullish = close > prev_open and close > prev2_open
+
+                if first_bearish and small_body and strong_bullish:
+                    pattern = "morning_star"
+
+            patterns.append(pattern)
+
+        return patterns
 
     def snapshot(self, interval, indicators=None):
         if indicators is None:
