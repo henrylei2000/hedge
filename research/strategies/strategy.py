@@ -5,6 +5,7 @@ import configparser
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import pandas as pd
+import pandas_ta as ta
 
 
 class Strategy:
@@ -163,13 +164,8 @@ class Strategy:
             data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             data['gap'] = (data['close'] - data['vwap'])
-            data['pattern'] = self.candlestick()
-            data['body'] = abs(data['close'] - data['open'])
-            data['range'] = data['high'] - data['low']
-            data['avg_body'] = data['body'].rolling(window=signal_window).mean()
-            data['candle_size'] = 'Normal'
-            data.loc[data['body'] > data['avg_body'], 'candle_size'] = 'Large'
-            data.loc[data['body'] < data['avg_body'], 'candle_size'] = 'Small'
+
+            self.classify_candlestick_patterns()
 
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
@@ -308,52 +304,31 @@ class Strategy:
                     bucket['buy_price'] = 0
                     bucket['bucket_value'] = sell_value  # Update bucket value with the result of the trade
 
-        # Calculate the final balance by adding up the remaining bucket values
         final_balance = sum(bucket['bucket_value'] for bucket in buckets if not bucket['in_use']) + \
                         sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
         return total_pnl
 
-    def candlestick(self):
+    def classify_candlestick_patterns(self):
         data = self.data
-        patterns = []
+        pattern_data = data.ta.cdl_pattern(name="all")
 
-        for i in range(len(data)):
-            pattern = None
-            open_price = data['open'].iloc[i]
-            high = data['high'].iloc[i]
-            low = data['low'].iloc[i]
-            close = data['close'].iloc[i]
+        # Merge detected patterns into the original DataFrame
+        data = pd.concat([data, pattern_data], axis=1)
 
-            prev_open = data['open'].iloc[i - 1] if i > 0 else None
-            prev_close = data['close'].iloc[i - 1] if i > 0 else None
-            prev2_close = data['close'].iloc[i - 2] if i > 1 else None
-            prev2_open = data['open'].iloc[i - 2] if i > 1 else None
+        # Identify the detected pattern for each row
+        def detect_patterns(row):
+            detected = [col for col in pattern_data.columns if row[col] != 0]
+            return ", ".join(detected) if detected else "None"
 
-            # Identify Hammer
-            body = abs(close - open_price)
-            lower_shadow = open_price - low if close > open_price else close - low
-            upper_shadow = high - close if close > open_price else high - open_price
-            if lower_shadow > 2 * body and upper_shadow < body:
-                pattern = "hammer"
+        # Create a new column for summarizing detected patterns
+        self.data['candlestick'] = data.apply(detect_patterns, axis=1)
+        # print(data['candlestick'])
+        # Drop individual pattern columns if not needed
+        data.drop(columns=pattern_data.columns, inplace=True)
+        print(f"Candlestick @ 247: {self.data.iloc[247]['candlestick']}")
 
-            # Identify Bullish Engulfing
-            if i > 0 and prev_close < prev_open and close > open_price and close > prev_open and open_price < prev_close:
-                pattern = "bullish_engulfing"
-
-            # Identify Morning Star (Three-candle pattern)
-            if i > 1:
-                first_bearish = prev2_close < prev2_open
-                small_body = abs(prev_close - prev_open) < (abs(prev2_close - prev2_open) * 0.5)
-                strong_bullish = close > prev_open and close > prev2_open
-
-                if first_bearish and small_body and strong_bullish:
-                    pattern = "morning_star"
-
-            patterns.append(pattern)
-
-        return patterns
 
     def snapshot(self, interval, indicators=None):
         if indicators is None:
@@ -369,7 +344,6 @@ class Strategy:
         distance = 3
         prominence = self.data.iloc[0]['close'] * 0.00125 + 0.005
 
-        # Identify peaks and valleys
         peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
         peak_indices = np.array(peaks)
         peak_prices = prices.iloc[peaks]

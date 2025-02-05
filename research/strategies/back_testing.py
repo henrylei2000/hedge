@@ -1,8 +1,12 @@
-from macd_strategy import MACDStrategy
-from wave_strategy import WaveStrategy
+# from macd_strategy import MACDStrategy
+# from wave_strategy import WaveStrategy
 from raft_strategy import RaftStrategy
 import alpaca_trade_api as tradeapi
 import configparser
+
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 
 def get_dates():
@@ -12,8 +16,8 @@ def get_dates():
     secret_key = config.get('settings', 'SECRET_KEY')
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
     performance = 0.0
-    start_date = '2025-01-29' # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = '2025-01-29'
+    start_date = '2025-01-31'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+    end_date = '2025-01-31'
     calendar = api.get_calendar(start=start_date, end=end_date)
     for day in calendar:
         daily_pnl, trades = 0, 0
@@ -35,41 +39,16 @@ def back_test():
     strategy.backtest('offline')
 
 
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
-
 def send_email(subject, body, to_addr, from_addr, password):
-    """
-    Send an email.
-    Parameters:
-    - subject: Email subject
-    - body: Email body content
-    - to_addr: Recipient's email address
-    - from_addr: Sender's email address
-    - password: Sender's email password or app-specific password
-    """
-    # Create message object instance
     msg = MIMEMultipart()
-
-    # Setup the parameters of the message
     msg['From'] = from_addr
     msg['To'] = to_addr
     msg['Subject'] = subject
-
-    # Attach the body to the message instance
     msg.attach(MIMEText(body, 'plain'))
-
-    # Create server
     server = smtplib.SMTP('smtp.gmail.com', 587)
     server.starttls()
-
     try:
-        # Login Credentials for sending the email
         server.login(from_addr, password)
-
-        # Send the message via the server
         server.sendmail(from_addr, to_addr, msg.as_string())
         print("Email sent successfully!")
     except smtplib.SMTPException as e:
@@ -80,13 +59,11 @@ def send_email(subject, body, to_addr, from_addr, password):
 
 def email_test():
     # Replace these with your details
-    SUBJECT = "Test Email"
-    BODY = "This is a test email sent from a Python script."
-    TO_ADDRESS = "leijin@yahoo.com"
-    FROM_ADDRESS = "jinleiatyahoo@gmail.com"
-    PASSWORD = "iniv srus ycjz ewpe"  # Consider using an environment variable for security
-
-    send_email(SUBJECT, BODY, TO_ADDRESS, FROM_ADDRESS, PASSWORD)
+    subject = "Test Email"
+    body = "This is a test email sent from a Python script."
+    to_address = "leijin@yahoo.com"
+    from_address = "jinleiatyahoo@gmail.com"
+    send_email(subject, body, to_address, from_address, "iniv srus ycjz ewpe")
 
 
 # Example usage
