@@ -389,7 +389,7 @@ class Strategy:
         high_peaks, _ = find_peaks(highs, distance=distance, prominence=prominence)
         high_peak_indices = np.array(high_peaks)
 
-        # corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,peak_indices, peak_prices,prices.iloc[0])
+        # corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,peak_indices, peak_prices, prices.iloc[0])
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] > 0]

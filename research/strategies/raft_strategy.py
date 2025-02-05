@@ -1,5 +1,6 @@
 from strategy import Strategy
 from scipy.signal import find_peaks
+import numpy as np
 
 
 class RaftStrategy(Strategy):
@@ -28,6 +29,8 @@ class RaftStrategy(Strategy):
             low_valleys, _ = find_peaks(-lows, distance=distance, prominence=prominence)
             volume_peaks, _ = find_peaks(volumes, distance=distance)
             volume_valleys, _ = find_peaks(-volumes, distance=distance)
+
+            valleys = np.union1d(valleys, low_valleys)
 
             if len(peaks) > 1 and len(valleys) > 1 and len(volume_peaks) and len(volume_valleys):
 
