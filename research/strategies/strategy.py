@@ -382,14 +382,14 @@ class Strategy:
 
         peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
         peak_indices = np.array(peaks)
-        peak_prices = prices.iloc[peaks]
         valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
         valley_indices = np.array(valleys)
-        valley_prices = prices.iloc[valleys]
+        low_valleys, _ = find_peaks(-lows, distance=distance, prominence=prominence)
+        low_valley_indices = np.array(low_valleys)
+        high_peaks, _ = find_peaks(highs, distance=distance, prominence=prominence)
+        high_peak_indices = np.array(high_peaks)
 
-        corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,
-                                                                                         peak_indices, peak_prices,
-                                                                                         prices.iloc[0])
+        # corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,peak_indices, peak_prices,prices.iloc[0])
 
         # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] > 0]
@@ -404,7 +404,10 @@ class Strategy:
         ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
         ax1.set_ylabel('Price')
         ax1.legend()
-        # ax1.plot(prices.iloc[peak_indices], 'ro', label='Peaks')
+        filtered_low_valley_indices = low_valley_indices[~np.isin(low_valley_indices, valley_indices)]
+        ax1.plot(lows.iloc[filtered_low_valley_indices], 'go', label='low valleys')
+        filtered_high_peak_indices = high_peak_indices[~np.isin(high_peak_indices, peak_indices)]
+        ax1.plot(highs.iloc[filtered_high_peak_indices], 'ro', label='high peaks')
         for peak in peak_indices:
             ax1.annotate(f'{interval[0] + peak}',
                          (prices.index[peak], prices.iloc[peak]),
@@ -417,7 +420,7 @@ class Strategy:
             ax1.annotate(f'{interval[0] + valley}',
                          (prices.index[valley], prices.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
-                         xytext=(0, 10),  # Offset text by 10 points above the peak
+                         xytext=(0, -10),  # Offset text by 10 points below the valley
                          ha='center',  # Center-align the text
                          fontsize=9, color='green')  # You can adjust the font size if needed
 
