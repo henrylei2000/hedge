@@ -16,8 +16,8 @@ def get_dates():
     secret_key = config.get('settings', 'SECRET_KEY')
     api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
     performance = 0.0
-    start_date = '2025-01-31'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = '2025-01-31'
+    start_date = '2025-01-29'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+    end_date = '2025-01-29'
     calendar = api.get_calendar(start=start_date, end=end_date)
     for day in calendar:
         daily_pnl, trades = 0, 0
@@ -61,13 +61,18 @@ def email_test():
     # Replace these with your details
     subject = "Test Email"
     body = "This is a test email sent from a Python script."
-    to_address = "leijin@yahoo.com"
-    from_address = "jinleiatyahoo@gmail.com"
-    send_email(subject, body, to_address, from_address, "iniv srus ycjz ewpe")
+
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    print(config.get('settings', 'API_KEY'))
+    to_address = config.get('email', 'TO_ADDRESS')
+    from_address = config.get('email', 'FROM_ADDRESS')
+    url = config.get('email', 'URL')
+    send_email(subject, body, to_address, from_address, url)
 
 
 # Example usage
 if __name__ == "__main__":
     # back_test()
-    get_dates()
-    # email_test()
+    # get_dates()
+    email_test()
