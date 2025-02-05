@@ -39,17 +39,26 @@ def back_test():
     strategy.backtest('offline')
 
 
-def send_email(subject, body, to_addr, from_addr, password):
+def notification():
+    # Replace these with your details
+    subject = "Test Email"
+    body = "This is a test email sent from a Python script."
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    to_address = config.get('email', 'TO_ADDRESS')
+    from_address = config.get('email', 'FROM_ADDRESS')
+    url = config.get('email', 'URL')
+
     msg = MIMEMultipart()
-    msg['From'] = from_addr
-    msg['To'] = to_addr
+    msg['From'] = from_address
+    msg['To'] = to_address
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
     server = smtplib.SMTP('smtp.gmail.com', 587)
     server.starttls()
     try:
-        server.login(from_addr, password)
-        server.sendmail(from_addr, to_addr, msg.as_string())
+        server.login(from_address, url)
+        server.sendmail(from_address, to_address, msg.as_string())
         print("Email sent successfully!")
     except smtplib.SMTPException as e:
         print(f"Failed to send email: {e}")
@@ -57,22 +66,7 @@ def send_email(subject, body, to_addr, from_addr, password):
         server.quit()
 
 
-def email_test():
-    # Replace these with your details
-    subject = "Test Email"
-    body = "This is a test email sent from a Python script."
-
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    print(config.get('settings', 'API_KEY'))
-    to_address = config.get('email', 'TO_ADDRESS')
-    from_address = config.get('email', 'FROM_ADDRESS')
-    url = config.get('email', 'URL')
-    send_email(subject, body, to_address, from_address, url)
-
-
 # Example usage
 if __name__ == "__main__":
     # back_test()
-    # get_dates()
-    email_test()
+    get_dates()

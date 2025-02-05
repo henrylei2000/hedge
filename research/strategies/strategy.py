@@ -375,7 +375,7 @@ class Strategy:
             return
 
         rows = self.data.iloc[interval[0]:interval[1]]
-        prices = rows['close']
+        prices, lows, highs = rows['close'], rows['low'], rows['high']
 
         distance = 3
         prominence = self.data.iloc[0]['close'] * 0.00125 + 0.005
@@ -399,6 +399,8 @@ class Strategy:
                                             gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
+        ax1.plot(lows, color='orange', alpha=.5, linewidth=0.5)
+        ax1.plot(highs, color='orange', alpha=.5, linewidth=0.5)
         ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
         ax1.set_ylabel('Price')
         ax1.legend()
@@ -466,12 +468,11 @@ class Strategy:
     def plot(self):
         r = self.data.to_records()
         fig, ax = plt.subplots(figsize=(18, 6))
-        ax.plot(np.arange(len(r)), r.close, linewidth=1)
-        ax.scatter(np.where(r.signal == 1)[0], r.close[r.signal == 1], marker='^', color='g', label='Buy Signal')
-        ax.scatter(np.where(r.signal == -1)[0], r.close[r.signal == -1], marker='v', color='r', label='Sell Signal')
+        ax.plot(np.arange(len(r)), r.close, linewidth=1.2, label='close')
         ax.scatter(np.where(r.position > 0)[0], r.close[r.position > 0], marker='o', color='g', alpha=.5, s=120,
-                   label='Buy')
+                   label='buy')
         ax.scatter(np.where(r.position < 0)[0], r.close[r.position < 0], marker='o', color='r', alpha=.5, s=120,
-                   label='Sell')
+                   label='sell')
         plt.title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')}")
+        ax.legend()
         plt.show()
