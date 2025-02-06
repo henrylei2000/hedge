@@ -368,10 +368,10 @@ class Strategy:
 
     def snapshot(self, interval, indicators=None):
         if indicators is None:
-            indicators = ['volume', 'macd']
+            indicators = ['volume', 'gap']
         if interval[1] == -1 or interval[1] > 389:
             interval[1] = 389
-        if interval[1] - interval[0] < 30:
+        if interval[1] - interval[0] < 10:
             return
 
         rows = self.data.iloc[interval[0]:interval[1]]
@@ -395,12 +395,12 @@ class Strategy:
         buy_signals = rows[rows['position'] > 0]
         sell_signals = rows[rows['position'] < 0]
         # Plotting
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True,
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10),
                                             gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
-        ax1.plot(lows, color='orange', alpha=.5, linewidth=0.5)
-        ax1.plot(highs, color='orange', alpha=.5, linewidth=0.5)
+        # ax1.plot(lows, color='orange', alpha=.5, linewidth=0.5)
+        # ax1.plot(highs, color='orange', alpha=.5, linewidth=0.5)
         ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
         ax1.set_ylabel('Price')
         ax1.legend()
