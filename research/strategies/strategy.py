@@ -164,6 +164,7 @@ class Strategy:
             data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             data['gap'] = (data['close'] - data['vwap'])
+            self.normalized()
             data['pattern'] = self.candlestick()
             self.classify_candlestick_patterns()
 
@@ -365,6 +366,20 @@ class Strategy:
         # Create a new column for summarizing detected patterns
         self.data['candlestick'] = data.apply(detect_patterns, axis=1)
         data.drop(columns=pattern_data.columns, inplace=True)
+
+    def normalized(self, column="gap"):
+        data = self.data
+        data['normalized_' + column] = 0
+        normalized_columns = []
+        band = 0.00001
+
+        for index, row in data.iterrows():
+            value = row[column]
+            band = max(band, abs(value))
+            normalized_value = int((value / band) * 100)
+            normalized_columns.append(normalized_value)
+
+        data['normalized_' + column] = normalized_columns
 
     def snapshot(self, interval, indicators=None):
         if indicators is None:

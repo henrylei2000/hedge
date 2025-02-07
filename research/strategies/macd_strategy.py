@@ -174,30 +174,6 @@ class MACDStrategy(Strategy):
         coefficients = np.linalg.lstsq(X, y_values, rcond=None)[0]
         return coefficients[0]
 
-    def normalized(self, column="rolling_macd", mid=0):
-        data = self.data
-        data['normalized_'+column] = 0
-        rolling_window = deque(maxlen=3)
-        normalizeds = []
-        for index, row in data.iterrows():
-            recent_rows = self.data.loc[:index]
-            bottom = recent_rows[column].min() - mid
-            top = recent_rows[column].max() - mid
-            top = max(-bottom, top)
-            bottom = -top
-            # Normalize each MACD value to the range [1, 99]
-            if top != bottom:
-                normalized = 1 + (row[column] - mid - bottom) / (top - bottom) * 98
-            else:
-                normalized = 50
-
-            rolling_window.append(normalized)
-            rolling_mean = sum(rolling_window) / len(rolling_window)
-            # normalizeds.append(rolling_mean)
-            normalizeds.append(normalized)
-        data['normalized_'+column] = normalizeds
-        data.to_csv(f"{self.symbol}.csv")
-
     def significance(self):
         self.macd_simple()
         data = self.data
@@ -278,7 +254,7 @@ class MACDStrategy(Strategy):
 
     def macd_x_rsi(self):
         self.macd_simple()
-        self.normalized()
+        self.normalized('macd')
 
         data = self.data
         previous = deque(maxlen=3)  # Keep track of the last 30 signals
@@ -293,7 +269,7 @@ class MACDStrategy(Strategy):
             rsis = self.peaks_valleys(index, 'rolling_rsi')
             macds = self.peaks_valleys(index, 'normalized_macd')
 
-            if len(macds) and len(rsis):
+            if len(macds) > 10 and len(rsis) > 10:
                 # RSI Lifting MACD
                 # strength & velocity (interval between peaks and valleys)
                 macd_points, rsi_points = [], []
@@ -434,7 +410,7 @@ class MACDStrategy(Strategy):
 
     def rsi(self):
         self.macd_simple()
-        self.normalized()
+        self.normalized('rolling_macd')
         data = self.data
         positions = []  # Store updated signals
 
@@ -661,7 +637,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.zero_crossing()
+        self.rsi()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #
