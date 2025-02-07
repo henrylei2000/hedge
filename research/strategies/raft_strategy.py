@@ -7,6 +7,8 @@ class RaftStrategy(Strategy):
 
     def raft(self):
         data = self.data
+        self.normalized('gap')
+        self.normalized('volume')
         positions = []
         data['position'] = 0
         count = 0
@@ -24,8 +26,8 @@ class RaftStrategy(Strategy):
             highs, lows = visible_rows['high'], visible_rows['low']
             volumes = visible_rows['volume']
 
-            if row['normalized_gap'] > 47:
-                print(f"---- {count} {row['gap']} {row['normalized_gap']}!")
+            if row['normalized_volume'] > 80:
+                print(f"---- {count} {row['volume']} {row['normalized_volume']}!")
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
             low_valleys, _ = find_peaks(-lows, distance=distance, prominence=prominence)
@@ -89,7 +91,7 @@ class RaftStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([60, 120], ['gap', 'normalized_gap'])
+        self.snapshot([0, 120], ['volume', 'normalized_volume'])
 
     def signal(self):
         self.raft()

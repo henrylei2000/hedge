@@ -2,6 +2,7 @@
 # from wave_strategy import WaveStrategy
 from raft_strategy import RaftStrategy
 import alpaca_trade_api as tradeapi
+from alpaca_trade_api.common import URL
 import configparser
 
 import smtplib
@@ -14,10 +15,10 @@ def get_dates():
     config.read('config.ini')
     api_key = config.get('settings', 'API_KEY')
     secret_key = config.get('settings', 'SECRET_KEY')
-    api = tradeapi.REST(api_key, secret_key, 'https://paper-api.alpaca.markets', api_version='v2')
+    api = tradeapi.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
     performance = 0.0
-    start_date = '2025-01-29'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = '2025-01-29'
+    start_date = '2025-01-16'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+    end_date = '2025-01-16'
     calendar = api.get_calendar(start=start_date, end=end_date)
     for day in calendar:
         daily_pnl, trades = 0, 0
@@ -40,7 +41,6 @@ def back_test():
 
 
 def notification():
-    # Replace these with your details
     subject = "Test Email"
     body = "This is a test email sent from a Python script."
     config = configparser.ConfigParser()
@@ -55,6 +55,7 @@ def notification():
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
     server = smtplib.SMTP('smtp.gmail.com', 587)
+
     server.starttls()
     try:
         server.login(from_address, url)
