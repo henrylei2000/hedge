@@ -32,12 +32,6 @@ class MACDStrategy(Strategy):
         if self.reference:
             dataset += [self.qqq, self.spy, self.dia]
         for data in dataset:
-            # Calculate short-term and long-term exponential moving averages
-            data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
-            data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
-
-            # Calculate MACD line
-            data['macd'] = data['short_ma'] - data['long_ma']
             # Calculate Signal line
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
@@ -54,8 +48,6 @@ class MACDStrategy(Strategy):
             rs = gain / loss
             data['rsi'] = 100 - (100 / (1 + rs))
             data['rolling_rsi'] = data['rsi'].rolling(window=12).mean()
-            # data['rolling_rsi'] = data['rsi'].ewm(span=5, adjust=False).mean()
-            # Calculate the first derivative of MACD
             data['rsi_derivative'] = data['rsi'].diff()
             data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
 
@@ -70,16 +62,12 @@ class MACDStrategy(Strategy):
 
             # Generate Buy and Sell signals
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-
-            # Buy signal: MACD crosses above Signal line
             data.loc[data['macd'] > data['signal_line'], 'signal'] = 1
-
-            # Sell signal: MACD crosses below Signal line
             data.loc[data['macd'] < data['signal_line'], 'signal'] = -1
 
             data.dropna(subset=['close', 'macd', 'macd_derivative', 'rolling_macd', 'signal_line', 'rsi'], inplace=True)
 
-            data.to_csv(f"{self.symbol}.csv")
+            #data.to_csv(f"{self.symbol}.csv")
 
     def significance_reference(self):
         self.macd_simple()

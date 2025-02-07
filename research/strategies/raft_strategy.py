@@ -9,6 +9,7 @@ class RaftStrategy(Strategy):
         data = self.data
         self.normalized('gap')
         self.normalized('volume')
+        self.normalized('span')
         positions = []
         data['position'] = 0
         count = 0
@@ -91,7 +92,7 @@ class RaftStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 120], ['volume', 'normalized_volume'])
+        self.snapshot([0, 120], ['normalized_volume', 'normalized_span'])
 
     def signal(self):
         self.raft()

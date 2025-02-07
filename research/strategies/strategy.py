@@ -164,6 +164,9 @@ class Strategy:
             data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
             data['gap'] = (data['close'] - data['vwap'])
+
+            data['span'] = data['high'] - data['low']
+
             data['pattern'] = self.candlestick()
             self.classify_candlestick_patterns()
 
@@ -369,7 +372,7 @@ class Strategy:
     def normalized(self, column='volume', zero=0):
         data = self.data
         normalized_columns = [0] * zero
-        band = -1
+        band = abs(data.iloc[zero][column])
 
         for index, row in data.iloc[zero:].iterrows():
             value = row[column]
