@@ -366,19 +366,15 @@ class Strategy:
         self.data['candlestick'] = data.apply(detect_patterns, axis=1)
         data.drop(columns=pattern_data.columns, inplace=True)
 
-    def normalized(self, column="gap"):
+    def normalized(self, column='volume', zero=0):
         data = self.data
-        data['normalized_' + column] = 0
-        normalized_columns = []
+        normalized_columns = [0] * zero
         band = -1
 
-        for index, row in data.iterrows():
+        for index, row in data.iloc[zero:].iterrows():
             value = row[column]
             band = max(band, abs(value))
-            if band:
-                normalized_value = int((value / band) * 100)
-            else:
-                normalized_value = 0
+            normalized_value = int((value / band) * 100) if band else 0
             normalized_columns.append(normalized_value)
 
         data['normalized_' + column] = normalized_columns

@@ -31,8 +31,8 @@ def get_dates():
             daily_pnl += strategy.pnl
             trades += strategy.trades
         if trades:
-            print(f"-------------------------------------- {daily_pnl:.2f} ({trades})")
-    print(f"------------ TOTAL ------------------- {performance:.2f}")
+            print(f"-------------------------------------------- {daily_pnl:.2f} ({trades})")
+    print(f"------------ TOTAL ------------------------- {performance:.2f}")
 
 
 def back_test():
