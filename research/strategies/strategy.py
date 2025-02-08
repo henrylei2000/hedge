@@ -139,7 +139,7 @@ class Strategy:
         for data in dataset:
             data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
             data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
-
+            data['variance'] = data['close'] - data['short_ma']
             data['macd'] = data['short_ma'] - data['long_ma']
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
@@ -372,14 +372,12 @@ class Strategy:
     def normalized(self, column='volume', zero=0):
         data = self.data
         normalized_columns = [0] * zero
-        band = abs(data.iloc[zero][column])
-
+        band = -1
         for index, row in data.iloc[zero:].iterrows():
             value = row[column]
             band = max(band, abs(value))
             normalized_value = int((value / band) * 100) if band else 0
             normalized_columns.append(normalized_value)
-
         data['normalized_' + column] = normalized_columns
 
     def snapshot(self, interval, indicators=None):
