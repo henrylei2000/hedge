@@ -28,8 +28,6 @@ class RaftStrategy(Strategy):
             highs, lows = visible_rows['high'], visible_rows['low']
             volumes = visible_rows['volume']
 
-            if row['normalized_volume'] > 80:
-                print(f"---- {count} {row['volume']} {row['normalized_volume']}!")
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
             low_valleys, _ = find_peaks(-lows, distance=distance, prominence=prominence)
@@ -49,9 +47,6 @@ class RaftStrategy(Strategy):
 
                 for valley in valleys:
                     valley_volume = volumes.iloc[valley] // 1000
-                    if valley == 30:
-                        print(f"----- {count} [{drop_mean} - {spike_mean}] {valley_volume} valley@{valley}")
-                        print(f"----- {visible_rows.iloc[30]['volume'] // 1000}")
 
                     if valley > peak and buckets_in_use < self.num_buckets and valley != used_valley:  # from a valley
                         if valley_volume > spike_mean and valley > checked_valley:
@@ -59,14 +54,12 @@ class RaftStrategy(Strategy):
                             checked_valley = valley
 
                         if valley == checked_valley:
-                            if True or 'CDL_BELTHOLD' not in visible_rows.iloc[valley]['candlestick'] or visible_rows.iloc[valley]['open'] < visible_rows.iloc[valley]['close']:
-                                used_valley = valley
-                                print(f"{visible_rows.iloc[valley]['candlestick']} @ {valley}")
-                                position = 1
-                                buckets_in_use += 1
-                                if buckets_in_use > self.num_buckets:
-                                    buckets_in_use = self.num_buckets
-                                print(f"---- buy signal @ {count} from valley {valley}")
+                            used_valley = valley
+                            position = 1
+                            buckets_in_use += 1
+                            if buckets_in_use > self.num_buckets:
+                                buckets_in_use = self.num_buckets
+                            print(f"---- buy signal @ {count} from valley {valley}")
 
                 for peak in peaks:
                     peak_volume = volumes.iloc[peak] // 1000
@@ -93,7 +86,7 @@ class RaftStrategy(Strategy):
             count += 1
 
         data['position'] = positions
-        self.snapshot([0, 120], ['variance', 'normalized_variance'])
+        self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
 
     def signal(self):
         self.raft()

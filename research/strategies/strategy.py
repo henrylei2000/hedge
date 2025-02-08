@@ -166,9 +166,9 @@ class Strategy:
             data['gap'] = (data['close'] - data['vwap'])
 
             data['span'] = data['high'] - data['low']
-
-            data['pattern'] = self.candlestick()
-            self.classify_candlestick_patterns()
+            data['body_size'] = abs(data['close'] - data['open']) / data['span']
+            data['upper_wick'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['span']
+            data['lower_wick'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['span']
 
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
@@ -312,62 +312,6 @@ class Strategy:
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
         return total_pnl
-
-    def candlestick(self):
-        data = self.data
-        patterns = []
-
-        for i in range(len(data)):
-            pattern = None
-            open_price = data['open'].iloc[i]
-            high = data['high'].iloc[i]
-            low = data['low'].iloc[i]
-            close = data['close'].iloc[i]
-
-            prev_open = data['open'].iloc[i - 1] if i > 0 else None
-            prev_close = data['close'].iloc[i - 1] if i > 0 else None
-            prev2_close = data['close'].iloc[i - 2] if i > 1 else None
-            prev2_open = data['open'].iloc[i - 2] if i > 1 else None
-
-            # Identify Hammer
-            body = abs(close - open_price)
-            lower_shadow = open_price - low if close > open_price else close - low
-            upper_shadow = high - close if close > open_price else high - open_price
-            if lower_shadow > 1.85 * body and upper_shadow < body:
-                pattern = "hammer"
-
-            # Identify Bullish Engulfing
-            if i > 0 and prev_close < prev_open and close > open_price and close > prev_open and open_price < prev_close:
-                pattern = "bullish_engulfing"
-
-            # Identify Morning Star (Three-candle pattern)
-            if i > 1:
-                first_bearish = prev2_close < prev2_open
-                small_body = abs(prev_close - prev_open) < (abs(prev2_close - prev2_open) * 0.5)
-                strong_bullish = close > prev_open and close > prev2_open
-
-                if first_bearish and small_body and strong_bullish:
-                    pattern = "morning_star"
-
-            patterns.append(pattern)
-
-        return patterns
-
-    def classify_candlestick_patterns(self):
-        data = self.data
-        pattern_data = data.ta.cdl_pattern(name="all")
-
-        # Merge detected patterns into the original DataFrame
-        data = pd.concat([data, pattern_data], axis=1)
-
-        # Identify the detected pattern for each row
-        def detect_patterns(row):
-            detected = [col for col in pattern_data.columns if row[col] != 0]
-            return ", ".join(detected) if detected else "None"
-
-        # Create a new column for summarizing detected patterns
-        self.data['candlestick'] = data.apply(detect_patterns, axis=1)
-        data.drop(columns=pattern_data.columns, inplace=True)
 
     def normalized(self, column='volume', zero=0):
         data = self.data
