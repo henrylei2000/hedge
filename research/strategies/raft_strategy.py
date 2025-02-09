@@ -31,11 +31,7 @@ class RaftStrategy(Strategy):
             if data.at[index, 'normalized_variance'] > 50:
                 print(
                     f"{index:4d} uptrend approaching top {self.data.at[index, 'normalized_variance']} with fuel level {self.data.at[index, 'normalized_volume']} ")
-
-                # Apply normalization (modifies self.data directly)
                 self.normalized(column='variance', zero=index)
-
-                # Debugging: Check updated value after normalization
                 print(f"reset variance {self.data.at[13, 'normalized_variance']}")
             if data.at[index, 'normalized_variance'] < -90:
                 print(f"{index:4d} downtrend approaching bottom {data.at[index, 'normalized_variance'] } with fuel level {data.at[index, 'normalized_volume']} ")
