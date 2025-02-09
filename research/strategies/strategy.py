@@ -5,7 +5,6 @@ import configparser
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import pandas as pd
-import pandas_ta as ta
 
 
 class Strategy:
@@ -31,7 +30,7 @@ class Strategy:
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                # self.plot()
+                self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")

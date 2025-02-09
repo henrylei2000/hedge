@@ -19,7 +19,9 @@ class RaftStrategy(Strategy):
         used_valley, used_peak = 0, 0
         checked_valley, checked_peak = 0, 0
 
-        self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
+        signals = []
+
+        # self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
 
         for index in data.index:
             row = data.iloc[index]
@@ -30,13 +32,17 @@ class RaftStrategy(Strategy):
             highs, lows = visible_rows['high'], visible_rows['low']
             volumes = visible_rows['volume']
 
-            if data.at[index, 'normalized_variance'] > 50:
-                print(
-                    f"{index:4d} uptrend approaching top {self.data.at[index, 'normalized_variance']} with fuel level {self.data.at[index, 'normalized_volume']} ")
-                self.normalized(column='variance', zero=index)
-                print(f"reset variance {self.data.at[13, 'normalized_variance']}")
-            if data.at[index, 'normalized_variance'] < -90:
-                print(f"{index:4d} downtrend approaching bottom {data.at[index, 'normalized_variance'] } with fuel level {data.at[index, 'normalized_volume']} ")
+            print(f"{index:3d} trending {row['normalized_variance']:4d} with volume {row['normalized_volume']:3d}", end=" ")
+
+            if index > 5 and row['normalized_variance'] < -70 and (row['normalized_volume'] > 70 or row['normalized_volume'] < 30):
+                print("***")
+                signals.append(index)
+                if row['normalized_variance'] > -90:
+                    self.normalized('variance', index)
+                if row['normalized_volume'] > 90:
+                    self.normalized('volume', index)
+            else:
+                print()
 
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
@@ -94,7 +100,12 @@ class RaftStrategy(Strategy):
 
             positions.append(position)
 
+        positions = [0] * len(data)
+        for i in signals:
+            positions[i] = 1
         data['position'] = positions
+
+        print(signals)
 
     def signal(self):
         self.raft()
