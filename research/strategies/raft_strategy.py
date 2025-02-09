@@ -13,20 +13,32 @@ class RaftStrategy(Strategy):
         self.normalized('variance')
         positions = []
         data['position'] = 0
-        count = 0
         buckets_in_use = 0
         distance = 3
         prominence = self.data.iloc[0]['close'] * 0.00125 + 0.005
         used_valley, used_peak = 0, 0
         checked_valley, checked_peak = 0, 0
 
-        for index, row in data.iterrows():
+        for index in data.index:
+            row = data.iloc[index]
             position = 0
             price, rsi, macd, strength = row['close'], row['rsi'], row['macd'], row['strength']
             visible_rows = data.loc[:index]
             prices = visible_rows['close']
             highs, lows = visible_rows['high'], visible_rows['low']
             volumes = visible_rows['volume']
+
+            if data.at[index, 'normalized_variance'] > 50:
+                print(
+                    f"{index:4d} uptrend approaching top {self.data.at[index, 'normalized_variance']} with fuel level {self.data.at[index, 'normalized_volume']} ")
+
+                # Apply normalization (modifies self.data directly)
+                self.normalized(column='variance', zero=index)
+
+                # Debugging: Check updated value after normalization
+                print(f"reset variance {self.data.at[13, 'normalized_variance']}")
+            if data.at[index, 'normalized_variance'] < -90:
+                print(f"{index:4d} downtrend approaching bottom {data.at[index, 'normalized_variance'] } with fuel level {data.at[index, 'normalized_volume']} ")
 
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
@@ -50,7 +62,8 @@ class RaftStrategy(Strategy):
 
                     if valley > peak and buckets_in_use < self.num_buckets and valley != used_valley:  # from a valley
                         if valley_volume > spike_mean and valley > checked_valley:
-                            print(f"{count} [{drop_mean} - {spike_mean}] {valley_volume} valley@{valley}")
+                            # print(f"{index} [{drop_mean} - {spike_mean}] {valley_volume} valley@{valley}")
+                            # print(f"---- buy signal @ {index} from valley {valley}")
                             checked_valley = valley
 
                         if valley == checked_valley:
@@ -59,15 +72,14 @@ class RaftStrategy(Strategy):
                             buckets_in_use += 1
                             if buckets_in_use > self.num_buckets:
                                 buckets_in_use = self.num_buckets
-                            print(f"---- buy signal @ {count} from valley {valley}")
 
                 for peak in peaks:
                     peak_volume = volumes.iloc[peak] // 1000
                     if valley < peak != used_peak and buckets_in_use:
                         if peak_volume < drop_mean and peak > checked_peak:
                             checked_peak = peak
-                            print(f"{count} [{drop_mean} - {spike_mean}] {peak_volume} peak@{peak}")
-                            print(f"---- sell signal @ {count} after peak {peak}")
+                            # print(f"{index} [{drop_mean} - {spike_mean}] {peak_volume} peak@{peak}")
+                            # print(f"---- sell signal @ {index} after peak {peak}")
                             position = -1
                             buckets_in_use -= 1
                             if buckets_in_use < 0:
@@ -83,10 +95,9 @@ class RaftStrategy(Strategy):
                     used_peak = peak
 
             positions.append(position)
-            count += 1
 
         data['position'] = positions
-        self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
+        # self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
 
     def signal(self):
         self.raft()

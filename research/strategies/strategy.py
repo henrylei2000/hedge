@@ -31,7 +31,7 @@ class Strategy:
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                self.plot()
+                # self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")
@@ -315,11 +315,12 @@ class Strategy:
 
     def normalized(self, column='volume', zero=0):
         data = self.data
+        data.drop(columns=['normalized_' + column], errors='ignore')
         normalized_columns = [0] * zero
         band = -1
-        for index, row in data.iloc[zero:].iterrows():
-            value = row[column]
-            band = max(band, abs(value))
+        values = data[column].iloc[zero:].to_numpy()  # Convert to numpy for fast operations
+        for value in values:
+            band = max(band, abs(value))  # Track the max absolute value
             normalized_value = int((value / band) * 100) if band else 0
             normalized_columns.append(normalized_value)
         data['normalized_' + column] = normalized_columns
