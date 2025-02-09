@@ -19,6 +19,8 @@ class RaftStrategy(Strategy):
         used_valley, used_peak = 0, 0
         checked_valley, checked_peak = 0, 0
 
+        self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
+
         for index in data.index:
             row = data.iloc[index]
             position = 0
@@ -93,7 +95,6 @@ class RaftStrategy(Strategy):
             positions.append(position)
 
         data['position'] = positions
-        # self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
 
     def signal(self):
         self.raft()
