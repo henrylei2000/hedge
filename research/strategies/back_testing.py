@@ -17,8 +17,8 @@ def get_dates():
     secret_key = config.get('settings', 'SECRET_KEY')
     api = tradeapi.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
     performance = 0.0
-    start_date = '2025-01-31'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = '2025-01-31'
+    start_date = '2025-01-27'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+    end_date = '2025-01-27'
     calendar = api.get_calendar(start=start_date, end=end_date)
     for day in calendar:
         daily_pnl, trades = 0, 0

@@ -5,6 +5,7 @@ import configparser
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import pandas as pd
+from collections import deque
 
 
 class Strategy:
@@ -312,16 +313,18 @@ class Strategy:
         self.pnl = total_pnl
         return total_pnl
 
-    def normalized(self, column='volume', zero=0):
+    def normalized(self, column='volume', window_size=20):
         data = self.data
-        data.drop(columns=['normalized_' + column], errors='ignore')
-        normalized_columns = [0] * zero
-        band = -1
-        values = data[column].iloc[zero:].to_numpy()  # Convert to numpy for fast operations
+        normalized_columns = []
+        rolling_window = deque(maxlen=window_size)  # Keep a limited history
+        values = data[column]
         for value in values:
-            band = max(band, abs(value))  # Track the max absolute value
+            rolling_window.append(value)  # Add new value, automatically removes oldest if full
+            band = max(abs(x) for x in rolling_window)  # Get max in the window
+
             normalized_value = int((value / band) * 100) if band else 0
             normalized_columns.append(normalized_value)
+
         data['normalized_' + column] = normalized_columns
 
     def snapshot(self, interval, indicators=None):
