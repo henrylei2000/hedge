@@ -165,7 +165,7 @@ class Strategy:
             data['gap'] = (data['close'] - data['vwap'])
 
             data['span'] = data['high'] - data['low']
-            data['body_size'] = abs(data['close'] - data['open']) / data['span']
+            data['body_size'] = (data['close'] - data['open']) / data['span']
             data['upper_wick'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['span']
             data['lower_wick'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['span']
 
