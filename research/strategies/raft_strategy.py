@@ -2,14 +2,14 @@ from strategy import Strategy
 
 
 class RaftStrategy(Strategy):
-    """
-    Step 1: Identify Market Regime
-        Signal: Normalized Variance + Moving Window Analysis
-            Trending Market → If normalized_variance shows consistent values above 0 (positive) or below 0 (negative), then price is persistently moving above/below the 12-period MA.
-            Mean Reversion → If normalized_variance oscillates between [-20, 20] without a clear bias, the market is likely ranging.
-        Integration with VWAP (Smart Money Indicator)
-    """
+
     def identify_trend(self, period=8):
+        """
+        Step 1: Identify Market Regime
+            Signal: Normalized Variance + Moving Window Analysis
+                Trending Market → variance consistent values above 0 (positive) or below 0 (negative)
+                Mean Reversion → variance oscillates between [-20, 20] without a clear bias, the market is likely ranging.
+        """
         data = self.data
         data['bullish_count'] = data['normalized_variance'].rolling(window=period).apply(lambda x: (x > 20).sum(), raw=True)
         data['bearish_count'] = data['normalized_variance'].rolling(window=period).apply(lambda x: (x < -20).sum(), raw=True)
@@ -21,6 +21,7 @@ class RaftStrategy(Strategy):
 
     def raft(self):
         data = self.data
+        data['position'] = 0
         buckets_in_use = 0
         entries, exits = [], []
         self.normalized('variance')
@@ -28,7 +29,7 @@ class RaftStrategy(Strategy):
         self.normalized('tension')
         self.normalized('span')
         self.identify_trend()
-        # self.snapshot([0, 120], ['normalized_span', 'normalized_variance'])
+        self.snapshot([0, 120], ['normalized_tension', 'normalized_variance'])
 
         for index in data.index:
             row = data.iloc[index]
