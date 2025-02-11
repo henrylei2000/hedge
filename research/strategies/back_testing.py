@@ -16,6 +16,8 @@ def get_dates():
     api_key = config.get('settings', 'API_KEY')
     secret_key = config.get('settings', 'SECRET_KEY')
     api = tradeapi.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
+    # quote = api.get_latest_quote("AAPL")
+    # print(quote.bid_price, quote.bid_size, quote.ask_price, quote.ask_size)
     performance = 0.0
     start_date = '2025-01-27'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
     end_date = '2025-01-27'

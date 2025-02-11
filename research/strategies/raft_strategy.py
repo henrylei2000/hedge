@@ -3,7 +3,7 @@ from strategy import Strategy
 
 class RaftStrategy(Strategy):
 
-    def identify_trend(self, period=8):
+    def identify_trend(self, period=3):
         """
         Step 1: Identify Market Regime
             Signal: Normalized Variance + Moving Window Analysis
@@ -16,8 +16,8 @@ class RaftStrategy(Strategy):
         data['tension_sum'] = data['normalized_tension'].rolling(window=period).sum()
         data['trend'] = 0
         threshold = int(period * 2 / 3)
-        data.loc[((data['bullish_count'] >= threshold) & (data['tension_sum'] > 20)), 'trend'] = 1
-        data.loc[((data['bearish_count'] >= threshold) & (data['tension_sum'] < -20)), 'trend'] = -1
+        data.loc[((data['bullish_count'] >= threshold) & (data['tension_sum'] > 10)), 'trend'] = 1
+        data.loc[((data['bearish_count'] >= threshold) & (data['tension_sum'] < -10)), 'trend'] = -1
 
     def detect_breakout(self, period=8):
         """
@@ -43,7 +43,7 @@ class RaftStrategy(Strategy):
         self.normalized('span')
         self.normalized('macd')
         self.identify_trend()
-        # self.snapshot([0, 81], ['normalized_tension', 'normalized_volume'])
+
 
         for index in data.index:
             row = data.iloc[index]
@@ -51,21 +51,21 @@ class RaftStrategy(Strategy):
             print(f"volume {row['normalized_volume']:3d}, tension {row['normalized_tension']:4d}, ", end="")
             print(f"span {row['normalized_span']:3d} ({row['upper_wick']*100:2.0f} {row['body_size']*100:3.0f} {row['lower_wick']*100:2.0f})", end="")
 
-            if index > 5 and row['normalized_variance'] < -70 and (row['normalized_volume'] > 70 or row['normalized_volume'] < 30):
+            if index > 5 and row['normalized_variance'] < -70 and (row['normalized_volume'] > 60 or row['normalized_volume'] < 30):
                 if row['lower_wick'] > 0.25:
                     print(" *****", end="")
-                    # entries.append(index)
+                    entries.append(index+1)
             elif index > 5 and row['normalized_variance'] > 70 and (row['normalized_volume'] > 70 or row['normalized_volume'] < 30):
                 if row['upper_wick'] > 0:
                     print(" ----------", end="")
-                    exits.append(index)
+                    exits.append(index+1)
             print()
 
         positions = [0] * len(data)
         first_1s = data.index[(data['trend'] == 1) & (data['trend'].shift(1) != 1)].tolist()
         first_0s = data.index[(data['trend'] == 0) & (data['trend'].shift(1) == -1)].tolist()
-        print(first_0s)
-        for i in first_0s:
+
+        for i in entries:
             positions[i] = 1
         for i in exits:
             positions[i] = -1
@@ -73,6 +73,7 @@ class RaftStrategy(Strategy):
 
         print(entries)
         print(exits)
+        self.snapshot([40, 150], ['normalized_tension', 'normalized_volume'])
 
     def signal(self):
         self.raft()
