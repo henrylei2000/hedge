@@ -19,6 +19,19 @@ class RaftStrategy(Strategy):
         data.loc[((data['bullish_count'] >= threshold) & (data['tension_sum'] > 20)), 'trend'] = 1
         data.loc[((data['bearish_count'] >= threshold) & (data['tension_sum'] < -20)), 'trend'] = -1
 
+    def detect_breakout(self, period=8):
+        """
+        Detects sharp VWAP crossings (breakouts or reversals) based on:
+        - Price crossing VWAP sharply
+        - Normalized variance (momentum confirmation)
+        - Normalized volume (institutional participation)
+        - Candlestick structure (strong close, minimal wick)
+        - Follow-through validation
+        """
+
+        pass
+
+
     def raft(self):
         data = self.data
         data['position'] = 0
@@ -28,8 +41,9 @@ class RaftStrategy(Strategy):
         self.normalized('volume')
         self.normalized('tension')
         self.normalized('span')
+        self.normalized('macd')
         self.identify_trend()
-        self.snapshot([0, 120], ['normalized_tension', 'normalized_variance'])
+        # self.snapshot([0, 81], ['normalized_tension', 'normalized_volume'])
 
         for index in data.index:
             row = data.iloc[index]
@@ -40,7 +54,7 @@ class RaftStrategy(Strategy):
             if index > 5 and row['normalized_variance'] < -70 and (row['normalized_volume'] > 70 or row['normalized_volume'] < 30):
                 if row['lower_wick'] > 0.25:
                     print(" *****", end="")
-                    entries.append(index)
+                    # entries.append(index)
             elif index > 5 and row['normalized_variance'] > 70 and (row['normalized_volume'] > 70 or row['normalized_volume'] < 30):
                 if row['upper_wick'] > 0:
                     print(" ----------", end="")
@@ -48,7 +62,10 @@ class RaftStrategy(Strategy):
             print()
 
         positions = [0] * len(data)
-        for i in entries:
+        first_1s = data.index[(data['trend'] == 1) & (data['trend'].shift(1) != 1)].tolist()
+        first_0s = data.index[(data['trend'] == 0) & (data['trend'].shift(1) == -1)].tolist()
+        print(first_0s)
+        for i in first_0s:
             positions[i] = 1
         for i in exits:
             positions[i] = -1
