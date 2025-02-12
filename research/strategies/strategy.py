@@ -163,6 +163,7 @@ class Strategy:
             data['volume_spike'] = data['volume'] > (data['volume_sma'] * 1.618)
             data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
+
             data['tension'] = (data['close'] - data['vwap']).rolling(window=1).mean().fillna(0)
             data['span'] = data['high'] - data['low']
             data['body_size'] = (data['close'] - data['open']) / data['span']
