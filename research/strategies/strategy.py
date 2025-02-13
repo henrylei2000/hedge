@@ -139,7 +139,7 @@ class Strategy:
         for data in dataset:
             data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
             data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
-            data['variance'] = data['close'] - data['close'].ewm(alpha=0.3, adjust=False).mean()
+            data['trending'] = data['close'] - data['close'].ewm(alpha=0.3, adjust=False).mean()
             data['macd'] = data['short_ma'] - data['long_ma']
             data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
             data['strength'] = data['macd'] - data['signal_line']
