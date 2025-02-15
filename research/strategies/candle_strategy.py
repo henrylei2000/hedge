@@ -1,9 +1,10 @@
 from strategy import Strategy
 import pandas as pd
 
-class RaftStrategy(Strategy):
 
-    def raft(self):
+class CandleStrategy(Strategy):
+
+    def candle(self):
         buckets_in_use = 0
         entries, exits = [], []
         self.normalized('trending')
@@ -13,18 +14,17 @@ class RaftStrategy(Strategy):
         self.normalized('span')
         self.normalized('macd')
 
-        data = self.CandlestickAnalyzer(self.data).analyze()
-        total, collected = self.CandlestickAnalyzer(self.data).trend_stream()
-        print(total, data['normalized_trending'].sum(), collected)
-
-        positions = [0] * len(data)
+        ca = self.CandleAnalyzer(self.data)
+        data = ca.analyze()
+        total, collected = ca.trend_turn()
+        # print(total, data['normalized_trending'].sum(), collected)
 
         for index in data.iloc[5:].index:
             row = data.iloc[index]
             trending_decision = '*' if index in collected else ' '
-            print(f"{index:3d}{trending_decision} trending {row['normalized_trending']:4d}", end=" ")
-            print(f"volume {row['normalized_volume']:3d}, tension {row['normalized_tension']:4d},", end=" ")
-            print(f"span {row['normalized_span']:3d} ({row['upper_wick']*100:2.0f} {row['body_size']*100:3.0f} {row['lower_wick']*100:2.0f})", end=" ")
+            print(f"{index:3d}{trending_decision} trend{row['normalized_trending']:4d}", end=" ")
+            print(f"vol{row['normalized_volume']:3d}, tense{row['normalized_tension']:4d},", end=" ")
+            print(f"candle{row['normalized_span']:3d}({row['upper_wick']*100:2.0f} {row['body_size']*100:3.0f} {row['lower_wick']*100:2.0f})", end=" ")
             print(f"{row['candlestick']}", end=" ")
 
             if index > 5 and row['normalized_trending'] < -70 and (row['normalized_volume'] > 60 or row['normalized_volume'] < 30):
@@ -37,29 +37,13 @@ class RaftStrategy(Strategy):
                     print(" ----------", end="")
                     # exits.append(index + 1)
             print()
-
-
-            for i in entries:
-                positions[i] = 1
-            for i in exits:
-                positions[i] = -1
-
-            if '1 Bullish' in row['candlestick']:
-                entries.append(index + 1)
-            if '-1 Bearish' in row['candlestick']:
-                exits.append(index + 1)
-
-        self.data['position'] = positions
-
-        print(f"entries ({len(entries)}): {entries}")
-        print(f"exits ({len(exits)}): {exits}")
-
-        self.snapshot([50, 100], ['normalized_macd', 'normalized_volume'])
+        self.data = data
+        # self.snapshot([50, 100], ['normalized_macd', 'normalized_volume'])
 
     def signal(self):
-        self.raft()
+        self.candle()
 
-    class CandlestickAnalyzer:
+    class CandleAnalyzer:
         def __init__(self, data, cluster_window=6, atr_multiplier=1.5, stop_multiplier=0.75, rvol_threshold=1.5):
             self.data = data.copy()
             self.cluster_window = cluster_window
@@ -67,7 +51,7 @@ class RaftStrategy(Strategy):
             self.stop_multiplier = stop_multiplier
             self.rvol_threshold = rvol_threshold
 
-        def calculate_atr(self, period=6):
+        def atr(self, period=6):
             data = self.data
             high_low = data['high'] - data['low']
             high_close = (data['high'] - data['close'].shift()).abs()
@@ -76,60 +60,14 @@ class RaftStrategy(Strategy):
             data['atr'] = true_range.rolling(window=period).mean()
             return data
 
-        def calculate_rvol(self, period=6):
+        def rvol(self, period=6):
             data = self.data
             avg_volume = data['volume'].rolling(window=period).mean()
             data['rvol'] = data['volume'] / avg_volume
             return data
 
-        def trend_stream(self, rolling_window=5, trend_sensitivity=1):
-
-            numbers = self.data['normalized_trending']
-            # Ensure input is a NumPy array for consistency
-            if isinstance(numbers, pd.Series):
-                numbers = numbers.to_numpy()
-
-            collected_sum = 0
-            collected_numbers = []
-            collecting = False
-
-            for i in range(rolling_window, len(numbers)):
-                num = numbers[i]
-
-                if collecting:
-                    collected_sum += num
-                    collected_numbers.append(i)
-
-                if num > 80:
-                    collecting = True
-                    continue
-                if num < -80:
-                    collecting = False
-                    continue
-
-                recent_trend = numbers[max(0, i - rolling_window + 1): i + 1]
-
-                if len(recent_trend) > 1:
-                    trend_diff = pd.Series(recent_trend).diff().dropna().to_numpy()
-                    avg_trend = trend_diff.mean()  # Rolling trend calculation
-                else:
-                    avg_trend = 0
-
-                if avg_trend > trend_sensitivity:
-                    collecting = True
-
-                if avg_trend < -trend_sensitivity and num < -avg_trend * 2:
-                    collecting = False  # Stop collecting
-
-            return collected_sum, collected_numbers
-
-        def analyze(self):
-            signals = []
+        def cluster_volume(self):
             data = self.data
-            # Calculate rolling sum of volume over a fixed window
-            data['clustered_volume'] = data['normalized_volume'].rolling(window=self.cluster_window,
-                                                                                   min_periods=1).sum()
-            # Calculate trend-based volume clustering
             data['trend_clustered_volume'] = 0
             data['trend_clustered_volume_avg'] = 0
             trend_volume = 0
@@ -141,7 +79,7 @@ class RaftStrategy(Strategy):
                 body = row['body_size']
                 volume = row['normalized_volume']
 
-                if trend_direction is None or (trend_direction > 0 and body < 0) or (trend_direction < 0 and body > 0):
+                if trend_direction is None or (trend_direction > 0 > body) or (trend_direction < 0 < body):
                     trend_volume = volume
                     trend_bars = 1
                     trend_direction = 1 if body > 0 else -1
@@ -150,19 +88,60 @@ class RaftStrategy(Strategy):
                     trend_bars += 1
 
                 data.at[idx, 'trend_clustered_volume'] = trend_volume
-                data.at[idx, 'trend_clustered_volume_avg'] = trend_volume / trend_bars if trend_bars > 0 else 0
+                data.at[idx, 'trend_clustered_volume_avg'] = int(trend_volume / trend_bars) if trend_bars > 0 else 0
 
-            self.calculate_atr()
-            self.calculate_rvol()
+            self.data = data
+            return data
 
-            for idx, row in data.iloc[3:].iterrows():
+        def trend_turn(self, rolling_window=5, trend_sensitivity=1):
+            numbers = self.data['normalized_trending']
+            # Ensure input is a NumPy array for consistency
+            if isinstance(numbers, pd.Series):
+                numbers = numbers.to_numpy()
+            collected_sum = 0
+            collected_numbers = []
+            collecting = False
+            for i in range(rolling_window, len(numbers)):
+                num = numbers[i]
+                if collecting:
+                    collected_sum += num
+                    collected_numbers.append(i)
+                if num > 80:
+                    collecting = True
+                    continue
+                if num < -80:
+                    collecting = False
+                    continue
+                recent_trend = numbers[max(0, i - rolling_window + 1): i + 1]
+
+                if len(recent_trend) > 1:
+                    trend_diff = pd.Series(recent_trend).diff().dropna().to_numpy()
+                    avg_trend = trend_diff.mean()  # Rolling trend calculation
+                else:
+                    avg_trend = 0
+
+                if avg_trend > trend_sensitivity:
+                    collecting = True
+                if avg_trend < -trend_sensitivity and num < -avg_trend * 2:
+                    collecting = False  # Stop collecting
+
+            return collected_sum, collected_numbers
+
+        def analyze(self):
+            signals = []
+            positions = []
+
+            self.atr()
+            self.rvol()
+            self.cluster_volume()
+            data = self.data
+            for idx, row in data.iterrows():
                 upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
                 lower = int(row['lower_wick'] * 100)
                 span = row['normalized_span']
                 volume = row['normalized_volume']
                 trend = row['trending']
-                clustered_volume = row['clustered_volume']
                 trend_clustered_volume = row['trend_clustered_volume']
                 trend_clustered_volume_avg = row['trend_clustered_volume_avg']
                 vwap = row['vwap']
@@ -175,6 +154,14 @@ class RaftStrategy(Strategy):
                 atr = row['atr']
                 rvol = row['rvol']
                 signal = []
+                position = 0
+
+                # ATR-Based Stop and Target
+                entry_price = row['close']
+                target_price = entry_price + self.atr_multiplier * atr if body > 0 else entry_price - self.atr_multiplier * atr
+                stop_loss = entry_price - self.stop_multiplier * atr if body > 0 else entry_price + self.stop_multiplier * atr
+                if pd.notna(target_price) and pd.notna(stop_loss):
+                    signal.append(f"{target_price:.2f}[{price:.2f}]{stop_loss:.2f}")
 
                 if abs(body) > 80 and span > 50:
                     direction = "bullish" if body > 0 else "bearish"
@@ -239,7 +226,8 @@ class RaftStrategy(Strategy):
                     # and normalized_vwap > prev_vwap
                     # and macd > macd_signal and prev_macd <= prev_macd_signal
                 ):
-                    signal.append("1 Bullish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
+                    signal.append("Bullish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
+                    position = 1
 
                 # Bearish reversal: Upper wick exhaustion, increasing volume, trend shift, VWAP confirmation, and MACD crossover
                 if (
@@ -250,26 +238,22 @@ class RaftStrategy(Strategy):
                     # and normalized_vwap < prev_vwap
                     # and macd < macd_signal and prev_macd >= prev_macd_signal
                 ):
-                    signal.append("-1 Bearish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
+                    signal.append("Bearish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
+                    position = -1
 
                 if row['macd'] - row['signal_line'] > prev_row['macd'] - prev_row['signal_line']:
                     signal.append("Entry signal: MACD momentum increasing (early confirmation)")
 
-                # ATR-Based Stop and Target
-                entry_price = row['close']
-                target_price = entry_price + self.atr_multiplier * atr if body > 0 else entry_price - self.atr_multiplier * atr
-                stop_loss = entry_price - self.stop_multiplier * atr if body > 0 else entry_price + self.stop_multiplier * atr
-                if pd.notna(target_price) and pd.notna(stop_loss):
-                    signal.append(f"Current: {price:.2f}, Target: {target_price:.2f}, Stop: {stop_loss:.2f} (ATR-based)")
-
                 # Exit if VWAP reversion is likely
-                if abs(normalized_tension) > 50 and volume < 40 and trend < 10:
+                if 0 < trend < 10 and abs(normalized_tension) > 50 and volume < 40:
                     signal.append("Exit signal: Strong VWAP mean reversion detected, trend weakening, low volume")
-                if rvol < self.rvol_threshold and trend < 10:
+                if 0 < trend < 10 and rvol < self.rvol_threshold:
                     signal.append("Exit signal: Weak momentum (RVOL low), trend losing strength")
 
                 signals.append((idx, ", ".join(signal) if signal else ""))
+                positions.append(position)
 
             self.data['candlestick'] = self.data.index.map(dict(signals))
-            return self.data
+            self.data['position'] = positions
 
+            return self.data

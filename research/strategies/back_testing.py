@@ -1,6 +1,6 @@
 from macd_strategy import MACDStrategy
 from wave_strategy import WaveStrategy
-from raft_strategy import RaftStrategy
+from candle_strategy import CandleStrategy
 import alpaca_trade_api as tradeapi
 from alpaca_trade_api.common import URL
 import configparser
@@ -25,7 +25,7 @@ def get_dates():
     for day in calendar:
         daily_pnl, trades = 0, 0
         for symbol in ['TQQQ']:
-            strategy = RaftStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
+            strategy = CandleStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
             strategy.backtest()
             if strategy.trades:
                 print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")
