@@ -1,6 +1,5 @@
 from strategy import Strategy
 import pandas as pd
-import numpy as np
 
 class RaftStrategy(Strategy):
 
@@ -77,7 +76,7 @@ class RaftStrategy(Strategy):
             data['atr'] = true_range.rolling(window=period).mean()
             return data
 
-        def calculate_rvol(self, period=50):
+        def calculate_rvol(self, period=6):
             data = self.data
             avg_volume = data['volume'].rolling(window=period).mean()
             data['rvol'] = data['volume'] / avg_volume
@@ -92,14 +91,11 @@ class RaftStrategy(Strategy):
 
             collected_sum = 0
             collected_numbers = []
-            collecting = False  # Start in "wait mode"
-            uptrend_counter = 0  # Tracks consecutive rising numbers
-            downtrend_counter = 0  # Tracks consecutive declines
+            collecting = False
 
             for i in range(rolling_window, len(numbers)):
                 num = numbers[i]
 
-                # Only collect if the number is positive and collecting mode is on
                 if collecting:
                     collected_sum += num
                     collected_numbers.append(i)
