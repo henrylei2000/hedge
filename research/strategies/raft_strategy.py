@@ -16,13 +16,14 @@ class RaftStrategy(Strategy):
 
         data = self.CandlestickAnalyzer(self.data).analyze()
         total, collected = self.CandlestickAnalyzer(self.data).trend_stream()
-        print(total, collected)
+        print(total, data['normalized_trending'].sum(), collected)
 
         positions = [0] * len(data)
 
         for index in data.iloc[5:].index:
             row = data.iloc[index]
-            print(f"{index:3d} trending {row['normalized_trending']:4d}", end=" ")
+            trending_decision = '*' if index in collected else ' '
+            print(f"{index:3d}{trending_decision} trending {row['normalized_trending']:4d}", end=" ")
             print(f"volume {row['normalized_volume']:3d}, tension {row['normalized_tension']:4d},", end=" ")
             print(f"span {row['normalized_span']:3d} ({row['upper_wick']*100:2.0f} {row['body_size']*100:3.0f} {row['lower_wick']*100:2.0f})", end=" ")
             print(f"{row['candlestick']}", end=" ")
@@ -82,29 +83,8 @@ class RaftStrategy(Strategy):
             data['rvol'] = data['volume'] / avg_volume
             return data
 
-        def trend_stream(self, observation_window=5, rolling_window=5, uptrend_threshold=2,
-                                       downtrend_threshold=2, trend_sensitivity=1, extreme_threshold=65):
-            """
-            Aggressive version of stream processing with **simplified collection rules**.
+        def trend_stream(self, rolling_window=5, trend_sensitivity=1):
 
-            - **Rolling trend detection** still applies, but with looser conditions.
-            - **Fewer rising numbers required** to resume collection.
-            - **Higher tolerance for declines before stopping collection.**
-            - **Earlier anticipation of reversals near -100, 100.**
-
-            Parameters:
-            - numbers: A Python list or Pandas Series.
-            - observation_window: Number of initial numbers to observe before collecting.
-            - rolling_window: The number of recent values used for trend detection.
-            - uptrend_threshold: Consecutive rising numbers required to confirm an uptrend.
-            - downtrend_threshold: Consecutive declines required to confirm a downtrend.
-            - trend_sensitivity: Minimum absolute avg_trend value to confirm a strong trend.
-            - extreme_threshold: Threshold near -100 or 100 where reversals are likely.
-
-            Returns:
-            - Total collected sum.
-            - List of collected numbers.
-            """
             numbers = self.data['normalized_trending']
             # Ensure input is a NumPy array for consistency
             if isinstance(numbers, pd.Series):
@@ -116,40 +96,34 @@ class RaftStrategy(Strategy):
             uptrend_counter = 0  # Tracks consecutive rising numbers
             downtrend_counter = 0  # Tracks consecutive declines
 
-            for i in range(observation_window, len(numbers)):
+            for i in range(rolling_window, len(numbers)):
                 num = numbers[i]
 
-                # Get the most recent `rolling_window` values for trend detection
+                # Only collect if the number is positive and collecting mode is on
+                if collecting:
+                    collected_sum += num
+                    collected_numbers.append(i)
+
+                if num > 80:
+                    collecting = True
+                    continue
+                if num < -80:
+                    collecting = False
+                    continue
+
                 recent_trend = numbers[max(0, i - rolling_window + 1): i + 1]
 
-                # Compute trend using only recent values
                 if len(recent_trend) > 1:
                     trend_diff = pd.Series(recent_trend).diff().dropna().to_numpy()
                     avg_trend = trend_diff.mean()  # Rolling trend calculation
                 else:
                     avg_trend = 0
 
-                # Track consecutive rising numbers for uptrend confirmation
-                if numbers[i] > numbers[i - 1]:
-                    uptrend_counter += 1  # Count rising numbers
-                    downtrend_counter = 0  # Reset downtrend count
-
-                elif numbers[i] < numbers[i - 1]:
-                    downtrend_counter += 1  # Count declining numbers
-                    uptrend_counter = 0  # Reset uptrend count
-
-                # **Aggressive resumption of collection**
-                if uptrend_counter >= uptrend_threshold or num <= -extreme_threshold:  # Uptrend detected OR near -100
+                if avg_trend > trend_sensitivity:
                     collecting = True
 
-                # **Higher tolerance for declines before stopping collection**
-                if downtrend_counter >= downtrend_threshold and avg_trend < -trend_sensitivity:
+                if avg_trend < -trend_sensitivity and num < -avg_trend * 2:
                     collecting = False  # Stop collecting
-
-                # Only collect if the number is positive and collecting mode is on
-                if collecting:
-                    collected_sum += num
-                    collected_numbers.append(i)
 
             return collected_sum, collected_numbers
 
