@@ -6,7 +6,6 @@ class CandleStrategy(Strategy):
 
     def candle(self):
         buckets_in_use = 0
-        entries, exits = [], []
         self.normalized('trending')
         self.normalized('volume')
         self.normalized('vwap')
@@ -257,3 +256,80 @@ class CandleStrategy(Strategy):
             self.data['position'] = positions
 
             return self.data
+
+
+def process_market_data(price_feed):
+    """
+    Simulates real-time processing of candlestick data for resistance, support, and fake-outs.
+    Only uses past data for confirmation, avoiding future bar peeking.
+    Implements multi-bar confirmation for rejection and breakout validation.
+    """
+    signal = []
+    prev_bars = []  # Stores past bars for analysis
+    rejection_count = 0  # Track consecutive bearish bars after resistance
+    breakout_count = 0  # Track consecutive bullish bars after breakout
+
+    for i, bar in enumerate(price_feed):
+        upper, body, lower, open_price, high, low, close, volume, VWAP = bar
+
+        # Store past bars in rolling memory
+        prev_bars.append(bar)
+        if len(prev_bars) > 10:  # Keep last 10 bars for reference
+            prev_bars.pop(0)
+
+        # Process only if we have at least one previous bar
+        if len(prev_bars) > 1:
+            prev_upper, prev_body, prev_lower, prev_open, prev_high, prev_low, prev_close, prev_volume, prev_VWAP = \
+            prev_bars[-2]  # Last bar
+
+            # Resistance Detection
+            if prev_upper > 30 and abs(prev_body) > 30:
+                if prev_volume > 60:
+                    signal.append(f"Bar {i}: Potential strong resistance (long upper wick, high volume)")
+                elif prev_volume > 40:
+                    signal.append(f"Bar {i}: Potential weak resistance (long upper wick, moderate volume)")
+
+                # Check for breakout attempt
+                if close > prev_high:
+                    breakout_count += 1
+                    if breakout_count >= 2:  # Require 2+ bars confirming breakout
+                        signal.append(f"Bar {i}: Confirmed breakout above resistance (buy signal)")
+                else:
+                    breakout_count = 0  # Reset breakout count if price falls back
+
+                # Check for rejection (multi-bar confirmation)
+                if close < prev_close and body < -30 and volume > 50:
+                    rejection_count += 1
+                else:
+                    rejection_count = 0  # Reset count if rejection not confirmed
+
+                if rejection_count >= 2:  # Require 2+ consecutive bearish bars
+                    signal.append(f"Bar {i}: Confirmed resistance rejection (multi-bar confirmation, sell signal)")
+                    rejection_count = 0  # Reset count after confirming rejection
+
+            # Support Detection
+            if prev_lower > 30 and abs(prev_body) > 30:
+                if prev_volume > 60:
+                    signal.append(f"Bar {i}: Potential strong support (long lower wick, high volume)")
+                elif prev_volume > 40:
+                    signal.append(f"Bar {i}: Potential weak support (long lower wick, moderate volume)")
+
+                # Check for breakdown attempt
+                if close < prev_low:
+                    breakout_count += 1
+                    if breakout_count >= 2:  # Require 2+ bars confirming breakdown
+                        signal.append(f"Bar {i}: Confirmed breakdown below support (sell signal)")
+                else:
+                    breakout_count = 0  # Reset breakout count if price rises back
+
+                # Check for bounce confirmation (multi-bar validation)
+                if close > prev_close and body > 30 and volume > 50:
+                    rejection_count += 1
+                else:
+                    rejection_count = 0  # Reset count if bounce not confirmed
+
+                if rejection_count >= 2:  # Require 2+ consecutive bullish bars
+                    signal.append(f"Bar {i}: Confirmed support bounce (multi-bar confirmation, buy signal)")
+                    rejection_count = 0  # Reset count after confirming support bounce
+
+    return signal
