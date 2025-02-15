@@ -1,5 +1,5 @@
-# from macd_strategy import MACDStrategy
-# from wave_strategy import WaveStrategy
+from macd_strategy import MACDStrategy
+from wave_strategy import WaveStrategy
 from raft_strategy import RaftStrategy
 import alpaca_trade_api as tradeapi
 from alpaca_trade_api.common import URL

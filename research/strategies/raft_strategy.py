@@ -1,5 +1,6 @@
 from strategy import Strategy
 import pandas as pd
+import numpy as np
 
 class RaftStrategy(Strategy):
 
@@ -14,8 +15,12 @@ class RaftStrategy(Strategy):
         self.normalized('macd')
 
         data = self.CandlestickAnalyzer(self.data).analyze()
+        total, collected = self.CandlestickAnalyzer(self.data).trend_stream()
+        print(total, collected)
 
-        for index in data.index:
+        positions = [0] * len(data)
+
+        for index in data.iloc[5:].index:
             row = data.iloc[index]
             print(f"{index:3d} trending {row['normalized_trending']:4d}", end=" ")
             print(f"volume {row['normalized_volume']:3d}, tension {row['normalized_tension']:4d},", end=" ")
@@ -33,7 +38,7 @@ class RaftStrategy(Strategy):
                     # exits.append(index + 1)
             print()
 
-            positions = [0] * len(data)
+
             for i in entries:
                 positions[i] = 1
             for i in exits:
@@ -49,7 +54,7 @@ class RaftStrategy(Strategy):
         print(f"entries ({len(entries)}): {entries}")
         print(f"exits ({len(exits)}): {exits}")
 
-        self.snapshot([0, 100], ['normalized_tension', 'normalized_volume'])
+        self.snapshot([50, 100], ['normalized_macd', 'normalized_volume'])
 
     def signal(self):
         self.raft()
@@ -62,7 +67,7 @@ class RaftStrategy(Strategy):
             self.stop_multiplier = stop_multiplier
             self.rvol_threshold = rvol_threshold
 
-        def calculate_atr(self, period=14):
+        def calculate_atr(self, period=6):
             data = self.data
             high_low = data['high'] - data['low']
             high_close = (data['high'] - data['close'].shift()).abs()
@@ -77,15 +82,83 @@ class RaftStrategy(Strategy):
             data['rvol'] = data['volume'] / avg_volume
             return data
 
+        def trend_stream(self, observation_window=5, rolling_window=5, uptrend_threshold=2,
+                                       downtrend_threshold=2, trend_sensitivity=1, extreme_threshold=65):
+            """
+            Aggressive version of stream processing with **simplified collection rules**.
+
+            - **Rolling trend detection** still applies, but with looser conditions.
+            - **Fewer rising numbers required** to resume collection.
+            - **Higher tolerance for declines before stopping collection.**
+            - **Earlier anticipation of reversals near -100, 100.**
+
+            Parameters:
+            - numbers: A Python list or Pandas Series.
+            - observation_window: Number of initial numbers to observe before collecting.
+            - rolling_window: The number of recent values used for trend detection.
+            - uptrend_threshold: Consecutive rising numbers required to confirm an uptrend.
+            - downtrend_threshold: Consecutive declines required to confirm a downtrend.
+            - trend_sensitivity: Minimum absolute avg_trend value to confirm a strong trend.
+            - extreme_threshold: Threshold near -100 or 100 where reversals are likely.
+
+            Returns:
+            - Total collected sum.
+            - List of collected numbers.
+            """
+            numbers = self.data['normalized_trending']
+            # Ensure input is a NumPy array for consistency
+            if isinstance(numbers, pd.Series):
+                numbers = numbers.to_numpy()
+
+            collected_sum = 0
+            collected_numbers = []
+            collecting = False  # Start in "wait mode"
+            uptrend_counter = 0  # Tracks consecutive rising numbers
+            downtrend_counter = 0  # Tracks consecutive declines
+
+            for i in range(observation_window, len(numbers)):
+                num = numbers[i]
+
+                # Get the most recent `rolling_window` values for trend detection
+                recent_trend = numbers[max(0, i - rolling_window + 1): i + 1]
+
+                # Compute trend using only recent values
+                if len(recent_trend) > 1:
+                    trend_diff = pd.Series(recent_trend).diff().dropna().to_numpy()
+                    avg_trend = trend_diff.mean()  # Rolling trend calculation
+                else:
+                    avg_trend = 0
+
+                # Track consecutive rising numbers for uptrend confirmation
+                if numbers[i] > numbers[i - 1]:
+                    uptrend_counter += 1  # Count rising numbers
+                    downtrend_counter = 0  # Reset downtrend count
+
+                elif numbers[i] < numbers[i - 1]:
+                    downtrend_counter += 1  # Count declining numbers
+                    uptrend_counter = 0  # Reset uptrend count
+
+                # **Aggressive resumption of collection**
+                if uptrend_counter >= uptrend_threshold or num <= -extreme_threshold:  # Uptrend detected OR near -100
+                    collecting = True
+
+                # **Higher tolerance for declines before stopping collection**
+                if downtrend_counter >= downtrend_threshold and avg_trend < -trend_sensitivity:
+                    collecting = False  # Stop collecting
+
+                # Only collect if the number is positive and collecting mode is on
+                if collecting:
+                    collected_sum += num
+                    collected_numbers.append(i)
+
+            return collected_sum, collected_numbers
+
         def analyze(self):
             signals = []
-
             data = self.data
-
             # Calculate rolling sum of volume over a fixed window
             data['clustered_volume'] = data['normalized_volume'].rolling(window=self.cluster_window,
                                                                                    min_periods=1).sum()
-
             # Calculate trend-based volume clustering
             data['trend_clustered_volume'] = 0
             data['trend_clustered_volume_avg'] = 0
@@ -112,7 +185,7 @@ class RaftStrategy(Strategy):
             self.calculate_atr()
             self.calculate_rvol()
 
-            for idx, row in self.data.iterrows():
+            for idx, row in data.iloc[3:].iterrows():
                 upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
                 lower = int(row['lower_wick'] * 100)
@@ -125,6 +198,7 @@ class RaftStrategy(Strategy):
                 vwap = row['vwap']
                 normalized_vwap = row['normalized_vwap']
                 tension = row['tension']
+                price = row['close']
                 normalized_tension = row['normalized_tension']
                 macd = row['macd']
                 macd_signal = row['signal_line']
@@ -144,27 +218,28 @@ class RaftStrategy(Strategy):
                     signal.append("Possible absorption (high avg volume but little price movement)")
 
                 # VWAP-based analysis
-                if tension > 0 and body < 0:
-                    signal.append("Price below VWAP, bearish pressure")
-                elif tension < 0 and body > 0:
-                    signal.append("Price above VWAP, bullish pressure")
+                if tension > 0 > body:
+                    signal.append(
+                        "Price above VWAP, potential bullish continuation after a pullback")
+                elif tension < 0 < body:
+                    signal.append("Price below VWAP, potential bearish continuation after a rally")
 
-                if abs(normalized_tension) > 50:
+                if abs(normalized_tension) > 70:
                     signal.append("High tension between price and VWAP, potential reversion move")
 
                 # Resistance (long upper wick with high volume strengthens the signal)
-                if upper > 30 and span > 50:
+                if upper > 30 and span > 30:
                     if volume > 60:
                         signal.append("Potential strong resistance (long upper wick, high volume)")
-                    else:
-                        signal.append("Potential weak resistance (long upper wick, low volume)")
+                    elif volume > 40:
+                        signal.append("Potential weak resistance (long upper wick, moderate volume)")
 
                 # Support (long lower wick with high volume confirms demand)
-                if lower > 30 and span > 50:
+                if lower > 30 and span > 30:
                     if volume > 60:
                         signal.append("Potential strong support (long lower wick, high volume)")
-                    else:
-                        signal.append("Potential weak support (long lower wick, low volume)")
+                    elif volume > 40:
+                        signal.append("Potential weak support (long lower wick, moderate volume)")
 
                 # Buying Pressure (strong bullish body, rising volume, and trend shift)
                 if body > 50 and volume > 60 and trend > 10:
@@ -174,49 +249,48 @@ class RaftStrategy(Strategy):
                 if body < -50 and volume > 60 and trend < -10:
                     signal.append("Selling pressure detected")
 
-                # Reversal signs with VWAP and MACD integration
-                if idx > 0:
-                    prev_row = data.iloc[idx - 1]
-                    prev_upper = int(prev_row['upper_wick'] * 100)
-                    prev_body = int(prev_row['body_size'] * 100)
-                    prev_lower = int(prev_row['lower_wick'] * 100)
-                    prev_span = prev_row['normalized_span']
-                    prev_volume = prev_row['normalized_volume']
-                    prev_trend = prev_row['trending']
-                    prev_vwap = prev_row['normalized_vwap']
-                    prev_macd = prev_row['macd']
-                    prev_macd_signal = prev_row['signal_line']
+                prev_row = data.iloc[idx - 1]
+                prev_upper = int(prev_row['upper_wick'] * 100)
+                prev_body = int(prev_row['body_size'] * 100)
+                prev_lower = int(prev_row['lower_wick'] * 100)
+                prev_span = prev_row['normalized_span']
+                prev_volume = prev_row['normalized_volume']
+                prev_trend = prev_row['trending']
+                prev_vwap = prev_row['normalized_vwap']
+                prev_macd = prev_row['macd']
+                prev_macd_signal = prev_row['signal_line']
 
-                    # Bullish reversal: Lower wick absorption, increasing volume, trend shift, VWAP confirmation, and MACD crossover
-                    if (
-                        prev_body < 0 < body
-                        and lower > 30 and span > 50
-                        and volume > prev_volume
-                        # and prev_trend < -50 and trend > -10
-                        # and normalized_vwap > prev_vwap
-                        # and macd > macd_signal and prev_macd <= prev_macd_signal
-                    ):
-                        signal.append("1 Bullish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
+                # Bullish reversal: Lower wick absorption, increasing volume, trend shift, VWAP confirmation, and MACD crossover
+                if (
+                    prev_body < 0 < body
+                    and lower > 30 and span > 50
+                    and volume > prev_volume
+                    # and prev_trend < -50 and trend > -10
+                    # and normalized_vwap > prev_vwap
+                    # and macd > macd_signal and prev_macd <= prev_macd_signal
+                ):
+                    signal.append("1 Bullish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
 
-                    # Bearish reversal: Upper wick exhaustion, increasing volume, trend shift, VWAP confirmation, and MACD crossover
-                    if (
-                        prev_body > 0 > body
-                        and upper > 30 and span > 50
-                        and volume > prev_volume
-                        # and prev_trend > 50 and trend < 10
-                        # and normalized_vwap < prev_vwap
-                        # and macd < macd_signal and prev_macd >= prev_macd_signal
-                    ):
-                        signal.append("-1 Bearish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
+                # Bearish reversal: Upper wick exhaustion, increasing volume, trend shift, VWAP confirmation, and MACD crossover
+                if (
+                    prev_body > 0 > body
+                    and upper > 30 and span > 50
+                    and volume > prev_volume
+                    # and prev_trend > 50 and trend < 10
+                    # and normalized_vwap < prev_vwap
+                    # and macd < macd_signal and prev_macd >= prev_macd_signal
+                ):
+                    signal.append("-1 Bearish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
 
-                    if row['macd'] - row['signal_line'] > prev_row['macd'] - prev_row['signal_line']:
-                        signal.append("Entry signal: MACD momentum increasing (early confirmation)")
+                if row['macd'] - row['signal_line'] > prev_row['macd'] - prev_row['signal_line']:
+                    signal.append("Entry signal: MACD momentum increasing (early confirmation)")
 
                 # ATR-Based Stop and Target
                 entry_price = row['close']
                 target_price = entry_price + self.atr_multiplier * atr if body > 0 else entry_price - self.atr_multiplier * atr
                 stop_loss = entry_price - self.stop_multiplier * atr if body > 0 else entry_price + self.stop_multiplier * atr
-                signal.append(f"Target: {target_price:.2f}, Stop: {stop_loss:.2f} (ATR-based)")
+                if pd.notna(target_price) and pd.notna(stop_loss):
+                    signal.append(f"Current: {price:.2f}, Target: {target_price:.2f}, Stop: {stop_loss:.2f} (ATR-based)")
 
                 # Exit if VWAP reversion is likely
                 if abs(normalized_tension) > 50 and volume < 40 and trend < 10:
