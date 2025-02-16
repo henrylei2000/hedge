@@ -37,7 +37,7 @@ class CandleStrategy(Strategy):
                     # exits.append(index + 1)
             print()
         self.data = data
-        self.snapshot([0, 50], ['strength', 'normalized_volume'])
+        # self.snapshot([0, 50], ['strength', 'normalized_volume'])
 
     def signal(self):
         self.candle()
@@ -129,6 +129,7 @@ class CandleStrategy(Strategy):
         def analyze(self):
             signals = []
             positions = []
+            todos = []
 
             self.atr()
             self.rvol()
@@ -163,6 +164,12 @@ class CandleStrategy(Strategy):
                 if pd.notna(target_price) and pd.notna(stop_loss):
                     signal.append(f"{target_price:.2f}[{price:.2f}]{stop_loss:.2f}")
 
+                # stop loss operations
+
+                if len(todos):
+                    print(todos)
+                    todos.pop()
+
                 if abs(body) > 80 and span > 50:
                     direction = "bullish" if body > 0 else "bearish"
                     if volume > 60:
@@ -188,8 +195,10 @@ class CandleStrategy(Strategy):
                 if strength > 0 and upper > 30 and span > 30:
                     if volume > 60:
                         signal.append("Potential strong resistance (long upper wick, high volume)")
+                        todos.append((idx, 'strong resistance'))
                     elif volume > 40:
                         signal.append("Potential weak resistance (long upper wick, moderate volume)")
+                        todos.append((idx, 'weak resistance'))
 
                 # Support (long lower wick with high volume confirms demand)
                 if strength < 0 and lower > 30 and span > 30:
