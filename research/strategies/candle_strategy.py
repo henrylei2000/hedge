@@ -37,7 +37,7 @@ class CandleStrategy(Strategy):
                     # exits.append(index + 1)
             print()
         self.data = data
-        # self.snapshot([50, 100], ['normalized_macd', 'normalized_volume'])
+        self.snapshot([0, 50], ['strength', 'normalized_volume'])
 
     def signal(self):
         self.candle()
@@ -140,7 +140,7 @@ class CandleStrategy(Strategy):
                 lower = int(row['lower_wick'] * 100)
                 span = row['normalized_span']
                 volume = row['normalized_volume']
-                trend = row['trending']
+                trend = row['normalized_trending']
                 trend_clustered_volume = row['trend_clustered_volume']
                 trend_clustered_volume_avg = row['trend_clustered_volume_avg']
                 vwap = row['vwap']
@@ -150,6 +150,7 @@ class CandleStrategy(Strategy):
                 normalized_tension = row['normalized_tension']
                 macd = row['macd']
                 macd_signal = row['signal_line']
+                strength = row['strength']
                 atr = row['atr']
                 rvol = row['rvol']
                 signal = []
@@ -174,24 +175,24 @@ class CandleStrategy(Strategy):
                     signal.append("Possible absorption (high avg volume but little price movement)")
 
                 # VWAP-based analysis
-                if tension > 0 > body:
+                if tension > 0 > body and strength > 0:
                     signal.append(
-                        "Price above VWAP, potential bullish continuation after a pullback")
-                elif tension < 0 < body:
-                    signal.append("Price below VWAP, potential bearish continuation after a rally")
+                        "Bullish: Price > VWAP, potential bullish continuation after a pullback")
+                elif tension < 0 < body and strength < 0:
+                    signal.append("Bearish: Price < VWAP, potential bearish continuation after a rally")
 
                 if abs(normalized_tension) > 70:
-                    signal.append("High tension between price and VWAP, potential reversion move")
+                    signal.append("Reversal: High tension between price and VWAP, potential reversion move")
 
                 # Resistance (long upper wick with high volume strengthens the signal)
-                if upper > 30 and span > 30:
+                if strength > 0 and upper > 30 and span > 30:
                     if volume > 60:
                         signal.append("Potential strong resistance (long upper wick, high volume)")
                     elif volume > 40:
                         signal.append("Potential weak resistance (long upper wick, moderate volume)")
 
                 # Support (long lower wick with high volume confirms demand)
-                if lower > 30 and span > 30:
+                if strength < 0 and lower > 30 and span > 30:
                     if volume > 60:
                         signal.append("Potential strong support (long lower wick, high volume)")
                     elif volume > 40:
@@ -199,11 +200,11 @@ class CandleStrategy(Strategy):
 
                 # Buying Pressure (strong bullish body, rising volume, and trend shift)
                 if body > 50 and volume > 60 and trend > 10:
-                    signal.append("Buying pressure detected")
+                    signal.append("Bullish: Buying pressure detected")
 
                 # Selling Pressure (strong bearish body, rising volume, and downward trend shift)
                 if body < -50 and volume > 60 and trend < -10:
-                    signal.append("Selling pressure detected")
+                    signal.append("Bearish: Selling pressure detected")
 
                 prev_row = data.iloc[idx - 1]
                 prev_upper = int(prev_row['upper_wick'] * 100)
@@ -240,14 +241,17 @@ class CandleStrategy(Strategy):
                     signal.append("Bearish reversal signal confirmed by volume, trend shift, VWAP move, and MACD crossover")
                     position = -1
 
-                if row['macd'] - row['signal_line'] > prev_row['macd'] - prev_row['signal_line']:
-                    signal.append("Entry signal: MACD momentum increasing (early confirmation)")
+                if strength > prev_row['strength'] > 0:
+                    signal.append("Bullish: MACD momentum increasing")
+                if strength < prev_row['strength'] < 0:
+                    signal.append("Bearish: MACD momentum decreasing")
 
                 # Exit if VWAP reversion is likely
                 if 0 < trend < 10 and abs(normalized_tension) > 50 and volume < 40:
-                    signal.append("Exit signal: Strong VWAP mean reversion detected, trend weakening, low volume")
-                if 0 < trend < 10 and rvol < self.rvol_threshold:
-                    signal.append("Exit signal: Weak momentum (RVOL low), trend losing strength")
+                    signal.append("Strong VWAP mean reversion detected, trend weakening, low volume")
+
+                if 0 < trend < 10 and rvol < self.rvol_threshold and volume < 40:
+                    signal.append("Weak momentum (RVOL low), trend losing strength")
 
                 signals.append((idx, ", ".join(signal) if signal else ""))
                 positions.append(position)
@@ -263,11 +267,13 @@ def process_market_data(price_feed):
     Simulates real-time processing of candlestick data for resistance, support, and fake-outs.
     Only uses past data for confirmation, avoiding future bar peeking.
     Implements multi-bar confirmation for rejection and breakout validation.
+    Introduces confidence scoring based on volume and trend strength.
     """
     signal = []
     prev_bars = []  # Stores past bars for analysis
     rejection_count = 0  # Track consecutive bearish bars after resistance
     breakout_count = 0  # Track consecutive bullish bars after breakout
+    confidence_score = 0  # Track confidence of breakout/rejection
 
     for i, bar in enumerate(price_feed):
         upper, body, lower, open_price, high, low, close, volume, VWAP = bar
@@ -292,20 +298,32 @@ def process_market_data(price_feed):
                 # Check for breakout attempt
                 if close > prev_high:
                     breakout_count += 1
-                    if breakout_count >= 2:  # Require 2+ bars confirming breakout
-                        signal.append(f"Bar {i}: Confirmed breakout above resistance (buy signal)")
+                    confidence_score += volume // 20  # Increase confidence based on volume
+                    if breakout_count >= 2 and confidence_score > 5:  # Require 2+ bars confirming breakout & volume confidence
+                        signal.append(
+                            f"Bar {i}: Confirmed breakout above resistance (strong buy signal, confidence {confidence_score})")
+                    elif breakout_count >= 2:
+                        signal.append(
+                            f"Bar {i}: Confirmed breakout above resistance (weak buy signal, confidence {confidence_score})")
                 else:
                     breakout_count = 0  # Reset breakout count if price falls back
+                    confidence_score = 0  # Reset confidence score
 
                 # Check for rejection (multi-bar confirmation)
                 if close < prev_close and body < -30 and volume > 50:
                     rejection_count += 1
+                    confidence_score += volume // 20  # Increase confidence based on volume
                 else:
                     rejection_count = 0  # Reset count if rejection not confirmed
+                    confidence_score = 0  # Reset confidence score
 
-                if rejection_count >= 2:  # Require 2+ consecutive bearish bars
-                    signal.append(f"Bar {i}: Confirmed resistance rejection (multi-bar confirmation, sell signal)")
-                    rejection_count = 0  # Reset count after confirming rejection
+                if rejection_count >= 2 and confidence_score > 5:
+                    signal.append(
+                        f"Bar {i}: Confirmed resistance rejection (strong sell signal, confidence {confidence_score})")
+                elif rejection_count >= 2:
+                    signal.append(
+                        f"Bar {i}: Confirmed resistance rejection (weak sell signal, confidence {confidence_score})")
+                rejection_count = 0  # Reset count after confirming rejection
 
             # Support Detection
             if prev_lower > 30 and abs(prev_body) > 30:
@@ -317,19 +335,30 @@ def process_market_data(price_feed):
                 # Check for breakdown attempt
                 if close < prev_low:
                     breakout_count += 1
-                    if breakout_count >= 2:  # Require 2+ bars confirming breakdown
-                        signal.append(f"Bar {i}: Confirmed breakdown below support (sell signal)")
+                    confidence_score += volume // 20  # Increase confidence based on volume
+                    if breakout_count >= 2 and confidence_score > 5:
+                        signal.append(
+                            f"Bar {i}: Confirmed breakdown below support (strong sell signal, confidence {confidence_score})")
+                    elif breakout_count >= 2:
+                        signal.append(
+                            f"Bar {i}: Confirmed breakdown below support (weak sell signal, confidence {confidence_score})")
                 else:
                     breakout_count = 0  # Reset breakout count if price rises back
+                    confidence_score = 0  # Reset confidence score
 
                 # Check for bounce confirmation (multi-bar validation)
                 if close > prev_close and body > 30 and volume > 50:
                     rejection_count += 1
+                    confidence_score += volume // 20  # Increase confidence based on volume
                 else:
                     rejection_count = 0  # Reset count if bounce not confirmed
+                    confidence_score = 0  # Reset confidence score
 
-                if rejection_count >= 2:  # Require 2+ consecutive bullish bars
-                    signal.append(f"Bar {i}: Confirmed support bounce (multi-bar confirmation, buy signal)")
-                    rejection_count = 0  # Reset count after confirming support bounce
+                if rejection_count >= 2 and confidence_score > 5:
+                    signal.append(
+                        f"Bar {i}: Confirmed support bounce (strong buy signal, confidence {confidence_score})")
+                elif rejection_count >= 2:
+                    signal.append(f"Bar {i}: Confirmed support bounce (weak buy signal, confidence {confidence_score})")
+                rejection_count = 0  # Reset count after confirming support bounce
 
     return signal
