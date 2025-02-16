@@ -167,7 +167,8 @@ class CandleStrategy(Strategy):
                 # stop loss operations
 
                 if len(todos):
-                    print(todos)
+                    for t in todos:
+                        print(f"@{idx} to confirm {t[1]} @{t[0]}")
                     todos.pop()
 
                 if abs(body) > 80 and span > 50:
@@ -271,18 +272,18 @@ class CandleStrategy(Strategy):
             return self.data
 
 
-def process_market_data(price_feed):
+def confirm_bound(price_feed):
     """
-    Simulates real-time processing of candlestick data for resistance, support, and fake-outs.
-    Only uses past data for confirmation, avoiding future bar peeking.
-    Implements multi-bar confirmation for rejection and breakout validation.
-    Introduces confidence scoring based on volume and trend strength.
+    Simulates real-time processing of candlestick data for resistance, support, and breakout validation.
+    Uses confidence scoring and extended monitoring instead of separate fake breakout detection.
     """
     signal = []
     prev_bars = []  # Stores past bars for analysis
     rejection_count = 0  # Track consecutive bearish bars after resistance
     breakout_count = 0  # Track consecutive bullish bars after breakout
     confidence_score = 0  # Track confidence of breakout/rejection
+    breakout_monitor = 0  # Monitor breakout sustainability
+    breakout_failed = False  # Track failed breakouts
 
     for i, bar in enumerate(price_feed):
         upper, body, lower, open_price, high, low, close, volume, VWAP = bar
@@ -308,15 +309,20 @@ def process_market_data(price_feed):
                 if close > prev_high:
                     breakout_count += 1
                     confidence_score += volume // 20  # Increase confidence based on volume
-                    if breakout_count >= 2 and confidence_score > 5:  # Require 2+ bars confirming breakout & volume confidence
-                        signal.append(
-                            f"Bar {i}: Confirmed breakout above resistance (strong buy signal, confidence {confidence_score})")
-                    elif breakout_count >= 2:
-                        signal.append(
-                            f"Bar {i}: Confirmed breakout above resistance (weak buy signal, confidence {confidence_score})")
+                    breakout_monitor = 3  # Monitor for 3 bars after breakout
+                    breakout_failed = False  # Reset failure flag
                 else:
                     breakout_count = 0  # Reset breakout count if price falls back
                     confidence_score = 0  # Reset confidence score
+
+                # Monitor breakout sustainability
+                if breakout_monitor > 0:
+                    breakout_monitor -= 1
+                    if close < prev_high:
+                        confidence_score -= 2  # Reduce confidence if price falls back
+                    if breakout_monitor == 0 and confidence_score < 5:
+                        breakout_failed = True  # Mark as failed breakout
+                        signal.append(f"Bar {i}: Breakout failed, price returned to resistance zone")
 
                 # Check for rejection (multi-bar confirmation)
                 if close < prev_close and body < -30 and volume > 50:
@@ -345,15 +351,20 @@ def process_market_data(price_feed):
                 if close < prev_low:
                     breakout_count += 1
                     confidence_score += volume // 20  # Increase confidence based on volume
-                    if breakout_count >= 2 and confidence_score > 5:
-                        signal.append(
-                            f"Bar {i}: Confirmed breakdown below support (strong sell signal, confidence {confidence_score})")
-                    elif breakout_count >= 2:
-                        signal.append(
-                            f"Bar {i}: Confirmed breakdown below support (weak sell signal, confidence {confidence_score})")
+                    breakout_monitor = 3  # Monitor for 3 bars after breakdown
+                    breakout_failed = False  # Reset failure flag
                 else:
                     breakout_count = 0  # Reset breakout count if price rises back
                     confidence_score = 0  # Reset confidence score
+
+                # Monitor breakdown sustainability
+                if breakout_monitor > 0:
+                    breakout_monitor -= 1
+                    if close > prev_low:
+                        confidence_score -= 2  # Reduce confidence if price returns to support
+                    if breakout_monitor == 0 and confidence_score < 5:
+                        breakout_failed = True  # Mark as failed breakdown
+                        signal.append(f"Bar {i}: Breakdown failed, price returned to support zone")
 
                 # Check for bounce confirmation (multi-bar validation)
                 if close > prev_close and body > 30 and volume > 50:
@@ -367,7 +378,8 @@ def process_market_data(price_feed):
                     signal.append(
                         f"Bar {i}: Confirmed support bounce (strong buy signal, confidence {confidence_score})")
                 elif rejection_count >= 2:
-                    signal.append(f"Bar {i}: Confirmed support bounce (weak buy signal, confidence {confidence_score})")
+                    signal.append(
+                        f"Bar {i}: Confirmed support bounce (weak buy signal, confidence {confidence_score})")
                 rejection_count = 0  # Reset count after confirming support bounce
 
     return signal
