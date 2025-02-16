@@ -19,8 +19,8 @@ def get_dates():
     # quote = api.get_latest_quote("AAPL")
     # print(quote.bid_price, quote.bid_size, quote.ask_price, quote.ask_size)
     performance = 0.0
-    start_date = '2025-01-31'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = '2025-01-31'
+    start_date = '2025-01-27'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+    end_date = '2025-01-27'
     calendar = api.get_calendar(start=start_date, end=end_date)
     for day in calendar:
         daily_pnl, trades = 0, 0
@@ -38,7 +38,7 @@ def get_dates():
 
 
 def back_test():
-    strategy = RaftStrategy()
+    strategy = CandleStrategy()
     strategy.backtest('offline')
 
 
