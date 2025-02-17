@@ -37,7 +37,7 @@ class CandleStrategy(Strategy):
                     # exits.append(index + 1)
             print()
         self.data = data
-        # self.snapshot([0, 50], ['strength', 'normalized_volume'])
+        self.snapshot([90, 150], ['strength', 'normalized_volume'])
 
     def signal(self):
         self.candle()
