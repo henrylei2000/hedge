@@ -207,7 +207,7 @@ class CandleStrategy(Strategy):
                             signal.append(f"Bar {i}: Breakout failed, price returned to resistance zone")
 
                     # Check for rejection (multi-bar confirmation)
-                    if close < prev_close and body < -30 and volume > 50 and strength < 0:
+                    if close < prev_close and body < -30 and volume > 50 and strength < prev_strength:
                         rejection_count += 1
                         confidence_score += volume // 20  # Increase confidence based on volume
                     else:
@@ -247,7 +247,7 @@ class CandleStrategy(Strategy):
                             signal.append(f"Bar {i}: Breakdown failed, price returned to support zone")
 
                     # Check for bounce confirmation (multi-bar validation)
-                    if close > prev_close and body > 30 and volume > 50 and strength > 0:
+                    if close > prev_close and body > 30 and volume > 50 and strength > prev_strength:
                         rejection_count += 1
                         confidence_score += volume // 20  # Increase confidence based on volume
                     else:
@@ -336,7 +336,7 @@ class CandleStrategy(Strategy):
                     signal.append("Reversal: High tension between price and VWAP, potential reversion move")
 
                 # Resistance (long upper wick with high volume strengthens the signal)
-                if strength > 0 and upper > 30 and span > 30:
+                if strength > 0 and upper > 30 and span > 20:
                     if volume > 60:
                         signal.append("Potential strong resistance (long upper wick, high volume)")
                         todos.append((idx, 'strong resistance'))
@@ -345,7 +345,7 @@ class CandleStrategy(Strategy):
                         todos.append((idx, 'weak resistance'))
 
                 # Support (long lower wick with high volume confirms demand)
-                if strength < 0 and lower > 30 and span > 30:
+                if strength < 0 and lower > 30 and span > 20:
                     if volume > 60:
                         signal.append("Potential strong support (long lower wick, high volume)")
                     elif volume > 40:
