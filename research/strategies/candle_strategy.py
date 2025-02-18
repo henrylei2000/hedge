@@ -1,5 +1,6 @@
 from strategy import Strategy
 import pandas as pd
+import numpy as np
 
 
 class CandleStrategy(Strategy):
@@ -37,7 +38,7 @@ class CandleStrategy(Strategy):
                     # exits.append(index + 1)
             print()
         self.data = data
-        self.snapshot([90, 150], ['strength', 'normalized_volume'])
+        self.snapshot([150, 240], ['strength', 'normalized_volume'])
 
     def signal(self):
         self.candle()
@@ -264,6 +265,36 @@ class CandleStrategy(Strategy):
 
             return signal
 
+        def detect_momentum(self, idx, window=10):
+            data = self.data[:idx + 1]
+            price = data.iloc[idx]['close']
+            recent_prices = data['close'].iloc[-window:]
+            recent_macd = data['macd'].iloc[-window:]
+            recent_signal = data['signal_line'].iloc[-window:]
+            recent_strength = data['strength'].iloc[-window:]
+
+            # Identify MACD trend direction
+            macd_trend = np.polyfit(range(window), recent_macd, 1)[0]  # Linear regression slope
+            strength_trend = np.polyfit(range(window), recent_strength, 1)[0]  # Slope of MACD strength
+
+            # Determine price behavior relative to key level
+            price_near_level = abs(recent_prices.iloc[-1] - price) <= price * 0.02  # Within 2% of level
+
+            # Conditions for breakout and breakdown
+            if price_near_level and recent_macd.iloc[-1] > recent_signal.iloc[-1] and macd_trend > 0:
+                return 'breakout'
+            elif price_near_level and recent_macd.iloc[-1] < recent_signal.iloc[-1] and macd_trend < 0:
+                return 'breakdown'
+
+            # Detect divergence for rejection or bounce
+            price_trend = np.polyfit(range(window), recent_prices, 1)[0]  # Price trend slope
+            if price_near_level and price_trend > 0 > macd_trend:
+                return 'rejection'
+            elif price_near_level and price_trend < 0 < macd_trend:
+                return 'bounce'
+
+            return 'neutral'
+
         def analyze(self):
             signals = []
             positions = []
@@ -339,6 +370,7 @@ class CandleStrategy(Strategy):
                 if strength > 0 and upper > 30 and span > 20:
                     if volume > 60:
                         signal.append("Potential strong resistance (long upper wick, high volume)")
+                        print(f"------ checking @{idx}, {self.detect_momentum(idx)}")
                         todos.append((idx, 'strong resistance'))
                     elif volume > 40:
                         signal.append("Potential weak resistance (long upper wick, moderate volume)")
@@ -348,6 +380,8 @@ class CandleStrategy(Strategy):
                 if strength < 0 and lower > 30 and span > 20:
                     if volume > 60:
                         signal.append("Potential strong support (long lower wick, high volume)")
+                        print(f"------ checking @{idx}, {self.detect_momentum(idx)}")
+                        todos.append((idx, 'strong support'))
                     elif volume > 40:
                         signal.append("Potential weak support (long lower wick, moderate volume)")
 
