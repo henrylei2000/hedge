@@ -56,9 +56,9 @@ class CandleStrategy(Strategy):
             if len(new_peaks):
                 print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - new found peaks {new_peaks} @{index}")
                 for p in new_peaks:
-                    cv, _ = ca.cluster(p - 3, p)
+                    cv, cb = ca.cluster(p - 3, p)
                     print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - clustered volume {cv} prior to peak @{p}")
-                    if cv > 150:
+                    if cv > 150 and cb > 20:
                         print(" - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
                         _, cb = ca.cluster(p - 1, p + 1)
                         if cb < -20:
@@ -69,9 +69,9 @@ class CandleStrategy(Strategy):
             if len(new_valleys):
                 print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - new found valleys {new_valleys} @{index}")
                 for v in new_valleys:
-                    cv, _ = ca.cluster(v - 3, v)
+                    cv, cb = ca.cluster(v - 3, v)
                     print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - clustered volume {cv} prior to valley @{v}", end="")
-                    if cv > 150:
+                    if cv > 150 and cb < -20:
                         print(" - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
                         _, cb = ca.cluster(v - 1, v + 1)
                         if cb > 20:
