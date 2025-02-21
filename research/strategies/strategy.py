@@ -31,7 +31,7 @@ class Strategy:
                 self.sanitize()
                 self.signal()
                 self.bucket_trade()
-                self.plot()
+                # self.plot()
                 return
             else:
                 print("No data found, please verify symbol and date range.")
@@ -338,8 +338,8 @@ class Strategy:
         rows = self.data.iloc[interval[0]:interval[1]]
         prices, lows, highs = rows['close'], rows['low'], rows['high']
 
-        distance = 3
-        prominence = self.data.iloc[0]['close'] * 0.00125 + 0.005
+        distance = 8
+        prominence = self.data.iloc[0]['close'] * 0.0015
 
         peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
         peak_indices = np.array(peaks)
