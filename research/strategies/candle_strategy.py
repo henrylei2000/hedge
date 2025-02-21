@@ -52,31 +52,36 @@ class CandleStrategy(Strategy):
             valley_prices = prices.iloc[valleys]
             new_peaks = [p for p in peaks if p > distance and p not in prev_peaks and index - p < 20]
             new_valleys = [v for v in valleys if v > distance and v not in prev_valleys and index - v < 20]
-
+            limiter = "- " * 36
             if len(new_peaks):
-                print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - peaks found {new_peaks} @{index}")
+                print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
                     cv, c, trend_v = ca.cluster(p - 3, p)
-                    print(f"Entering into the peak: clustered vol {cv}, candle {c}, trend_v {trend_v} prior to peak @{p}")
+                    print(f"🛬vol {cv:3d}, trend_v {trend_v:4d}, candle {c} before peak @{p}")
                     cv, c, trend_v = ca.cluster(p, index)
-                    print(f"Leaving from the peak: clustered vol {cv}, candle {c}, trend_v {trend_v} prior to peak @{p}")
+                    print(f"🛫vol {cv:3d}, trend_v {trend_v:4d}, candle {c} after peak @{p}")
+                    print(limiter)
                     if cv > 150 and c[1] > 20:
                         _, c, trend_v = ca.cluster(p - 1, p + 1)
                         if c[1] < -20:
+                            print("🪂" * 3)
                             position = -1
             if len(new_valleys):
-                print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - valleys found {new_valleys} @{index}")
+                print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
+                    # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
                     cv, c, trend_v = ca.cluster(v - 3, v)
-                    print(f"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - clustered vol {cv}, candle {c}, trend_v {trend_v} prior to valley @{v}", end="")
-                    if cv > 150 and c[1] < -20:
-                        print(" - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
-                        _, c, trend_v = ca.cluster(v - 1, v + 1)
-                        if c[1] > 20:
+                    print(f"🛬vol {cv:3d}, trend_v {trend_v:4d}, candle {c} before valley @{v}")
+                    cv, c, trend_v = ca.cluster(v, index)
+                    print(f"🛫vol {cv:3d}, trend_v {trend_v:4d}, candle {c} after valley @{v}")
+                    print(limiter)
+                    if cv > 150 and c[1] > 20:
+                        _, c, trend_v = ca.cluster(p - 1, p + 1)
+                        if c[1] < -20:
+                            print("🏄‍♀️" * 3)
                             position = 1
-                    else:
-                        print()
+
             prev_peaks, prev_valleys = peaks, valleys
 
             positions.append(position)
@@ -84,7 +89,7 @@ class CandleStrategy(Strategy):
         data['position'] = positions
         self.data = data
 
-        self.snapshot([0, 100], ['strength', 'normalized_volume'])
+        self.snapshot([200, 250], ['strength', 'normalized_volume'])
 
     def signal(self):
         self.candle()
