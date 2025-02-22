@@ -21,7 +21,7 @@ class CandleStrategy(Strategy):
         # print(total, data['normalized_trending'].sum(), collected)
         distance = 8
         prominence = data.iloc[0]['close'] * 0.0015
-        prev_peaks, prev_valleys = [], []
+        prev_peaks, prev_valleys = set(), set()
         positions = []
         for index in range(len(data)):
             row = data.iloc[index]
@@ -57,27 +57,23 @@ class CandleStrategy(Strategy):
                 for p in new_peaks:
                     peak = data.iloc[p]
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
-                    cv0, c0, trend_v0 = ca.cluster(p - distance, p)
-                    print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
+                    cv0, c0, trend_v0 = ca.cluster(p - 3, p)
                     cv, c, trend_v = ca.cluster(p - 1, p)
-                    print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
                     cv1, c1, trend_v1 = ca.cluster(p, index)
+                    print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
+                    print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
                     print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
 
                     # scenario: pre-peak, peak, post-peak
                     # low, low, low -> weak reversal, weak breakout, indecision
                     # price increasing + volume decreasing + smaller candles: weak uptrend, likely rejection
-                    if trend_v0 + trend_v < 30 and c[1] < 40:
-                        if cv1 < 40 * (index - p + 1):  # lack of interest
-                            print(f"low, low, low -> weak reversal, weak breakout, indecision {peaks}")
+                    if trend_v0 + trend_v < 20 and cv0 < 40 * distance and cv < 50 and cv1 < 40 * (index - p + 1):
+                        if peak['normalized_span'] < 30:
                             """
                             Narrow price range near resistance
                             Multiple touches of resistance with no conviction.
                             VWAP is flat and price oscillates around it
                             """
-                    # low, low, low -> weak reversal, weak breakout, indecision
-                    if cv0 < 40 * distance and cv < 50 and cv1 < 40 * (index - p + 1):
-                        if peak['normalized_span'] < 30:
                             print(f"low, low, low -> weak reversal, weak breakout, indecision {peaks}")
 
                     if cv > 30 * distance and cv1 > 40 * (index - p + 1):
@@ -86,10 +82,11 @@ class CandleStrategy(Strategy):
                     print(limiter)
 
             if len(new_valleys):
-                """ Pre-Valley: 📉 📉 📈  (Moderate selling)
-Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
-Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
-"""
+                """ 
+                Pre-Valley: 📉 📉 📈  (Moderate selling)
+                Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
+                Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
+                """
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
@@ -102,7 +99,8 @@ Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
                         print("🏄‍♀️" * 3)
                         position = 1
 
-            prev_peaks, prev_valleys = peaks, valleys
+            prev_peaks.update(peaks)
+            prev_valleys.update(valleys)
 
             positions.append(position)
 
@@ -197,6 +195,10 @@ Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
                     collecting = False  # Stop collecting
 
             return collected_sum, collected_numbers
+
+        def get_cluster_info(self, start, end, label):
+            vol, candle, trend_vol = self.cluster(start, end)
+            return f"{label} vol {vol:3d}, trend_v {trend_vol:3d}, candle {candle}"
 
         def cluster(self, start, end):
             data = self.data
