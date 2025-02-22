@@ -59,7 +59,7 @@ class CandleStrategy(Strategy):
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
                     cv0, c0, trend_v0 = ca.cluster(p - 3, p)
                     cv, c, trend_v = ca.cluster(p - 1, p)
-                    cv1, c1, trend_v1 = ca.cluster(p, index)
+                    cv1, c1, trend_v1 = ca.cluster(p - 1, index)
                     print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
                     print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
                     print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
@@ -82,23 +82,26 @@ class CandleStrategy(Strategy):
                     print(limiter)
 
             if len(new_valleys):
-                """ 
-                Pre-Valley: 📉 📉 📈  (Moderate selling)
-                Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
-                Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
-                """
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
-                    cv, c, trend_v = ca.cluster(v - 3, v)
-                    print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} before valley @{v}")
-                    cv1, c1, trend_v1 = ca.cluster(v, index)
+                    cv0, c0, trend_v0 = ca.cluster(v - 3, v)
+                    cv, c, trend_v = ca.cluster(v - 1, v)
+                    cv1, c1, trend_v1 = ca.cluster(v - 1, index)
+                    print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before valley @{v}")
+                    print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at valley @{v}")
                     print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after valley @{v}")
-                    print(limiter)
-                    if cv > 100 and cv1 > 100:
+
+                    """ 
+                    Pre-Valley: 📉 📉 📈  (Moderate selling)
+                    Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
+                    Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
+                    """
+                    if 70 > trend_v0 + trend_v > 20 and 30 < cv0 // 3 < 60 and cv > 40 and cv1 > 50 * (index - v + 1):
+                        print(f"moderate, keep, increase -> reversal")
                         print("🏄‍♀️" * 3)
                         position = 1
-
+                    print(limiter)
             prev_peaks.update(peaks)
             prev_valleys.update(valleys)
 
