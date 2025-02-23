@@ -2,9 +2,61 @@ from strategy import Strategy
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
+import itertools
 
 
 class CandleStrategy(Strategy):
+
+    def interpret(self, point, index, peaks, valleys):
+        pre_point, at_point, post_point = '', '', ''
+        ca = self.CandleAnalyzer(self)
+        ca.atr()
+        ca.rvol()
+        ca.cluster_volume()
+        p = point
+        peak = self.data.iloc[p]
+        # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
+        cv0, c0, trend_v0 = ca.cluster(p - 3, p)
+        cv, c, trend_v = ca.cluster(p - 1, p)
+        cv1, c1, trend_v1 = ca.cluster(p - 1, index)
+        print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
+        print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
+        print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
+        # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
+        # scenario: pre-peak, peak, post-peak
+        # low, low, low -> weak reversal, weak breakout, indecision
+        # price increasing + volume decreasing + smaller candles: weak uptrend, likely rejection
+        if trend_v0 < 21 and cv0 < 40 * 3:
+            pre_point = 'low'
+        if cv < 50 and peak['normalized_span'] < 30:
+            at_point = 'low'
+        if cv1 < 40 * (index - p + 1):
+            post_point = 'low'
+            """
+            Narrow price range near resistance
+            Multiple touches of resistance with no conviction.
+            VWAP is flat and price oscillates around it
+            """
+        elif 20 < trend_v0 < 61:
+            pass
+        elif 60 < trend_v0:
+            pass
+
+        if (pre_point, at_point, post_point) == ('low', 'low', 'low'):
+            print(f"low, low, low -> weak reversal, weak breakout, indecision {peaks}")
+
+        return pre_point, at_point, post_point
+
+    @staticmethod
+    def scenario(v):
+        match v:
+            case ("low", "moderate", "high"):
+                # Unique business logic for this scenario
+                print("Processing special (low, moderate, high)")
+            # Add other unique cases as needed
+            case _:
+                # Default business logic for all other combinations
+                print(f"Processing default logic for {v}")
 
     def candle(self):
         buckets_in_use = 0
@@ -15,7 +67,7 @@ class CandleStrategy(Strategy):
         self.normalized('span')
         self.normalized('macd')
 
-        ca = self.CandleAnalyzer(self.data)
+        ca = self.CandleAnalyzer(self)
         data = ca.analyze()
         total, collected = ca.trend_turn()
         # print(total, data['normalized_trending'].sum(), collected)
@@ -55,28 +107,10 @@ class CandleStrategy(Strategy):
             if len(new_peaks):
                 print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
-                    peak = data.iloc[p]
-                    # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
-                    cv0, c0, trend_v0 = ca.cluster(p - 3, p)
+                    self.scenario(self.interpret(p, index, peaks, valleys))
                     cv, c, trend_v = ca.cluster(p - 1, p)
                     cv1, c1, trend_v1 = ca.cluster(p - 1, index)
-                    print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
-                    print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
-                    print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
-
-                    # scenario: pre-peak, peak, post-peak
-                    # low, low, low -> weak reversal, weak breakout, indecision
-                    # price increasing + volume decreasing + smaller candles: weak uptrend, likely rejection
-                    if trend_v0 + trend_v < 20 and cv0 < 40 * distance and cv < 50 and cv1 < 40 * (index - p + 1):
-                        if peak['normalized_span'] < 30:
-                            """
-                            Narrow price range near resistance
-                            Multiple touches of resistance with no conviction.
-                            VWAP is flat and price oscillates around it
-                            """
-                            print(f"low, low, low -> weak reversal, weak breakout, indecision {peaks}")
-
-                    if cv > 30 * distance and cv1 > 40 * (index - p + 1):
+                    if cv > 30 * 3 and cv1 > 40 * (index - p + 1):
                         print("🪂" * 3)
                         position = -1
                     print(limiter)
@@ -116,8 +150,8 @@ class CandleStrategy(Strategy):
         self.candle()
 
     class CandleAnalyzer:
-        def __init__(self, data, cluster_window=6, atr_multiplier=1.5, stop_multiplier=0.75, rvol_threshold=1.5):
-            self.data = data.copy()
+        def __init__(self, parent, cluster_window=6, atr_multiplier=1.5, stop_multiplier=0.75, rvol_threshold=1.5):
+            self.data = parent.data.copy()
             self.cluster_window = cluster_window
             self.atr_multiplier = atr_multiplier
             self.stop_multiplier = stop_multiplier
