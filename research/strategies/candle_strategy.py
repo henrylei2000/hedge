@@ -16,9 +16,13 @@ class CandleStrategy(Strategy):
         p = point
         peak = self.data.iloc[p]
         # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
-        cv0, c0, trend_v0 = ca.cluster(p - 3, p)
+
+        low = max([x for x in valleys if x < p], default=0)
+        high = next((x for x in valleys if x > p), index)
+        cv0, c0, trend_v0 = ca.cluster(low, p)
         cv, c, trend_v = ca.cluster(p - 1, p)
-        cv1, c1, trend_v1 = ca.cluster(p - 1, index)
+        cv1, c1, trend_v1 = ca.cluster(p - 1, high)
+        print(f"{low} - {p} - {high}")
         print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
         print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
         print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
@@ -26,11 +30,11 @@ class CandleStrategy(Strategy):
         # scenario: pre-peak, peak, post-peak
         # low, low, low -> weak reversal, weak breakout, indecision
         # price increasing + volume decreasing + smaller candles: weak uptrend, likely rejection
-        if trend_v0 < 21 and cv0 < 40 * 3:
+        if trend_v0 < 21 or cv0 < 30:
             pre_point = 'low'
-        if cv < 50 and peak['normalized_span'] < 30:
+        if cv < 60 or peak['normalized_span'] < 50:
             at_point = 'low'
-        if cv1 < 40 * (index - p + 1):
+        if cv1 < 40 or cv1 < cv0:
             post_point = 'low'
             """
             Narrow price range near resistance
@@ -42,14 +46,13 @@ class CandleStrategy(Strategy):
         elif 60 < trend_v0:
             pass
 
-        if (pre_point, at_point, post_point) == ('low', 'low', 'low'):
-            print(f"low, low, low -> weak reversal, weak breakout, indecision {peaks}")
-
         return pre_point, at_point, post_point
 
     @staticmethod
     def scenario(v):
         match v:
+            case ("low", "low", "low"):
+                print(f"low, low, low -> weak reversal, weak breakout, indecision")
             case ("low", "moderate", "high"):
                 # Unique business logic for this scenario
                 print("Processing special (low, moderate, high)")
@@ -110,7 +113,7 @@ class CandleStrategy(Strategy):
                     self.scenario(self.interpret(p, index, peaks, valleys))
                     cv, c, trend_v = ca.cluster(p - 1, p)
                     cv1, c1, trend_v1 = ca.cluster(p - 1, index)
-                    if cv > 30 * 3 and cv1 > 40 * (index - p + 1):
+                    if cv > 30 and cv1 > 40:
                         print("🪂" * 3)
                         position = -1
                     print(limiter)
@@ -273,7 +276,7 @@ class CandleStrategy(Strategy):
                 cluster_body += body
                 trend_volume += volume - prev_row['normalized_volume']
 
-            return cluster_volume, [cluster_upper, cluster_body, cluster_lower], trend_volume
+            return cluster_volume // (end - start), [cluster_upper, cluster_body, cluster_lower], trend_volume // (end - start)
 
         def follow_up(self, start, end):            
             data = self.data
