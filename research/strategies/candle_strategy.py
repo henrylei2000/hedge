@@ -24,7 +24,7 @@ class CandleStrategy(Strategy):
         cv1, c1, trend_v1 = ca.cluster(p + 1, high + 1)
         print(f"{low} - {p} - {high}")
         print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
-        print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
+        print(f"🔴vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
         print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
         # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
         # scenario: pre-peak, peak, post-peak
@@ -92,8 +92,8 @@ class CandleStrategy(Strategy):
 
             # comment row by row
             trending_decision = '*' if index in collected else ' '
-            print(f"{index:3d}{trending_decision} 🚀{row['normalized_trending']:4d}", end=" ")
-            print(f"🌪️{row['normalized_volume']:3d}, 🧲{row['normalized_tension']:4d}", end=" ")
+            print(f"{index:3d}{trending_decision} 📈{row['normalized_trending']:4d}", end=" ")
+            print(f"🚿{row['normalized_volume']:3d}, 🏹{row['normalized_tension']:4d}", end=" ")
             candle = f"🕯️{row['normalized_span']} ({row['upper_wick'] * 100:.0f} {row['body_size'] * 100:.0f} {row['lower_wick'] * 100:.0f})"
             print(f"{candle:18} {row['candlestick']}")
 
@@ -123,16 +123,16 @@ class CandleStrategy(Strategy):
                 for v in new_valleys:
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
                     cv0, c0, trend_v0 = ca.cluster(v - 3, v)
-                    cv, c, trend_v = ca.cluster(v - 1, v)
-                    cv1, c1, trend_v1 = ca.cluster(v - 1, index)
+                    cv, c, trend_v = ca.cluster(v, v + 1)
+                    cv1, c1, trend_v1 = ca.cluster(v + 1, index + 1)
                     print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before valley @{v}")
-                    print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at valley @{v}")
+                    print(f"🟢vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at valley @{v}")
                     print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after valley @{v}")
 
                     """ 
                     Pre-Valley: 📉 📉 📈  (Moderate selling)
                     Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
-                    Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
+                    Post-Valley: 📉 📈  📈 📈 (Volume increases on reversal)
                     """
                     if 70 > trend_v0 + trend_v > 20 and 30 < cv0 < 60 and cv > 40 and cv1 > 50 :
                         print(f"moderate, keep, increase -> reversal")
