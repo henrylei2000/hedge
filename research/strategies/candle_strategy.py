@@ -20,8 +20,8 @@ class CandleStrategy(Strategy):
         low = max([x for x in valleys if x < p], default=0)
         high = next((x for x in valleys if x > p), index)
         cv0, c0, trend_v0 = ca.cluster(low, p)
-        cv, c, trend_v = ca.cluster(p - 1, p)
-        cv1, c1, trend_v1 = ca.cluster(p - 1, high)
+        cv, c, trend_v = ca.cluster(p, p + 1)
+        cv1, c1, trend_v1 = ca.cluster(p + 1, high + 1)
         print(f"{low} - {p} - {high}")
         print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
         print(f"🛬vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
@@ -134,7 +134,7 @@ class CandleStrategy(Strategy):
                     Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
                     Post-Valley: 📉 📈 📈 📈 📈 (Volume increases on reversal)
                     """
-                    if 70 > trend_v0 + trend_v > 20 and 30 < cv0 // 3 < 60 and cv > 40 and cv1 > 50 * (index - v + 1):
+                    if 70 > trend_v0 + trend_v > 20 and 30 < cv0 < 60 and cv > 40 and cv1 > 50 :
                         print(f"moderate, keep, increase -> reversal")
                         print("🏄‍♀️" * 3)
                         position = 1
@@ -242,17 +242,18 @@ class CandleStrategy(Strategy):
 
         def cluster(self, start, end):
             data = self.data
-            cluster_volume = 0
-            trend_volume = 0
+            data['normalized_volume_diff'] = data['normalized_volume'].diff().fillna(0).astype(int)
+            cluster_volume, cluster_volume_diff = 0, 0
             cluster_upper, cluster_body, cluster_lower = 0, 0, 0
             # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
             for i in range(start, end):
-                prev_row, row = data.iloc[i], data.iloc[i+1]
+                row = data.iloc[i]
                 upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
                 lower = int(row['lower_wick'] * 100)
                 span = row['normalized_span']
                 volume = row['normalized_volume']
+                volume_diff = row['normalized_volume_diff']
                 trend = row['normalized_trending']
                 trend_clustered_volume = row['trend_clustered_volume']
                 trend_clustered_volume_avg = row['trend_clustered_volume_avg']
@@ -274,9 +275,9 @@ class CandleStrategy(Strategy):
                 cluster_upper += upper
                 cluster_lower += lower
                 cluster_body += body
-                trend_volume += volume - prev_row['normalized_volume']
+                cluster_volume_diff += volume_diff
 
-            return cluster_volume // (end - start), [cluster_upper, cluster_body, cluster_lower], trend_volume // (end - start)
+            return cluster_volume // (end - start), [cluster_upper, cluster_body, cluster_lower], cluster_volume_diff // (end - start)
 
         def follow_up(self, start, end):            
             data = self.data
