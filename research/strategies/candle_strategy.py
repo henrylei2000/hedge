@@ -7,51 +7,36 @@ from scipy.signal import find_peaks
 class CandleStrategy(Strategy):
 
     def interpret(self, p, index, peaks, valleys):
+        data = self.data
         pre_point, at_point, post_point = '', '', ''
         ca = self.CandleAnalyzer(self)
         ca.atr()
         ca.rvol()
         ca.cluster_volume()
         # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
-        type = ''
+        low, high, label = 0, 0, ''
         if p in peaks:
-            type = 'peak'
-            peak = self.data.iloc[p]
+            label = 'peak'
             low = max([x for x in valleys if x < p], default=0)
             high = next((x for x in valleys if x > p), index)
         elif p in valleys:
-            type = 'valley'
-            peak = self.data.iloc[p]
+            label = 'valley'
             low = max([x for x in peaks if x < p], default=0)
             high = next((x for x in peaks if x > p), index)
         cv0, c0, trend_v0 = ca.cluster(low, p)
-        self.summarize_pre_peak_volume(low, p)
         cv, c, trend_v = ca.cluster(p, p + 1)
         cv1, c1, trend_v1 = ca.cluster(p + 1, high + 1)
         print(f"{low} - {p} - {high}")
-        print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before {type} @{p}")
-        print(f"🔴vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at {type} @{p}")
-        print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after {type} @{p}")
+        print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before {label} @{p}")
+        print(f"🔴vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at {label} @{p}")
+        print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after {label} @{p}")
         # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
         # scenario: pre-peak, peak, post-peak
         # low, low, low -> weak reversal, weak breakout, indecision
         # price increasing + volume decreasing + smaller candles: weak uptrend, likely rejection
-        if trend_v0 < 21 or cv0 < 30:
-            pre_point = 'low'
-        if cv < 60 or peak['normalized_span'] < 50:
-            at_point = 'low'
-        if cv1 < 40 or cv1 < cv0:
-            post_point = 'low'
-            """
-            Narrow price range near resistance
-            Multiple touches of resistance with no conviction.
-            VWAP is flat and price oscillates around it
-            """
-        elif 20 < trend_v0 < 61:
-            pass
-        elif 60 < trend_v0:
-            pass
-
+        pre_point = self.summarize(low, p)
+        at_point = self.summarize(p, p + 1)
+        post_point = self.summarize(p + 1, high + 1)
         return pre_point, at_point, post_point
 
     @staticmethod
@@ -67,7 +52,7 @@ class CandleStrategy(Strategy):
                 # Default business logic for all other combinations
                 print(f"Processing default logic for {v}")
 
-    def summarize_pre_peak_volume(self, start, end):
+    def summarize(self, start, end):
         data = self.data
         pre_peak_vol = data['normalized_volume'].iloc[start:end]
 
@@ -80,6 +65,7 @@ class CandleStrategy(Strategy):
 
             print(f"[{start} - {end}] avg_increase {avg_increase:.2f}, vol_std {vol_std:.2f} vs {vol_average:.2f}, vol_max_min_ratio {vol_max_min_ratio:.2f}, vol_trend_slope {vol_trend_slope:.2f}")
 
+        return 'low'
 
     def candle(self):
         buckets_in_use = 0
