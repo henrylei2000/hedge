@@ -2,30 +2,36 @@ from strategy import Strategy
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
-import itertools
 
 
 class CandleStrategy(Strategy):
 
-    def interpret(self, point, index, peaks, valleys):
+    def interpret(self, p, index, peaks, valleys):
         pre_point, at_point, post_point = '', '', ''
         ca = self.CandleAnalyzer(self)
         ca.atr()
         ca.rvol()
         ca.cluster_volume()
-        p = point
-        peak = self.data.iloc[p]
         # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
-
-        low = max([x for x in valleys if x < p], default=0)
-        high = next((x for x in valleys if x > p), index)
+        type = ''
+        if p in peaks:
+            type = 'peak'
+            peak = self.data.iloc[p]
+            low = max([x for x in valleys if x < p], default=0)
+            high = next((x for x in valleys if x > p), index)
+        elif p in valleys:
+            type = 'valley'
+            peak = self.data.iloc[p]
+            low = max([x for x in peaks if x < p], default=0)
+            high = next((x for x in peaks if x > p), index)
         cv0, c0, trend_v0 = ca.cluster(low, p)
+        self.summarize_pre_peak_volume(low, p)
         cv, c, trend_v = ca.cluster(p, p + 1)
         cv1, c1, trend_v1 = ca.cluster(p + 1, high + 1)
         print(f"{low} - {p} - {high}")
-        print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before peak @{p}")
-        print(f"🔴vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at peak @{p}")
-        print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after peak @{p}")
+        print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before {type} @{p}")
+        print(f"🔴vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at {type} @{p}")
+        print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after {type} @{p}")
         # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
         # scenario: pre-peak, peak, post-peak
         # low, low, low -> weak reversal, weak breakout, indecision
@@ -60,6 +66,20 @@ class CandleStrategy(Strategy):
             case _:
                 # Default business logic for all other combinations
                 print(f"Processing default logic for {v}")
+
+    def summarize_pre_peak_volume(self, start, end):
+        data = self.data
+        pre_peak_vol = data['normalized_volume'].iloc[start:end]
+
+        if end - start > 1:
+            vol_average = pre_peak_vol.mean()
+            avg_increase = (pre_peak_vol.iloc[-1] - pre_peak_vol.iloc[0]) / (end - start)
+            vol_std = pre_peak_vol.std()
+            vol_max_min_ratio = pre_peak_vol.max() / max(pre_peak_vol.min(), 1)  # Avoid zero division
+            vol_trend_slope = np.polyfit(range(end - start), pre_peak_vol, 1)[0]  # Linear regression slope
+
+            print(f"[{start} - {end}] avg_increase {avg_increase:.2f}, vol_std {vol_std:.2f} vs {vol_average:.2f}, vol_max_min_ratio {vol_max_min_ratio:.2f}, vol_trend_slope {vol_trend_slope:.2f}")
+
 
     def candle(self):
         buckets_in_use = 0
@@ -122,13 +142,10 @@ class CandleStrategy(Strategy):
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     # evaluate resistance: momentum(/), demand-supply, market structure, smart money(?)
+                    self.scenario(self.interpret(v, index, peaks, valleys))
                     cv0, c0, trend_v0 = ca.cluster(v - 3, v)
                     cv, c, trend_v = ca.cluster(v, v + 1)
                     cv1, c1, trend_v1 = ca.cluster(v + 1, index + 1)
-                    print(f"🛬vol {cv0:3d}, trend_v {trend_v0:3d}, candle {c0} before valley @{v}")
-                    print(f"🟢vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at valley @{v}")
-                    print(f"🛫vol {cv1:3d}, trend_v {trend_v1:3d}, candle {c1} after valley @{v}")
-
                     """ 
                     Pre-Valley: 📉 📉 📈  (Moderate selling)
                     Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
