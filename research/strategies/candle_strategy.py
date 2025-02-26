@@ -52,20 +52,92 @@ class CandleStrategy(Strategy):
                 # Default business logic for all other combinations
                 print(f"Processing default logic for {v}")
 
-    def summarize(self, start, end):
+    import numpy as np
+
+    def summarize(self, start, end, key_point=None, structure_type="peak"):
+        volume_pattern, trading_signal, key_point_signal = '', '', ''
         data = self.data
-        pre_peak_vol = data['normalized_volume'].iloc[start:end]
+        vol = data['normalized_volume'].iloc[start:end]
+        vwap = data['vwap'].iloc[start:end]
+        price = data['close'].iloc[start:end]
 
         if end - start > 1:
-            vol_average = pre_peak_vol.mean()
-            avg_increase = (pre_peak_vol.iloc[-1] - pre_peak_vol.iloc[0]) / (end - start)
-            vol_std = pre_peak_vol.std()
-            vol_max_min_ratio = pre_peak_vol.max() / max(pre_peak_vol.min(), 1)  # Avoid zero division
-            vol_trend_slope = np.polyfit(range(end - start), pre_peak_vol, 1)[0]  # Linear regression slope
+            vol_average = vol.mean()
+            avg_increase = (vol.iloc[-1] - vol.iloc[0]) / (end - start)
+            vol_std = vol.std()
+            vol_max_min_ratio = vol.max() / max(vol.min(), 1)  # Avoid zero division
+            vol_trend_slope = np.polyfit(range(end - start), vol, 1)[0]  # Linear regression slope
 
-            print(f"[{start} - {end}] avg_increase {avg_increase:.2f}, vol_std {vol_std:.2f} vs {vol_average:.2f}, vol_max_min_ratio {vol_max_min_ratio:.2f}, vol_trend_slope {vol_trend_slope:.2f}")
+            # **Identify Key Price Movement**
+            price_trend_slope = np.polyfit(range(end - start), price, 1)[0]  # Price trend slope
+            vwap_trend_slope = np.polyfit(range(end - start), vwap, 1)[0]  # VWAP trend slope
+            price_change = price.iloc[-1] - price.iloc[0]  # Absolute price movement
 
-        return 'low'
+            # **Generalized Volume Pattern Classification**
+            if vol_trend_slope > 0:
+                if vol_std / vol_average < 0.2:
+                    volume_pattern = "gradual increase"
+                elif vol_max_min_ratio > 2:
+                    volume_pattern = "sudden increase"
+                else:
+                    volume_pattern = "erratic increase"
+            else:
+                if vol_std / vol_average < 0.2:
+                    volume_pattern = "gradual decrease"
+                elif vol_max_min_ratio > 2:
+                    volume_pattern = "sudden decrease"
+                else:
+                    volume_pattern = "erratic decrease"
+
+            # **Determine General Trading Scenario**
+            if price_trend_slope > 0 and volume_pattern == "gradual increase":
+                trading_signal = "bullish continuation"
+            elif price_trend_slope < 0 and volume_pattern == "gradual decrease":
+                trading_signal = "bearish continuation"
+            elif price_change < 0 and volume_pattern == "sudden increase":
+                trading_signal = "bear trap (liquidity grab) - reversal up"
+            elif price_change > 0 and volume_pattern == "sudden decrease":
+                trading_signal = "bull trap (liquidity grab) - reversal down"
+            else:
+                trading_signal = "neutral"
+
+            # **Key-Point Analysis (Peak, Valley, or Breakout)**
+            key_point_signal = "neutral"
+            if key_point is not None and 0 < key_point < len(data) - 1:
+                key_vol = data['normalized_volume'].iloc[key_point - 1:key_point + 2]
+                key_price = data['close'].iloc[key_point - 1:key_point + 2]
+                key_vwap = data['vwap'].iloc[key_point - 1:key_point + 2]
+
+                key_vol_trend = np.polyfit(range(3), key_vol, 1)[0]  # Volume trend at key point
+                key_price_trend = np.polyfit(range(3), key_price, 1)[0]  # Price trend at key point
+                key_vwap_trend = np.polyfit(range(3), key_vwap, 1)[0]  # VWAP trend at key point
+
+                if structure_type == "peak":
+                    if key_vol_trend > 0 and key_price_trend > 0:
+                        key_point_signal = "momentum peak (breakout potential)"
+                    elif key_vol_trend < 0 < key_price_trend:
+                        key_point_signal = "buyer exhaustion (weak breakout)"
+                    elif key_vol_trend > 0 > key_price_trend:
+                        key_point_signal = "volume spike reversal (supply zone)"
+                    else:
+                        key_point_signal = "calm peak (potential distribution)"
+                elif structure_type == "valley":
+                    if key_vol_trend > 0 and key_price_trend > 0:
+                        key_point_signal = "momentum valley (breakout potential)"
+                    elif key_vol_trend < 0 < key_price_trend:
+                        key_point_signal = "strong demand absorption (reversal up)"
+                    elif key_vol_trend > 0 > key_price_trend:
+                        key_point_signal = "false breakdown (liquidity grab)"
+                    else:
+                        key_point_signal = "calm valley (accumulation zone)"
+
+            # **Print Summary**
+            print(f"[{start} - {end}] Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
+            print(f"    - Avg Increase: {avg_increase:.2f}, Vol Std: {vol_std:.2f}, Vol Max/Min Ratio: {vol_max_min_ratio:.2f}, Vol Trend Slope: {vol_trend_slope:.2f}")
+            print(f"    - Price Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
+            print(f"[Key Point Analysis] Structure: {structure_type}, Signal: {key_point_signal}")
+
+        return volume_pattern, trading_signal, key_point_signal
 
     def candle(self):
         buckets_in_use = 0
@@ -132,11 +204,6 @@ class CandleStrategy(Strategy):
                     cv0, c0, trend_v0 = ca.cluster(v - 3, v)
                     cv, c, trend_v = ca.cluster(v, v + 1)
                     cv1, c1, trend_v1 = ca.cluster(v + 1, index + 1)
-                    """ 
-                    Pre-Valley: 📉 📉 📈  (Moderate selling)
-                    Valley: 📊 📊 📊 📉 (Fake breakdown, liquidity grab, wick)
-                    Post-Valley: 📉 📈  📈 📈 (Volume increases on reversal)
-                    """
                     if 70 > trend_v0 + trend_v > 20 and 30 < cv0 < 60 and cv > 40 and cv1 > 50 :
                         print(f"moderate, keep, increase -> reversal")
                         print("🏄‍♀️" * 3)
