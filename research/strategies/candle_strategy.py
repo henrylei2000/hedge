@@ -45,6 +45,12 @@ class CandleStrategy(Strategy):
             case _:
                 print(f"Processing default logic for {structure}")
 
+        if 'bear trap' in structure[0] and 'reversal up' in structure[2]:
+            position = 1
+
+        if 'bull trap' in structure[0] and 'reversal down' in structure[2]:
+            position = -1
+
         return position
 
     def summarize(self, p, index, peaks, valleys):
@@ -59,12 +65,12 @@ class CandleStrategy(Strategy):
         start, end, structure = 0, -1, ''
         if p in peaks:
             structure = 'peak'
-            start = max([x for x in valleys if x < p], default=0)
-            end = next((x for x in valleys if x > p), index)
+            start = max([x for x in valleys if x < p - 1], default=0)
+            end = next((x for x in valleys if x > p + 1), index)
         elif p in valleys:
             structure = 'valley'
-            start = max([x for x in peaks if x < p], default=0)
-            end = next((x for x in peaks if x > p), index)
+            start = max([x for x in peaks if x < p - 1], default=0)
+            end = next((x for x in peaks if x > p + 1), index)
 
         # **Key-Point Analysis (Peak, Valley, or Breakout)**
         key_point_signal = "neutral"
@@ -75,6 +81,8 @@ class CandleStrategy(Strategy):
         key_vol_trend = np.polyfit(range(3), key_vol, 1)[0]  # Volume trend at key point
         key_price_trend = np.polyfit(range(3), key_price, 1)[0]  # Price trend at key point
         key_vwap_trend = np.polyfit(range(3), key_vwap, 1)[0]  # VWAP trend at key point
+
+        follow_through = ca.follow_through(p + 1, end + 1)
 
         if structure == "peak":
             if key_vol_trend > 0 and key_price_trend > 0:
@@ -97,7 +105,8 @@ class CandleStrategy(Strategy):
 
         print(f"🔴[{p} - {structure}] Signal: {key_point_signal}")
 
-        phases = [(start, p), (p - 1, p + 2), (p + 1, end + 1)]
+        phases = [(start, p), (p + 1, end + 1)]
+        print(f"{phases}")
 
         for phase in phases:
             start, end = phase[0], phase[1]
@@ -106,7 +115,8 @@ class CandleStrategy(Strategy):
                 cv, c, trend_v = ca.cluster(start, end)
                 print(f"🔴[{start} - {end - 1}] vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at {structure} @{p}")
 
-                vol = data['normalized_volume'].iloc[start:end]
+                vol = data['volume'].iloc[start:end]
+                nvol = data['normalized_volume'].iloc[start:end]
                 vwap = data['vwap'].iloc[start:end]
                 price = data['close'].iloc[start:end]
 
@@ -126,14 +136,14 @@ class CandleStrategy(Strategy):
                     if vol_std / vol_average < 0.2:
                         volume_pattern = "gradual increase"
                     elif vol_max_min_ratio > 2:
-                        volume_pattern = "sudden increase"
+                        volume_pattern = "strong increase"
                     else:
                         volume_pattern = "erratic increase"
                 else:
                     if vol_std / vol_average < 0.2:
                         volume_pattern = "gradual decrease"
                     elif vol_max_min_ratio > 2:
-                        volume_pattern = "sudden decrease"
+                        volume_pattern = "strong decrease"
                     else:
                         volume_pattern = "erratic decrease"
 
@@ -144,9 +154,9 @@ class CandleStrategy(Strategy):
                     trading_signal = "bullish continuation"
                 elif price_trend_slope < 0 and volume_pattern == "gradual decrease":
                     trading_signal = "bearish continuation"
-                elif price_change < 0 and volume_pattern == "sudden increase":
+                elif price_change < 0 and volume_pattern == "strong increase":
                     trading_signal = "bear trap (liquidity grab) - reversal up"
-                elif price_change > 0 and volume_pattern == "sudden decrease":
+                elif price_change > 0 and volume_pattern == "strong decrease":
                     trading_signal = "bull trap (liquidity grab) - reversal down"
                 else:
                     trading_signal = "neutral"
@@ -161,7 +171,7 @@ class CandleStrategy(Strategy):
             else:
                 print(f"🔴[{start} - {end - 1}] Too close to call, wait for {2 - end + start} more bar(s) at {start + 1}")
 
-        return patterns[0], key_point_signal, patterns[-1]
+        return patterns[0] + ', ' + trading_signals[0], key_point_signal, follow_through
 
     def candle(self):
         self.normalized('trending')
@@ -194,23 +204,24 @@ class CandleStrategy(Strategy):
             valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
             new_peaks = [p for p in peaks if p > distance and p not in prev_peaks and index - p < 20]
             new_valleys = [v for v in valleys if v > distance and v not in prev_valleys and index - v < 20]
+
             limiter = "- " * 36
-            if len(new_peaks):
+            if len(peaks) and index > peaks[-1] + 1 and len(new_peaks):
                 print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
                     position = self.scenario(self.summarize(p, index, peaks, valleys))
                     print(limiter)
-            if len(new_valleys):
+                prev_peaks.update(peaks)
+            if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     position = self.scenario(self.summarize(v, index, peaks, valleys))
                     print(limiter)
-            prev_peaks.update(peaks)
-            prev_valleys.update(valleys)
+                prev_valleys.update(valleys)
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([20, 90], ['normalized_tension', 'normalized_volume'])
+        self.snapshot([100, 200], ['tension', 'volume'])
 
     def signal(self):
         self.candle()
@@ -324,119 +335,26 @@ class CandleStrategy(Strategy):
 
             return cluster_volume // (end - start), [cluster_upper, cluster_body, cluster_lower], cluster_volume_diff // (end - start)
 
-        def follow_up(self, start, end):            
+        def follow_through(self, start, end):
             data = self.data
-            signal = []
-            prev_bars = []  # Stores past bars for analysis
-            rejection_count = 0  # Track consecutive bearish bars after resistance
-            breakout_count = 0  # Track consecutive bullish bars after breakout
-            confidence_score = 0  # Track confidence of breakout/rejection
-            breakout_monitor = 0  # Monitor breakout sustainability
-            breakout_failed = False  # Track failed breakouts
+
+            print(f"Inside follow_through {start} - {end}")
+            signal = 'neutral'
 
             for i in range(start, end):
-                prev_row, row = data.iloc[i], data.iloc[i+1]
+                row = data.iloc[i]
                 upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
                 lower = int(row['lower_wick'] * 100)
                 span = row['normalized_span']
                 volume = row['normalized_volume']
-
                 close = row['close']
                 strength = row['strength']
 
-                prev_upper = int(prev_row['upper_wick'] * 100)
-                prev_body = int(prev_row['body_size'] * 100)
-                prev_lower = int(prev_row['lower_wick'] * 100)
-                prev_span = prev_row['normalized_span']
-                prev_volume = prev_row['normalized_volume']
-                prev_close = prev_row['close']
-                prev_high = prev_row['high']
-                prev_low = prev_row['low']
-
-                prev_strength = prev_row['strength']
-                prev_atr = prev_row['atr']
-                prev_rvol = prev_row['rvol']
-
-                # Resistance Detection
-                if prev_strength < 0 and prev_upper > 30 and abs(prev_body) > 30:
-                    if prev_volume > 60:
-                        signal.append(f"Bar {i}: Potential strong resistance (long upper wick, high volume)")
-                    elif prev_volume > 40:
-                        signal.append(f"Bar {i}: Potential weak resistance (long upper wick, moderate volume)")
-
-                    # Check for breakout attempt
-                    if close > prev_high and strength > 0:  # Require MACD confirmation
-                        breakout_count += 1
-                        confidence_score += volume // 20  # Increase confidence based on volume
-                        breakout_monitor = 3  # Monitor for 3 bars after breakout
-                    else:
-                        breakout_count = 0  # Reset breakout count if price falls back
-                        confidence_score = 0  # Reset confidence score
-
-                    # Monitor breakout sustainability
-                    if breakout_monitor > 0:
-                        breakout_monitor -= 1
-                        if close < prev_high:
-                            confidence_score -= 2  # Reduce confidence if price falls back
-                        if breakout_monitor == 0 and confidence_score < 5:
-                            signal.append(f"Bar {i}: Breakout failed, price returned to resistance zone")
-
-                    # Check for rejection (multi-bar confirmation)
-                    if close < prev_close and body < -30 and volume > 50 and strength < prev_strength:
-                        rejection_count += 1
-                        confidence_score += volume // 20  # Increase confidence based on volume
-                    else:
-                        rejection_count = 0  # Reset count if rejection not confirmed
-                        confidence_score = 0  # Reset confidence score
-
-                    if rejection_count >= 2 and confidence_score > 5:
-                        signal.append(
-                            f"Bar {i}: Confirmed resistance rejection (strong sell signal, confidence {confidence_score})")
-                    elif rejection_count >= 2:
-                        signal.append(
-                            f"Bar {i}: Confirmed resistance rejection (weak sell signal, confidence {confidence_score})")
-                    rejection_count = 0  # Reset count after confirming rejection
-
-                # Support Detection
-                if prev_strength > 0 and prev_lower > 30 and abs(prev_body) > 30:
-                    if prev_volume > 60:
-                        signal.append(f"Bar {i}: Potential strong support (long lower wick, high volume)")
-                    elif prev_volume > 40:
-                        signal.append(f"Bar {i}: Potential weak support (long lower wick, moderate volume)")
-
-                    # Check for breakdown attempt
-                    if close < prev_low and strength < 0:  # Require MACD confirmation
-                        breakout_count += 1
-                        confidence_score += volume // 20  # Increase confidence based on volume
-                        breakout_monitor = 3  # Monitor for 3 bars after breakdown
-                    else:
-                        breakout_count = 0  # Reset breakout count if price rises back
-                        confidence_score = 0  # Reset confidence score
-
-                    # Monitor breakdown sustainability
-                    if breakout_monitor > 0:
-                        breakout_monitor -= 1
-                        if close > prev_low:
-                            confidence_score -= 2  # Reduce confidence if price returns to support
-                        if breakout_monitor == 0 and confidence_score < 5:
-                            signal.append(f"Bar {i}: Breakdown failed, price returned to support zone")
-
-                    # Check for bounce confirmation (multi-bar validation)
-                    if close > prev_close and body > 30 and volume > 50 and strength > prev_strength:
-                        rejection_count += 1
-                        confidence_score += volume // 20  # Increase confidence based on volume
-                    else:
-                        rejection_count = 0  # Reset count if bounce not confirmed
-                        confidence_score = 0  # Reset confidence score
-
-                    if rejection_count >= 2 and confidence_score > 5:
-                        signal.append(
-                            f"Bar {i}: Confirmed support bounce (strong buy signal, confidence {confidence_score})")
-                    elif rejection_count >= 2:
-                        signal.append(
-                            f"Bar {i}: Confirmed support bounce (weak buy signal, confidence {confidence_score})")
-                    rejection_count = 0  # Reset count after confirming support bounce
+                if body > 40:
+                    signal = 'reversal up'
+                if body < -30:
+                    signal = 'reversal down'
 
             return signal
 
@@ -546,20 +464,19 @@ class CandleStrategy(Strategy):
                         todos.append((idx, 'weak resistance'))
 
                 # Support (long lower wick with high volume confirms demand)
-                if strength < 0 and lower > 30 and span > 20:
+                if strength < 0 and lower > 25 and span > 20:
                     if volume > 60:
                         signal.append("Potential strong support (long lower wick, high volume)")
-                        todos.append((idx, 'strong support'))
                     elif volume > 40:
                         signal.append("Potential weak support (long lower wick, moderate volume)")
 
                 # Buying Pressure (strong bullish body, rising volume, and trend shift)
                 if body > 50 and volume > 60 and trend > 10:
-                    signal.append("Bullish: Buying pressure detected")
+                    signal.append("Bullish: Buying pressure detected (body, vol, trend)")
 
                 # Selling Pressure (strong bearish body, rising volume, and downward trend shift)
                 if body < -50 and volume > 60 and trend < -10:
-                    signal.append("Bearish: Selling pressure detected")
+                    signal.append("Bearish: Selling pressure detected (body, vol, trend)")
 
                 prev_row = data.iloc[idx - 1]
                 prev_upper = int(prev_row['upper_wick'] * 100)
