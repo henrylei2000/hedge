@@ -57,7 +57,7 @@ class CandleStrategy(Strategy):
         data = self.data
         # **Key-Point Analysis (Peak, Valley, or Breakout)**
         key_point_signal = "neutral"
-        key_vol = data['normalized_volume'].iloc[p - 1:p + 2]
+        key_vol = data['volume'].iloc[p - 1:p + 2]
         key_price = data['close'].iloc[p - 1:p + 2]
         key_vwap = data['vwap'].iloc[p - 1:p + 2]
 
