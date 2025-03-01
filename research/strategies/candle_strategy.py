@@ -53,25 +53,8 @@ class CandleStrategy(Strategy):
 
         return position
 
-    def summarize(self, p, index, peaks, valleys):
-        patterns, trading_signals = [], []
-
+    def keypoint(self, p, structure):
         data = self.data
-        ca = self.CandleAnalyzer(self)
-        ca.atr()
-        ca.rvol()
-        ca.cluster_volume()
-
-        start, end, structure = 0, -1, ''
-        if p in peaks:
-            structure = 'peak'
-            start = max([x for x in valleys if x < p - 1], default=0)
-            end = next((x for x in valleys if x > p + 1), index)
-        elif p in valleys:
-            structure = 'valley'
-            start = max([x for x in peaks if x < p - 1], default=0)
-            end = next((x for x in peaks if x > p + 1), index)
-
         # **Key-Point Analysis (Peak, Valley, or Breakout)**
         key_point_signal = "neutral"
         key_vol = data['normalized_volume'].iloc[p - 1:p + 2]
@@ -81,8 +64,6 @@ class CandleStrategy(Strategy):
         key_vol_trend = np.polyfit(range(3), key_vol, 1)[0]  # Volume trend at key point
         key_price_trend = np.polyfit(range(3), key_price, 1)[0]  # Price trend at key point
         key_vwap_trend = np.polyfit(range(3), key_vwap, 1)[0]  # VWAP trend at key point
-
-        follow_through = ca.follow_through(p + 1, end + 1)
 
         if structure == "peak":
             if key_vol_trend > 0 and key_price_trend > 0:
@@ -104,7 +85,29 @@ class CandleStrategy(Strategy):
                 key_point_signal = "calm valley"
 
         print(f"🔴[{p} - {structure}] Signal: {key_point_signal}")
+        return key_point_signal
 
+    def summarize(self, p, index, peaks, valleys):
+        patterns, trading_signals = [], []
+
+        data = self.data
+        ca = self.CandleAnalyzer(self)
+        ca.atr()
+        ca.rvol()
+        ca.cluster_volume()
+
+        start, end, structure = 0, -1, ''
+        if p in peaks:
+            structure = 'peak'
+            start = max([x for x in valleys if x < p - 1], default=0)
+            end = next((x for x in valleys if x > p + 1), index)
+        elif p in valleys:
+            structure = 'valley'
+            start = max([x for x in peaks if x < p - 1], default=0)
+            end = next((x for x in peaks if x > p + 1), index)
+
+        key_point_signal = self.keypoint(p, structure)
+        follow_through = ca.follow_through(p + 1, end + 1)
         phases = [(start, p), (p + 1, end + 1)]
         print(f"{phases}")
 
@@ -352,9 +355,9 @@ class CandleStrategy(Strategy):
                 strength = row['strength']
 
                 if body > 40:
-                    signal = 'reversal up'
+                    return 'reversal up'
                 if body < -30:
-                    signal = 'reversal down'
+                    return 'reversal down'
 
             return signal
 
@@ -407,7 +410,6 @@ class CandleStrategy(Strategy):
                 span = row['normalized_span']
                 volume = row['normalized_volume']
                 trend = row['normalized_trending']
-                trend_clustered_volume = row['trend_clustered_volume']
                 trend_clustered_volume_avg = row['trend_clustered_volume_avg']
                 vwap = row['vwap']
                 normalized_vwap = row['normalized_vwap']
