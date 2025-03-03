@@ -338,16 +338,14 @@ class Strategy:
         rows = self.data.iloc[interval[0]:interval[1]]
         prices, lows, highs = rows['close'], rows['low'], rows['high']
 
-        distance = 8
-        prominence = self.data.iloc[0]['close'] * 0.0015
-
-        peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
+        distance = 5
+        peaks, _ = find_peaks(prices, distance=distance)
         peak_indices = np.array(peaks)
-        valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
+        valleys, _ = find_peaks(-prices, distance=distance)
         valley_indices = np.array(valleys)
-        low_valleys, _ = find_peaks(-lows, distance=distance, prominence=prominence)
+        low_valleys, _ = find_peaks(-lows, distance=distance)
         low_valley_indices = np.array(low_valleys)
-        high_peaks, _ = find_peaks(highs, distance=distance, prominence=prominence)
+        high_peaks, _ = find_peaks(highs, distance=distance)
         high_peak_indices = np.array(high_peaks)
 
         buy_signals = rows[rows['position'] > 0]
@@ -391,17 +389,15 @@ class Strategy:
                 alpha=.5, edgecolor='none')
 
         ax4 = ax1.twinx()
-        ax4.bar(np.arange(len(rows)), rows['volume'].values,  color='gray', alpha=0.2, label='volume')
+        ax4.bar(rows.index, rows['volume'].values,  color='gray', alpha=0.2, label='volume')
 
         for i in range(len(indicators)):
             indicator = indicators[i]
             ax = ax2 if i == 0 else ax3
             obvs = rows[indicator]
-            obv_prominence = abs(self.data.iloc[rows[indicator].first_valid_index()][indicator]) * 0.0015
-            # Identify peaks and valleys
-            obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
+            obv_peaks, _ = find_peaks(obvs, distance=distance)
             obv_peak_indices = np.array(obv_peaks)
-            obv_valleys, _ = find_peaks(-obvs, distance=distance, prominence=obv_prominence)
+            obv_valleys, _ = find_peaks(-obvs, distance=distance)
             obv_valley_indices = np.array(obv_valleys)
 
             ax.plot(rows[indicator], label=f"{indicator}", color='lightblue')

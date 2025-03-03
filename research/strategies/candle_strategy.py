@@ -186,27 +186,32 @@ class CandleStrategy(Strategy):
 
         ca = self.CandleAnalyzer(self)
         data = ca.analyze()
-        total, collected = ca.trend_turn()
-        distance = 8
-        prominence = data.iloc[0]['close'] * 0.0015
+        distance = 5
         prev_peaks, prev_valleys = set(), set()
+        prev_vol_peaks, prev_vol_valleys = set(), set()
         positions = []
         for index in range(len(data)):
             row = data.iloc[index]
             position = 0
             visible_rows = data.loc[:index]
-            prices = visible_rows['close']
+            prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
 
-            trending_decision = '*' if index in collected else ' '
-            print(f"{index:3d}{trending_decision} 📈{row['normalized_trending']:4d}", end=" ")
+            print(f"{index:3d} 📈{row['normalized_trending']:4d}", end=" ")
             print(f"🚿{row['normalized_volume']:3d}, 🏹{row['normalized_tension']:4d}", end=" ")
             candle = f"🕯️{row['normalized_span']} ({row['upper_wick'] * 100:.0f} {row['body_size'] * 100:.0f} {row['lower_wick'] * 100:.0f})"
             print(f"{candle:18} {row['candlestick']}")
 
-            peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
-            valleys, _ = find_peaks(-prices, distance=distance, prominence=prominence)
-            new_peaks = [p for p in peaks if p > distance and p not in prev_peaks and index - p < 20]
-            new_valleys = [v for v in valleys if v > distance and v not in prev_valleys and index - v < 20]
+            peaks, _ = find_peaks(prices, distance=distance)
+            valleys, _ = find_peaks(-prices, distance=distance)
+            new_peaks = [p for p in peaks if p > distance and p not in prev_peaks and index - p < 5]
+            new_valleys = [v for v in valleys if v > distance and v not in prev_valleys and index - v < 5]
+
+            vol_peaks, _ = find_peaks(volumes, distance=distance)
+            vol_valleys, _ = find_peaks(-volumes, distance=distance)
+            new_vol_peaks = [p for p in vol_peaks if p > distance and p not in prev_vol_peaks and index - p < 5]
+            new_vol_valleys = [v for v in vol_valleys if v > distance and v not in prev_vol_valleys and index - v < 5]
+            print(f"num_peak_duplicates:  {len(set(peaks) & set(vol_peaks)) + len(set(peaks) & set(vol_valleys))} of {len(peaks)}")
+            print(f"num_valley_duplicates:  {len(set(valleys) & set(vol_valleys)) + len(set(valleys) & set(vol_peaks))} of {len(valleys)}")
 
             limiter = "- " * 36
             if len(peaks) and index > peaks[-1] + 1 and len(new_peaks):
@@ -224,7 +229,7 @@ class CandleStrategy(Strategy):
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([0, 50])
+        self.snapshot([50, 100])
 
     def signal(self):
         self.candle()
@@ -278,39 +283,6 @@ class CandleStrategy(Strategy):
 
             self.data = data
             return data
-
-        def trend_turn(self, rolling_window=5, trend_sensitivity=1):
-            numbers = self.data['normalized_trending']
-            if isinstance(numbers, pd.Series):
-                numbers = numbers.to_numpy()
-            collected_sum = 0
-            collected_numbers = []
-            collecting = False
-            for i in range(rolling_window, len(numbers)):
-                num = numbers[i]
-                if collecting:
-                    collected_sum += num
-                    collected_numbers.append(i)
-                if num > 80:
-                    collecting = True
-                    continue
-                if num < -80:
-                    collecting = False
-                    continue
-                recent_trend = numbers[max(0, i - rolling_window + 1): i + 1]
-
-                if len(recent_trend) > 1:
-                    trend_diff = pd.Series(recent_trend).diff().dropna().to_numpy()
-                    avg_trend = trend_diff.mean()  # Rolling trend calculation
-                else:
-                    avg_trend = 0
-
-                if avg_trend > trend_sensitivity:
-                    collecting = True
-                if avg_trend < -trend_sensitivity and num < -avg_trend * 2:
-                    collecting = False  # Stop collecting
-
-            return collected_sum, collected_numbers
 
         def get_cluster_info(self, start, end, label):
             vol, candle, trend_vol = self.cluster(start, end)
