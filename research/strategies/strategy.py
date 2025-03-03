@@ -329,7 +329,7 @@ class Strategy:
 
     def snapshot(self, interval, indicators=None):
         if indicators is None:
-            indicators = ['volume', 'gap']
+            indicators = ['tension', 'trending']
         if interval[1] == -1 or interval[1] > 389:
             interval[1] = 389
         if interval[1] - interval[0] < 10:
@@ -350,12 +350,9 @@ class Strategy:
         high_peaks, _ = find_peaks(highs, distance=distance, prominence=prominence)
         high_peak_indices = np.array(high_peaks)
 
-        # corrected_indices, valley_indices, peak_indices = Strategy.rearrange_valley_peak(valley_indices, valley_prices,peak_indices, peak_prices, prices.iloc[0])
-
-        # Get positions for buy (1) and sell (-1) signals
         buy_signals = rows[rows['position'] > 0]
         sell_signals = rows[rows['position'] < 0]
-        # Plotting
+
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10),
                                             gridspec_kw={'height_ratios': [3, 2, 2]})
 
@@ -393,11 +390,14 @@ class Strategy:
         ax1.bar(rows.index, abs(rows['close'] - rows['open']), bottom=rows[['open', 'close']].min(axis=1), color=colors,
                 alpha=.5, edgecolor='none')
 
+        ax4 = ax1.twinx()
+        ax4.bar(np.arange(len(rows)), rows['volume'].values,  color='gray', alpha=0.2, label='volume')
+
         for i in range(len(indicators)):
             indicator = indicators[i]
             ax = ax2 if i == 0 else ax3
             obvs = rows[indicator]
-            obv_prominence = abs(self.data.iloc[rows[indicator].first_valid_index()][indicator]) * 0.00125 + 0.005
+            obv_prominence = abs(self.data.iloc[rows[indicator].first_valid_index()][indicator]) * 0.0015
             # Identify peaks and valleys
             obv_peaks, _ = find_peaks(obvs, distance=distance, prominence=obv_prominence)
             obv_peak_indices = np.array(obv_peaks)
@@ -431,12 +431,20 @@ class Strategy:
 
     def plot(self):
         r = self.data.to_records()
-        fig, ax = plt.subplots(figsize=(18, 6))
-        ax.plot(np.arange(len(r)), r.close, linewidth=1.2, label='close')
+        fig, ax = plt.subplots(figsize=(18, 8))
+
+        ax.plot(np.arange(len(r)), r.close, linewidth=1.2, label='close', color='blue')
         ax.scatter(np.where(r.position > 0)[0], r.close[r.position > 0], marker='o', color='g', alpha=.5, s=120,
                    label='buy')
         ax.scatter(np.where(r.position < 0)[0], r.close[r.position < 0], marker='o', color='r', alpha=.5, s=120,
                    label='sell')
-        plt.title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')}")
-        ax.legend()
+
+        ax2 = ax.twinx()
+        ax2.bar(np.arange(len(r)), r.volume, color='gray', alpha=0.4, width=0.5, label='volume')
+
+        ax.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')}")
+        ax.legend(loc='upper right')
+
         plt.show()
+
+
