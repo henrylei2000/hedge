@@ -187,7 +187,7 @@ class CandleStrategy(Strategy):
         ca = self.CandleAnalyzer(self)
         data = ca.analyze()
         total, collected = ca.trend_turn()
-        distance = 8
+        distance = 5
         prominence = data.iloc[0]['close'] * 0.0015
         prev_peaks, prev_valleys = set(), set()
         positions = []
@@ -224,7 +224,7 @@ class CandleStrategy(Strategy):
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([100, 200], ['tension', 'volume'])
+        self.snapshot([0, 50], ['normalized_volume', 'volume'])
 
     def signal(self):
         self.candle()
