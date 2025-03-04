@@ -84,7 +84,7 @@ class CandleStrategy(Strategy):
             else:
                 key_point_signal = "calm valley"
 
-        print(f"🔴[{p} - {structure}] Signal: {key_point_signal}")
+        print(f"\t\t\t\t🔴[{p} - {structure}] Signal: {key_point_signal}")
         return key_point_signal
 
     def summarize(self, p, index, peaks, valleys):
@@ -109,14 +109,12 @@ class CandleStrategy(Strategy):
         key_point_signal = self.keypoint(p, structure)
         follow_through = ca.follow_through(p + 1, end + 1)
         phases = [(start, p), (p + 1, end + 1)]
-        print(f"{phases}")
 
         for phase in phases:
             start, end = phase[0], phase[1]
-
             if end - start > 1:
                 cv, c, trend_v = ca.cluster(start, end)
-                print(f"🔴[{start} - {end - 1}] vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at {structure} @{p}")
+                print(f"\t\t\t\t🔴[{start} - {end - 1}] vol {cv:3d}, trend_v {trend_v:3d}, candle {c} at {structure} @{p}")
 
                 vol = data['volume'].iloc[start:end]
                 nvol = data['normalized_volume'].iloc[start:end]
@@ -128,13 +126,10 @@ class CandleStrategy(Strategy):
                 vol_std = vol.std()
                 vol_max_min_ratio = vol.max() / max(vol.min(), 1)  # Avoid zero division
                 vol_trend_slope = np.polyfit(range(end - start), vol, 1)[0]  # Linear regression slope
-
-                # **Identify Key Price Movement**
                 price_trend_slope = np.polyfit(range(end - start), price, 1)[0]  # Price trend slope
                 vwap_trend_slope = np.polyfit(range(end - start), vwap, 1)[0]  # VWAP trend slope
                 price_change = price.iloc[-1] - price.iloc[0]  # Absolute price movement
 
-                # **Generalized Volume Pattern Classification**
                 if vol_trend_slope > 0:
                     if vol_std / vol_average < 0.2:
                         volume_pattern = "gradual increase"
@@ -165,12 +160,12 @@ class CandleStrategy(Strategy):
                     trading_signal = "neutral"
                 trading_signals.append(trading_signal)
 
-                print(f"Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
+                print(f"\t\t\t\tVolume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
                 print(
-                    f"Avg Increase: {avg_increase:.2f}, Vol Std: {vol_std:.2f} / {vol_average:.2f}, Vol Max/Min Ratio: {vol_max_min_ratio:.2f}, Vol Trend Slope: {vol_trend_slope:.2f}")
-                print(f"Price Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
+                    f"\t\t\t\tAvg Increase: {avg_increase:.2f}, Vol Std: {vol_std:.2f} / {vol_average:.2f}, Vol Max/Min Ratio: {vol_max_min_ratio:.2f}, Vol Trend Slope: {vol_trend_slope:.2f}")
+                print(f"\t\t\t\tPrice Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
             else:
-                print(f"🔴[{start} - {end - 1}] Too close to call, wait for {2 - end + start} more bar(s) at {start + 1}")
+                print(f"\t\t\t\t🔴[{start} - {end - 1}] Too close to call, wait for {2 - end + start} more bar(s) at {start + 1}")
 
         return patterns[0] + ', ' + trading_signals[0], key_point_signal, follow_through
 
@@ -178,25 +173,22 @@ class CandleStrategy(Strategy):
         self.normalized('trending')
         self.normalized('volume')
         self.normalized('vwap')
-        self.normalized('tension')
-        self.normalized('span')
-        self.normalized('macd')
-
         ca = self.CandleAnalyzer(self)
         data = ca.analyze()
         distance = 5
         prev_peaks, prev_valleys = set(), set()
         prev_vol_peaks, prev_vol_valleys = set(), set()
         positions = []
+        base = data.iloc[0]['close']
         for index in range(len(data)):
             row = data.iloc[index]
             position = 0
             visible_rows = data.loc[:index]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
 
-            print(f"{index:3d} 📈{row['normalized_trending']:4d}", end=" ")
-            print(f"🚿{row['normalized_volume']:3d}, 🏹{row['normalized_tension']:4d}", end=" ")
-            candle = f"🕯️{row['normalized_span']} ({row['upper_wick'] * 100:.0f} {row['body_size'] * 100:.0f} {row['lower_wick'] * 100:.0f})"
+            print(f"{index:3d} 📈{row['macd'] * 100:4.1f}", end=" ")
+            print(f"🚿{row['normalized_volume']:3d}, 🏹{int(row['tension']):4d}", end=" ")
+            candle = f"🕯️{int(row['span'] / base * 10000)} ({row['upper_wick'] * 100:.0f} {row['body_size'] * 100:.0f} {row['lower_wick'] * 100:.0f})"
             print(f"{candle:18} {row['candlestick']}")
 
             peaks, _ = find_peaks(prices, distance=distance)
@@ -209,26 +201,7 @@ class CandleStrategy(Strategy):
             new_vol_peaks = [p for p in vol_peaks if p > distance and p not in prev_vol_peaks and index - p < 5]
             new_vol_valleys = [v for v in vol_valleys if v > distance and v not in prev_vol_valleys and index - v < 5]
 
-            if len(set(new_peaks) & set(new_vol_peaks)) + len(set(new_peaks) & set(new_vol_valleys)) > 0:
-                print(f"peak_duplicates:  {set(new_peaks) & set(new_vol_peaks) | set(new_peaks) & set(new_vol_valleys)}")
-
-            if len(set(new_valleys) & set(new_vol_valleys)) + len(set(new_valleys) & set(new_vol_peaks)) > 0:
-                print(f"valley_duplicates:  {set(new_valleys) & set(new_vol_peaks) | set(new_valleys) & set(new_vol_valleys)}")
-
             limiter = "- " * 36
-            if len(peaks) and index > peaks[-1] + 1 and len(new_peaks):
-                print(f"{limiter} peaks found {new_peaks} @{index}")
-                for p in new_peaks:
-                    position = self.scenario(self.summarize(p, index, peaks, valleys))
-                    print(limiter)
-                prev_peaks.update(peaks)
-            if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
-                print(f"{limiter} valleys found {new_valleys} @{index}")
-                for v in new_valleys:
-                    position = self.scenario(self.summarize(v, index, peaks, valleys))
-                    print(limiter)
-                prev_valleys.update(valleys)
-
             if len(vol_peaks) and index > vol_peaks[-1] + 1 and len(new_vol_peaks):
                 print(f"{limiter} vol_peaks found {new_vol_peaks} @{index}")
                 prev_vol_peaks.update(vol_peaks)
@@ -236,10 +209,23 @@ class CandleStrategy(Strategy):
                 print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
                 prev_vol_valleys.update(vol_valleys)
 
+            if len(peaks) and index > peaks[-1] + 1 and len(new_peaks):
+                print(f"{limiter} peaks found {new_peaks} @{index}")
+                for p in new_peaks:
+                    if p in vol_peaks or p in vol_valleys:
+                        position = self.scenario(self.summarize(p, index, peaks, valleys))
+                prev_peaks.update(peaks)
+            if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
+                print(f"{limiter} valleys found {new_valleys} @{index}")
+                for v in new_valleys:
+                    if v in vol_peaks or v in vol_valleys:
+                        position = self.scenario(self.summarize(v, index, peaks, valleys))
+                prev_valleys.update(valleys)
+
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([350, 389])
+        # self.snapshot([350, 389])
 
     def signal(self):
         self.candle()
@@ -308,7 +294,6 @@ class CandleStrategy(Strategy):
                 upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
                 lower = int(row['lower_wick'] * 100)
-                span = row['normalized_span']
                 volume = row['normalized_volume']
                 volume_diff = row['normalized_volume_diff']
 
@@ -322,32 +307,20 @@ class CandleStrategy(Strategy):
 
         def follow_through(self, start, end):
             data = self.data
-
-            print(f"Inside follow_through {start} - {end}")
             signal = 'neutral'
-
             for i in range(start, end):
                 row = data.iloc[i]
-                upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
-                lower = int(row['lower_wick'] * 100)
-                span = row['normalized_span']
-                volume = row['normalized_volume']
-                close = row['close']
-                strength = row['strength']
-
                 if body > 40:
                     return 'reversal up'
                 if body < -30:
                     return 'reversal down'
-
             return signal
 
         def analyze(self, idx=0):
             signals = []
             positions = []
             todos = []
-
             self.atr()
             self.rvol()
             self.cluster_volume()
@@ -355,19 +328,20 @@ class CandleStrategy(Strategy):
                 data = self.data.iloc[idx-3:idx+2]
             else:
                 data = self.data
+
+            base = data.iloc[0]['close']
+
             for idx, row in data.iterrows():
                 upper = int(row['upper_wick'] * 100)
                 body = int(row['body_size'] * 100)
                 lower = int(row['lower_wick'] * 100)
-                span = row['normalized_span']
+                span = int(row['span'] / base * 10000)
                 volume = row['normalized_volume']
                 trend = row['normalized_trending']
                 trend_clustered_volume_avg = row['trend_clustered_volume_avg']
-                vwap = row['vwap']
                 normalized_vwap = row['normalized_vwap']
                 tension = row['tension']
                 price = row['close']
-                normalized_tension = row['normalized_tension']
                 macd = row['macd']
                 macd_signal = row['signal_line']
                 strength = row['strength']
@@ -387,7 +361,7 @@ class CandleStrategy(Strategy):
                 # stop loss operations
                 pass
 
-                if abs(body) > 80 and span > 50:
+                if abs(body) > 80 and span > 25:
                     direction = "bullish" if body > 0 else "bearish"
                     if volume > 60:
                         signal.append(f"Strong {direction} move with high volume")
@@ -405,11 +379,11 @@ class CandleStrategy(Strategy):
                 elif tension < 0 < body and strength < 0:
                     signal.append("Bearish: Price < VWAP, potential bearish continuation after a rally")
 
-                if abs(normalized_tension) > 70:
+                if abs(tension) > 25:
                     signal.append("Reversal: High tension between price and VWAP, potential reversion move")
 
                 # Resistance (long upper wick with high volume strengthens the signal)
-                if strength > 0 and upper > 30 and span > 20:
+                if strength > 0 and upper > 30 and span > 15:
                     if volume > 60:
                         signal.append("Potential strong resistance (long upper wick, high volume)")
                         todos.append((idx, 'strong resistance'))
@@ -418,7 +392,7 @@ class CandleStrategy(Strategy):
                         todos.append((idx, 'weak resistance'))
 
                 # Support (long lower wick with high volume confirms demand)
-                if strength < 0 and lower > 25 and span > 20:
+                if strength < 0 and lower > 25 and span > 15:
                     if volume > 60:
                         signal.append("Potential strong support (long lower wick, high volume)")
                     elif volume > 40:
@@ -433,10 +407,7 @@ class CandleStrategy(Strategy):
                     signal.append("Bearish: Selling pressure detected (body, vol, trend)")
 
                 prev_row = data.iloc[idx - 1]
-                prev_upper = int(prev_row['upper_wick'] * 100)
                 prev_body = int(prev_row['body_size'] * 100)
-                prev_lower = int(prev_row['lower_wick'] * 100)
-                prev_span = prev_row['normalized_span']
                 prev_volume = prev_row['normalized_volume']
                 prev_trend = prev_row['trending']
                 prev_vwap = prev_row['normalized_vwap']
@@ -473,7 +444,7 @@ class CandleStrategy(Strategy):
                     signal.append("Bearish: MACD momentum decreasing")
 
                 # Exit if VWAP reversion is likely
-                if 0 < trend < 10 and abs(normalized_tension) > 50 and volume < 40:
+                if 0 < trend < 10 and abs(tension) > 35 and volume < 40:
                     signal.append("Strong VWAP mean reversion detected, trend weakening, low volume")
 
                 if 0 < trend < 10 and rvol < self.rvol_threshold and volume < 40:
