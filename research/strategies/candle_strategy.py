@@ -163,10 +163,8 @@ class CandleStrategy(Strategy):
                     trading_signal = "bull trap (liquidity grab) - reversal down"
                 else:
                     trading_signal = "neutral"
-
                 trading_signals.append(trading_signal)
 
-                # **Print Summary**
                 print(f"Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
                 print(
                     f"Avg Increase: {avg_increase:.2f}, Vol Std: {vol_std:.2f} / {vol_average:.2f}, Vol Max/Min Ratio: {vol_max_min_ratio:.2f}, Vol Trend Slope: {vol_trend_slope:.2f}")
@@ -210,8 +208,12 @@ class CandleStrategy(Strategy):
             vol_valleys, _ = find_peaks(-volumes, distance=distance)
             new_vol_peaks = [p for p in vol_peaks if p > distance and p not in prev_vol_peaks and index - p < 5]
             new_vol_valleys = [v for v in vol_valleys if v > distance and v not in prev_vol_valleys and index - v < 5]
-            print(f"num_peak_duplicates:  {len(set(peaks) & set(vol_peaks)) + len(set(peaks) & set(vol_valleys))} of {len(peaks)}")
-            print(f"num_valley_duplicates:  {len(set(valleys) & set(vol_valleys)) + len(set(valleys) & set(vol_peaks))} of {len(valleys)}")
+
+            if len(set(new_peaks) & set(new_vol_peaks)) + len(set(new_peaks) & set(new_vol_valleys)) > 0:
+                print(f"peak_duplicates:  {set(new_peaks) & set(new_vol_peaks) | set(new_peaks) & set(new_vol_valleys)}")
+
+            if len(set(new_valleys) & set(new_vol_valleys)) + len(set(new_valleys) & set(new_vol_peaks)) > 0:
+                print(f"valley_duplicates:  {set(new_valleys) & set(new_vol_peaks) | set(new_valleys) & set(new_vol_valleys)}")
 
             limiter = "- " * 36
             if len(peaks) and index > peaks[-1] + 1 and len(new_peaks):
@@ -226,10 +228,18 @@ class CandleStrategy(Strategy):
                     position = self.scenario(self.summarize(v, index, peaks, valleys))
                     print(limiter)
                 prev_valleys.update(valleys)
+
+            if len(vol_peaks) and index > vol_peaks[-1] + 1 and len(new_vol_peaks):
+                print(f"{limiter} vol_peaks found {new_vol_peaks} @{index}")
+                prev_vol_peaks.update(vol_peaks)
+            if len(vol_valleys) and index > vol_valleys[-1] + 1 and len(new_vol_valleys):
+                print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
+                prev_vol_valleys.update(vol_valleys)
+
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([50, 100])
+        self.snapshot([350, 389])
 
     def signal(self):
         self.candle()
@@ -332,36 +342,6 @@ class CandleStrategy(Strategy):
                     return 'reversal down'
 
             return signal
-
-        def detect_momentum(self, idx, window=10):
-            data = self.data[:idx + 1]
-            price = data.iloc[idx]['close']
-            recent_prices = data['close'].iloc[-window:]
-            recent_macd = data['macd'].iloc[-window:]
-            recent_signal = data['signal_line'].iloc[-window:]
-            recent_strength = data['strength'].iloc[-window:]
-
-            # Identify MACD trend direction
-            macd_trend = np.polyfit(range(window), recent_macd, 1)[0]  # Linear regression slope
-            strength_trend = np.polyfit(range(window), recent_strength, 1)[0]  # Slope of MACD strength
-
-            # Determine price behavior relative to key level
-            price_near_level = abs(recent_prices.iloc[-1] - price) <= price * 0.02  # Within 2% of level
-
-            # Conditions for breakout and breakdown
-            if price_near_level and recent_macd.iloc[-1] > recent_signal.iloc[-1] and macd_trend > 0:
-                return 'breakout'
-            elif price_near_level and recent_macd.iloc[-1] < recent_signal.iloc[-1] and macd_trend < 0:
-                return 'breakdown'
-
-            # Detect divergence for rejection or bounce
-            price_trend = np.polyfit(range(window), recent_prices, 1)[0]  # Price trend slope
-            if price_near_level and price_trend > 0 > macd_trend:
-                return 'rejection'
-            elif price_near_level and price_trend < 0 < macd_trend:
-                return 'bounce'
-
-            return 'neutral'
 
         def analyze(self, idx=0):
             signals = []
