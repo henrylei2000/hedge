@@ -37,7 +37,6 @@ class Strategy:
                 print("No data found, please verify symbol and date range.")
 
     def predict(self):
-
         day = self.start.strftime('%Y-%m-%d')
         end_date = pd.to_datetime(day) - pd.DateOffset(days=1)
         print(end_date)
@@ -152,23 +151,26 @@ class Strategy:
 
             price_change_ratio = data['close'].pct_change()
             data['vpt'] = (price_change_ratio * data['volume']).cumsum()
-            data['rolling_vpt'] = data['vpt'].rolling(window=12).mean()
-
+            data['rolling_vpt'] = data['vpt'].rolling(window=signal_window).mean()
             data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
                            data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
-
-            data['rolling_obv'] = data['obv'].rolling(window=12).mean()
-            data['rolling_volume'] = data['obv'].rolling(window=3).mean()
-            data['volume_sma'] = data['volume'].rolling(window=5, min_periods=1).mean()
-            data['volume_spike'] = data['volume'] > (data['volume_sma'] * 1.618)
-            data['volume_drop'] = data['volume'] < (data['volume_sma'] / 1.618)
+            data['rolling_obv'] = data['obv'].rolling(window=signal_window).mean()
+            data['volume_sma'] = data['volume'].rolling(window=signal_window, min_periods=1).mean()
+            data['rvol'] = data['volume'] / data['volume_sma']
             data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
 
             data['tension'] = ((data['close'] - data['vwap']) / data['close'] * 10000).rolling(window=1).mean().fillna(0)
-            data['span'] = data['high'] - data['low']
-            data['body_size'] = (data['close'] - data['open']) / data['span']
-            data['upper_wick'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['span']
-            data['lower_wick'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['span']
+
+            high_low = data['high'] - data['low']
+            data['span'] = high_low
+            data['body'] = (data['close'] - data['open']) / data['span']
+            data['upper'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['span']
+            data['lower'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['span']
+
+            high_close = (data['high'] - data['close'].shift()).abs()
+            low_close = (data['low'] - data['close'].shift()).abs()
+            true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            data['atr'] = true_range.rolling(window=signal_window).mean()
 
             data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
