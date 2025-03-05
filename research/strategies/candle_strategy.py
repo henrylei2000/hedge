@@ -98,15 +98,12 @@ class CandleStrategy(Strategy):
 
     def cluster(self, start, end):
         data = self.data
-        cluster_volume = data.iloc[start:end]['volume'].sum()
-        cluster_span = data.iloc[start:end]['high'].max() - data.iloc[start:end]['low'].min()
-        cluster_body = (data.iloc[end - 1]['close'] - data.iloc[start]['open']) / cluster_span * 100
-        cluster_upper = (data.iloc[start:end]['high'].max() - max(data.iloc[end - 1]['close'],
-                                                                  data.iloc[start]['open'])) / cluster_span * 100
-        cluster_lower = (min(data.iloc[end - 1]['close'], data.iloc[start]['open']) - data.iloc[start:end][
-            'low'].min()) / cluster_span * 100
-        return cluster_volume, cluster_span.round(3), [cluster_upper.round(1), cluster_body.round(1),
-                                                       cluster_lower.round(1)]
+        volume = data.iloc[start:end]['volume'].sum()
+        span = data.iloc[start:end]['high'].max() - data.iloc[start:end]['low'].min()
+        body = (data.iloc[end - 1]['close'] - data.iloc[start]['open']) / span * 100
+        upper = (data.iloc[start:end]['high'].max() - max(data.iloc[end - 1]['close'], data.iloc[start]['open'])) / span * 100
+        lower = (min(data.iloc[end - 1]['close'], data.iloc[start]['open']) - data.iloc[start:end]['low'].min()) / span * 100
+        return volume // 10000, int(span / data.iloc[start]['close'] * 10000), [int(upper.round()), int(body.round()), int(lower.round())]
 
     def comment(self, idx):
         data = self.data
@@ -287,7 +284,7 @@ class CandleStrategy(Strategy):
 
                 print(f"\t\t\t\tVolume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
                 print(
-                    f"\t\t\t\tVol Trend Slope: {vol_trend_slope:.2f}, Vol Std: {vol_std:.2f} / {vol_average:.2f}, Vol Max/Min Ratio: {vol_max_min_ratio:.2f}")
+                    f"\t\t\t\tVol avg/std: {int(vol_average//10000)}/{int(vol_std//10000)} Trend Slope: {vol_trend_slope / 10000:.1f}, Max/Min: {vol_max_min_ratio:.1f}")
                 print(f"\t\t\t\tPrice Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
 
         return patterns[0] + ', ' + trading_signals[0], key_point_signal, follow_through
