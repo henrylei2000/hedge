@@ -247,34 +247,49 @@ class CandleStrategy(Strategy):
                 vol_average = vol.mean()
                 vol_std = vol.std()
                 vol_max_min_ratio = vol.max() / max(vol.min(), 1)  # Avoid zero division
-                vol_trend_slope = np.polyfit(range(end - start), vol, 1)[0]  # Linear regression slope
-                price_trend_slope = np.polyfit(range(end - start), price, 1)[0]  # Price trend slope
-                vwap_trend_slope = np.polyfit(range(end - start), vwap, 1)[0]  # VWAP trend slope
+
+                duration = end - start  # Length of the period
+                vol_trend_slope = np.polyfit(range(duration), vol, 1)[0]
+                price_trend_slope = np.polyfit(range(duration), price, 1)[0]
+                vwap_trend_slope = np.polyfit(range(duration), vwap, 1)[0]
+
                 price_change = price.iloc[-1] - price.iloc[0]  # Absolute price movement
 
-                if vol_trend_slope > 0:
-                    if vol_std / vol_average < 0.2:
-                        volume_pattern = "gradual increase"
+                # Define slope significance dynamically based on volume magnitude
+                steep_slope_threshold = 0.21 * vol_average  # 21% of average volume
+                moderate_slope_threshold = 0.08 * vol_average  # 8% of average volume
+
+                # Categorize volume pattern
+                if vol_trend_slope > moderate_slope_threshold:
+                    if vol_trend_slope > steep_slope_threshold:
+                        volume_pattern = "super strong increase"
+                    elif vol_std / vol_average < 0.2:
+                        volume_pattern = "steady increase"
                     elif vol_max_min_ratio > 2:
                         volume_pattern = "strong increase"
                     else:
                         volume_pattern = "erratic increase"
-                else:
-                    if vol_std / vol_average < 0.2:
-                        volume_pattern = "gradual decrease"
+
+                elif vol_trend_slope < -moderate_slope_threshold:
+                    if vol_trend_slope < -steep_slope_threshold:
+                        volume_pattern = "super strong decrease"
+                    elif vol_std / vol_average < 0.2:
+                        volume_pattern = "steady decrease"
                     elif vol_max_min_ratio > 2:
                         volume_pattern = "strong decrease"
                     else:
                         volume_pattern = "erratic decrease"
 
+                else:
+                    volume_pattern = "flat or stable"
+
                 patterns.append(volume_pattern)
 
-                # **Determine General Trading Scenario**
-                if price_trend_slope > 0 and volume_pattern == "gradual increase":
+                if price_trend_slope > 0 and volume_pattern == "steady increase":
                     trading_signal = "bullish continuation"
-                elif price_trend_slope < 0 and volume_pattern == "gradual decrease":
+                elif price_trend_slope < 0 and volume_pattern == "steady decrease":
                     trading_signal = "bearish continuation"
-                elif price_change < 0 and volume_pattern == "strong increase":
+                elif price_change < 0 and "strong increase" in volume_pattern:
                     trading_signal = "bear trap (liquidity grab) - reversal up"
                 elif price_change > 0 and volume_pattern == "strong decrease":
                     trading_signal = "bull trap (liquidity grab) - reversal down"
