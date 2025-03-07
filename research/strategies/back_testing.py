@@ -10,36 +10,37 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-def get_dates():
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    api_key = config.get('settings', 'API_KEY')
-    secret_key = config.get('settings', 'SECRET_KEY')
-    api = tradeapi.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
-    # quote = api.get_latest_quote("AAPL")
-    # print(quote.bid_price, quote.bid_size, quote.ask_price, quote.ask_size)
-    performance = 0.0
-    start_date = '2025-01-27'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-    end_date = '2025-01-27'
-    calendar = api.get_calendar(start=start_date, end=end_date)
-    for day in calendar:
-        daily_pnl, trades = 0, 0
-        for symbol in ['TQQQ']:
-            strategy = CandleStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}")
-            strategy.backtest()
-            if strategy.trades:
-                print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")
-            performance += strategy.pnl
-            daily_pnl += strategy.pnl
-            trades += strategy.trades
-        if trades:
-            print(f"-------------------------------------------- {daily_pnl:.2f} ({trades})")
-    print(f"------------ TOTAL ------------------------- {performance:.2f}")
-
-
-def back_test():
-    strategy = CandleStrategy()
-    strategy.backtest('offline')
+def test(mode='online'):
+    if mode == 'online':
+        start_date = '2025-01-27'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+        end_date = '2025-01-27'
+        symbols = ['TQQQ']
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        api_key = config.get('settings', 'API_KEY')
+        secret_key = config.get('settings', 'SECRET_KEY')
+        api = tradeapi.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
+        # quote = api.get_latest_quote("AAPL")
+        # print(quote.bid_price, quote.bid_size, quote.ask_price, quote.ask_size)
+        performance = 0.0
+        calendar = api.get_calendar(start=start_date, end=end_date)
+        for day in calendar:
+            daily_pnl, trades = 0, 0
+            for symbol in symbols:
+                strategy = CandleStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}", api = api)
+                strategy.backtest()
+                if strategy.trades:
+                    print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")
+                performance += strategy.pnl
+                daily_pnl += strategy.pnl
+                trades += strategy.trades
+            if trades:
+                print(f"-------------------------------------------- {daily_pnl:.2f} ({trades})")
+        print(f"------------ TOTAL ------------------------- {performance:.2f}")
+    else:
+        strategy = CandleStrategy()
+        strategy.backtest()
+        print(f"-------------------------------------------- {strategy.pnl:.2f} ({strategy.trades})")
 
 
 def notification():
@@ -50,14 +51,12 @@ def notification():
     to_address = config.get('email', 'TO_ADDRESS')
     from_address = config.get('email', 'FROM_ADDRESS')
     url = config.get('email', 'URL')
-
     msg = MIMEMultipart()
     msg['From'] = from_address
     msg['To'] = to_address
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
     server = smtplib.SMTP('smtp.gmail.com', 587)
-
     server.starttls()
     try:
         server.login(from_address, url)
@@ -69,7 +68,5 @@ def notification():
         server.quit()
 
 
-# Example usage
 if __name__ == "__main__":
-    # back_test()
-    get_dates()
+    test('online')

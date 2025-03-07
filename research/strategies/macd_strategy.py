@@ -27,47 +27,25 @@ class MACDStrategy(Strategy):
         return approaching_min_boundary, approaching_max_boundary
 
     def macd_simple(self):
-        short_window, long_window, signal_window = 12, 26, 9   # 3, 7, 2
-        dataset = [self.data]
-        if self.reference:
-            dataset += [self.qqq, self.spy, self.dia]
-        for data in dataset:
-            # Calculate Signal line
-            data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
-            data['strength'] = data['macd'] - data['signal_line']
-            data['rolling_strength'] = data['strength'].ewm(span=5, adjust=False).mean()
-            data['rolling_macd'] = data['macd'].rolling(window=12).mean()
+        data = self.data
+        data['rolling_strength'] = data['strength'].ewm(span=5, adjust=False).mean()
+        data['rolling_macd'] = data['macd'].rolling(window=12).mean()
 
-            # Calculate the first derivative of MACD
-            data['macd_derivative'] = data['macd'].diff()
-            data['rolling_macd_derivative'] = data['macd_derivative'].rolling(window=5).mean()
+        data['macd_derivative'] = data['macd'].diff()
+        data['rolling_macd_derivative'] = data['macd_derivative'].rolling(window=5).mean()
 
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
-            rs = gain / loss
-            data['rsi'] = 100 - (100 / (1 + rs))
-            data['rolling_rsi'] = data['rsi'].rolling(window=12).mean()
-            data['rsi_derivative'] = data['rsi'].diff()
-            data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
+        data['rolling_rsi'] = data['rsi'].rolling(window=12).mean()
+        data['rsi_derivative'] = data['rsi'].diff()
+        data['rolling_rsi_derivative'] = data['rsi_derivative'].rolling(window=5).mean()
+        data['rolling_vpt'] = data['vpt'].rolling(window=12).mean()
 
-            price_change_ratio = data['close'].pct_change()
-            data['vpt'] = (price_change_ratio * data['volume']).cumsum()
-            data['rolling_vpt'] = data['vpt'].rolling(window=12).mean()
+        data['rolling_obv'] = data['obv'].rolling(window=12).mean()
 
-            data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
-                         data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
-            # Calculate OBV moving average
-            data['rolling_obv'] = data['obv'].rolling(window=12).mean()
+        data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
+        data.loc[data['macd'] > data['signal_line'], 'signal'] = 1
+        data.loc[data['macd'] < data['signal_line'], 'signal'] = -1
 
-            # Generate Buy and Sell signals
-            data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-            data.loc[data['macd'] > data['signal_line'], 'signal'] = 1
-            data.loc[data['macd'] < data['signal_line'], 'signal'] = -1
-
-            data.dropna(subset=['close', 'macd', 'macd_derivative', 'rolling_macd', 'signal_line', 'rsi'], inplace=True)
-
-            #data.to_csv(f"{self.symbol}.csv")
+        data.dropna(subset=['close', 'macd', 'macd_derivative', 'rolling_macd', 'signal_line', 'rsi'], inplace=True)
 
     def significance_reference(self):
         self.macd_simple()

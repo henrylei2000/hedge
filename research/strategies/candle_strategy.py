@@ -114,6 +114,8 @@ class CandleStrategy(Strategy):
         lower = int(row['lower'] * 100)
         span = int(row['span'] / price * 10000)
         volume = row['volume'] // 10000
+        strong_volume = self.volume_base[1] // 10000
+        moderate_volume = self.volume_base[2] // 10000
         tension = row['tension']
         macd = row['macd']
         macd_signal = row['signal_line']
@@ -156,31 +158,31 @@ class CandleStrategy(Strategy):
 
         # Resistance (long upper wick with high volume strengthens the signal)
         if strength > 0 and upper > 30 and span > 15:
-            if volume > 15:
+            if volume > strong_volume:
                 comment.append("Potential strong resistance (long upper wick, high volume)")
-            elif volume > 9:
+            elif volume > moderate_volume:
                 comment.append("Potential weak resistance (long upper wick, moderate volume)")
 
         # Support (long lower wick with high volume confirms demand)
         if strength < 0 and lower > 25 and span > 15:
-            if volume > 15:
+            if volume > strong_volume:
                 comment.append("Potential strong support (long lower wick, high volume)")
-            elif volume > 9:
+            elif volume > moderate_volume:
                 comment.append("Potential weak support (long lower wick, moderate volume)")
 
         # Buying Pressure (strong bullish body, rising volume, and trend shift)
-        if body > 50 and volume > 15 and macd > 0:
+        if body > 50 and volume > strong_volume and macd > 0:
             comment.append("Bullish: Buying pressure detected (body, vol, trend)")
 
         # Selling Pressure (strong bearish body, rising volume, and downward trend shift)
-        if body < -50 and volume > 15 and macd < 0:
+        if body < -50 and volume > strong_volume and macd < 0:
             comment.append("Bearish: Selling pressure detected (body, vol, trend)")
 
         # Exit if VWAP reversion is likely
-        if 0 < macd and abs(tension) > 35 and volume < 10:
+        if 0 < macd and abs(tension) > 35 and volume < moderate_volume:
             comment.append("Strong VWAP mean reversion detected, trend weakening, low volume")
 
-        if 0 < macd and rvol < rvol_threshold and volume < 10:
+        if 0 < macd and rvol < rvol_threshold and volume < moderate_volume:
             comment.append("Weak momentum (RVOL low), trend losing strength")
 
         if idx > 0:

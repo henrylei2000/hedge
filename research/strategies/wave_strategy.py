@@ -120,11 +120,8 @@ class WaveStrategy(Strategy):
             positions.append(position)
             count += 1
 
-        print(data[data['sma_volume_spike']].index)
-        print(data[data['sma_volume_dip']].index)
-
         data['position'] = positions
-        self.snapshot([290, -1], ['volume', 'gap'])
+        self.snapshot([290, -1])
 
     def wave3(self):
         data = self.data

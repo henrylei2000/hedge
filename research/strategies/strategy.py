@@ -9,45 +9,47 @@ from collections import deque
 
 
 class Strategy:
-    def __init__(self, symbol='TQQQ', open='2025-01-28 09:30', close='2024-01-28 16:00'):  # QQQ, SPY, DIA
+    def __init__(self, symbol='TQQQ', open='2025-01-28 09:30', close='2024-01-28 16:00', api=None):  # QQQ, SPY, DIA
         self.symbol = symbol
-        self.reference = False
         self.start = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
         self.end = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
+        self.api = api
         self.data = None
-        self.qqq = None
-        self.spy = None
-        self.dia = None
+        self.volume_base = [0, 0, 0]
         self.pnl = 0.00
         self.trades = 0
         self.init_balance = 10000
         self.num_buckets = 4
 
-    def backtest(self, api='alpaca'):
-        # prediction = self.predict()
-        if True:
-            if self.download(api):
-                self.prepare()
-                self.sanitize()
-                self.signal()
-                self.bucket_trade()
-                self.plot()
-                return
-            else:
-                print("No data found, please verify symbol and date range.")
+    def backtest(self):
+        if self.api:
+            self.download()
+            self.context()
+        else:
+            self.data = pd.read_csv('TQQQ.csv')
 
-    def predict(self):
-        day = self.start.strftime('%Y-%m-%d')
-        end_date = pd.to_datetime(day) - pd.DateOffset(days=1)
-        print(end_date)
+        if not self.data.empty:
+            self.prepare()
+            self.sanitize()
+            self.signal()
+            self.bucket_trade()
+            self.plot()
+        else:
+            print("No data found, please verify symbol and date range.")
+
+
+    def context(self):
+        end_date = pd.to_datetime(self.start) - pd.DateOffset(days=1)
         start_date = end_date - pd.DateOffset(months=3)
+        data = self.api.get_bars(self.symbol, '1D', start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d')).df
 
-        data = yf.download(self.symbol, start=start_date, end=end_date, interval='1d')
-        prices = data['Close']
+        volumes = data['volume']
 
-        peaks, _ = find_peaks(prices, distance=5, prominence=0.5)
-        valleys, _ = find_peaks(-prices, distance=5, prominence=0.5)
+        self.volume_base = [int(volumes.mean() / 390), int(volumes.max() / 390), int(volumes.min() / 390)]
 
+        prices = data['close']
+        peaks, _ = find_peaks(prices, distance=5)
+        valleys, _ = find_peaks(-prices, distance=5)
         peak_indices = np.array(peaks)
         peak_prices = prices.iloc[peaks]
         a_peaks, b_peaks = np.polyfit(peak_indices, peak_prices, 1)
@@ -86,93 +88,55 @@ class Strategy:
         }
         return prediction
 
-    def download(self, api="alpaca"):
-        if api == 'yahoo':
-            self.data = yf.download(self.symbol, interval='1m', start=self.start, end=self.end)
-            dataset = [self.data]
-            if self.reference:
-                self.qqq = yf.download('QQQ', interval='1m', start=self.start, end=self.end)
-                self.spy = yf.download('SPY', interval='1m', start=self.start, end=self.end)
-                self.dia = yf.download('DIA', interval='1m', start=self.start, end=self.end)
-                dataset += [self.qqq, self.spy, self.dia]
-            for data in [self.data]:
-                if not data.empty:
-                    data.rename_axis('timestamp', inplace=True)
-                    data.rename(columns={'Close': 'close'}, inplace=True)
-                    data.rename(columns={'High': 'high'}, inplace=True)
-                    data.rename(columns={'Low': 'low'}, inplace=True)
-                else:
-                    return False
-
-        elif api == 'alpaca':
-            config = configparser.ConfigParser()
-            config.read('config.ini')
-            api_key = config.get('settings', 'API_KEY')
-            secret_key = config.get('settings', 'SECRET_KEY')
-            api = tradeapi.REST(api_key, secret_key, api_version='v2')
-            data = api.get_bars(self.symbol, '1T', start=self.start.isoformat(), end=self.end.isoformat()).df
-
-            if not data.empty:
-                data.index = data.index.tz_convert('US/Eastern')  # convert timestamp index to Eastern Timezone (EST)
-                data = data.between_time('9:30', '15:59')  # filter rows between 9:30am and 4:00pm EST
-                if not data.empty:
-                    data = data.reset_index()  # converts timestamp index into a column
-                    data.rename(columns={'index': 'timestamp'}, inplace=True)
-                    self.data = data
-                else:
-                    return False
-            else:
-                return False
-
-        elif api == "offline":
-            data = pd.read_csv('TQQQ.csv')
-            self.data = data
-
-        return True
+    def download(self):
+        data = self.api.get_bars(self.symbol, '1T', start=self.start.isoformat(), end=self.end.isoformat()).df
+        if not data.empty:
+            data.index = data.index.tz_convert('US/Eastern')  # convert timestamp index to Eastern Timezone (EST)
+            data = data.between_time('9:30', '15:59')  # filter rows between 9:30am and 4:00pm EST
+            data = data.reset_index()  # converts timestamp index into a column
+            data.rename(columns={'index': 'timestamp'}, inplace=True)
+        self.data = data
 
     def prepare(self):
         short_window, long_window, signal_window = 12, 26, 9  # 9, 21, 6
-        dataset = [self.data]
-        if self.reference:
-            dataset += [self.qqq, self.spy, self.dia]
-        for data in dataset:
-            data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
-            data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
-            data['trending'] = data['close'] - data['close'].ewm(alpha=0.3, adjust=False).mean()
-            data['macd'] = data['short_ma'] - data['long_ma']
-            data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
-            data['strength'] = data['macd'] - data['signal_line']
+        data = self.data
+        data['short_ma'] = data['close'].ewm(span=short_window, adjust=False).mean()
+        data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
+        data['trending'] = data['close'] - data['close'].ewm(alpha=0.3, adjust=False).mean()
+        data['macd'] = data['short_ma'] - data['long_ma']
+        data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
+        data['strength'] = data['macd'] - data['signal_line']
 
-            delta = data['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
-            rs = gain / loss
-            data['rsi'] = 100 - (100 / (1 + rs))
+        delta = data['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
+        rs = gain / loss
+        data['rsi'] = 100 - (100 / (1 + rs))
 
-            price_change_ratio = data['close'].pct_change()
-            data['vpt'] = (price_change_ratio * data['volume']).cumsum()
-            data['rolling_vpt'] = data['vpt'].rolling(window=signal_window).mean()
-            data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
-                           data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
-            data['rolling_obv'] = data['obv'].rolling(window=signal_window).mean()
-            data['volume_sma'] = data['volume'].rolling(window=signal_window, min_periods=1).mean()
-            data['rvol'] = data['volume'] / data['volume_sma']
-            data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
+        price_change_ratio = data['close'].pct_change()
+        data['vpt'] = (price_change_ratio * data['volume']).cumsum()
+        data['rolling_vpt'] = data['vpt'].rolling(window=signal_window).mean()
+        data['obv'] = (data['volume'] * ((data['close'] - data['close'].shift(1)) > 0).astype(int) -
+                       data['volume'] * ((data['close'] - data['close'].shift(1)) < 0).astype(int)).cumsum()
+        data['rolling_obv'] = data['obv'].rolling(window=signal_window).mean()
+        data['volume_sma'] = data['volume'].rolling(window=signal_window, min_periods=1).mean()
+        data['rvol'] = data['volume'] / data['volume_sma']
+        data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
 
-            data['tension'] = ((data['close'] - data['vwap']) / data['close'] * 10000).rolling(window=1).mean().fillna(0)
+        data['tension'] = ((data['close'] - data['vwap']) / data['close'] * 10000).rolling(window=1).mean().fillna(0)
 
-            high_low = data['high'] - data['low']
-            data['span'] = high_low
-            data['body'] = (data['close'] - data['open']) / data['span']
-            data['upper'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['span']
-            data['lower'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['span']
+        high_low = data['high'] - data['low']
+        data['span'] = high_low
+        data['body'] = (data['close'] - data['open']) / data['span']
+        data['upper'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['span']
+        data['lower'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['span']
 
-            high_close = (data['high'] - data['close'].shift()).abs()
-            low_close = (data['low'] - data['close'].shift()).abs()
-            true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-            data['atr'] = true_range.rolling(window=signal_window).mean()
+        high_close = (data['high'] - data['close'].shift()).abs()
+        low_close = (data['low'] - data['close'].shift()).abs()
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        data['atr'] = true_range.rolling(window=signal_window).mean()
 
-            data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
+        data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
     def sanitize(self):
         pass
@@ -323,10 +287,8 @@ class Strategy:
         for value in values:
             rolling_window.append(value)  # Add new value, automatically removes oldest if full
             band = max(abs(x) for x in rolling_window)  # Get max in the window
-
             normalized_value = int((value / band) * 100) if band else 0
             normalized_columns.append(normalized_value)
-
         data['normalized_' + column] = normalized_columns
 
     def snapshot(self, interval, indicators=None):
