@@ -114,8 +114,15 @@ class CandleStrategy(Strategy):
         lower = int(row['lower'] * 100)
         span = int(row['span'] / price * 10000)
         volume = row['volume'] // 10000
-        strong_volume = self.volume_base[1] // 10000
-        moderate_volume = self.volume_base[2] // 10000
+
+        if self.context is not None:
+            volumes = self.context['volume']
+            volume_base = [int(volumes.mean() / 390), int(volumes.max() / 390), int(volumes.min() / 390)]
+        else:
+            volume_base = [12, 15, 10]
+        strong_volume = volume_base[1] // 10000
+        moderate_volume = volume_base[2] // 10000
+
         tension = row['tension']
         macd = row['macd']
         macd_signal = row['signal_line']

@@ -4,6 +4,7 @@ from candle_strategy import CandleStrategy
 import alpaca_trade_api as tradeapi
 from alpaca_trade_api.common import URL
 import configparser
+import pandas as pd
 
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -24,10 +25,19 @@ def test(mode='online'):
         # print(quote.bid_price, quote.bid_size, quote.ask_price, quote.ask_size)
         performance = 0.0
         calendar = api.get_calendar(start=start_date, end=end_date)
+
+        context = {}
+        end_date = pd.to_datetime(start_date) - pd.DateOffset(days=1)
+        start_date = end_date - pd.DateOffset(months=3)
+        for symbol in symbols:
+            bars = api.get_bars(symbol, '1D', start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d')).df
+            context[symbol] = bars
+
         for day in calendar:
             daily_pnl, trades = 0, 0
             for symbol in symbols:
-                strategy = CandleStrategy(symbol=symbol, open=f"{day.date.strftime('%Y-%m-%d')} {day.open}", close=f"{day.date.strftime('%Y-%m-%d')} {day.close}", api = api)
+                current = day.date.strftime('%Y-%m-%d')
+                strategy = CandleStrategy(symbol=symbol, open=f"{current} {day.open}", close=f"{current} {day.close}", api=api, context=context[symbol])
                 strategy.backtest()
                 if strategy.trades:
                     print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")
@@ -69,4 +79,4 @@ def notification():
 
 
 if __name__ == "__main__":
-    test('online')
+    test('offline')

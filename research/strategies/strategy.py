@@ -1,21 +1,18 @@
 import numpy as np
-import yfinance as yf
-import alpaca_trade_api as tradeapi
-import configparser
+import pandas as pd
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
-import pandas as pd
 from collections import deque
 
 
 class Strategy:
-    def __init__(self, symbol='TQQQ', open='2025-01-28 09:30', close='2024-01-28 16:00', api=None):  # QQQ, SPY, DIA
+    def __init__(self, symbol='TQQQ', open='2025-01-28 09:30', close='2024-01-28 16:00', api=None, context=None):
         self.symbol = symbol
         self.start = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
         self.end = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
         self.api = api
+        self.context = context
         self.data = None
-        self.volume_base = [0, 0, 0]
         self.pnl = 0.00
         self.trades = 0
         self.init_balance = 10000
@@ -23,11 +20,10 @@ class Strategy:
 
     def backtest(self):
         if self.api:
+            self.retrospective()
             self.download()
-            self.context()
         else:
             self.data = pd.read_csv('TQQQ.csv')
-
         if not self.data.empty:
             self.prepare()
             self.sanitize()
@@ -37,17 +33,8 @@ class Strategy:
         else:
             print("No data found, please verify symbol and date range.")
 
-
-    def context(self):
-        end_date = pd.to_datetime(self.start) - pd.DateOffset(days=1)
-        start_date = end_date - pd.DateOffset(months=3)
-        data = self.api.get_bars(self.symbol, '1D', start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d')).df
-
-        volumes = data['volume']
-
-        self.volume_base = [int(volumes.mean() / 390), int(volumes.max() / 390), int(volumes.min() / 390)]
-
-        prices = data['close']
+    def retrospective(self):
+        prices = self.context['close']
         peaks, _ = find_peaks(prices, distance=5)
         valleys, _ = find_peaks(-prices, distance=5)
         peak_indices = np.array(peaks)
@@ -86,6 +73,7 @@ class Strategy:
             'Predicted Valley': predicted_valley,
             'Prediction Type': next_day_prediction
         }
+
         return prediction
 
     def download(self):
