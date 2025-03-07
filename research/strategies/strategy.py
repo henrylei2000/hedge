@@ -6,10 +6,10 @@ from collections import deque
 
 
 class Strategy:
-    def __init__(self, symbol='TQQQ', open='2025-01-28 09:30', close='2024-01-28 16:00', api=None, context=None):
+    def __init__(self, symbol='TQQQ', start='2025-01-28 09:30', end='2024-01-28 16:00', api=None, context=None):
         self.symbol = symbol
-        self.start = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
-        self.end = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
+        self.start = pd.Timestamp(start, tz='America/New_York').tz_convert('UTC')
+        self.end = pd.Timestamp(end, tz='America/New_York').tz_convert('UTC')
         self.api = api
         self.context = context
         self.data = None
@@ -48,11 +48,6 @@ class Strategy:
         next_day_index = len(prices)
         predicted_peak = a_peaks * next_day_index + b_peaks
         predicted_valley = a_valleys * next_day_index + b_valleys
-
-        if predicted_peak > predicted_valley:
-            next_day_prediction = 'Peak'
-        else:
-            next_day_prediction = 'Valley'
 
         last_peak_index = peak_indices[-1] if len(peak_indices) > 0 else -1
         last_valley_index = valley_indices[-1] if len(valley_indices) > 0 else -1
@@ -215,7 +210,6 @@ class Strategy:
                 shares_held += shares_bought
                 if shares_bought:
                     print(f"share bought: {shares_bought:.2f}")
-                    position = 1
                     print(f"Bought at: ${row['close']:.2f} x {shares_bought}  @{index} [macd {row['macd'] * 100:.3f}]")
 
         final_balance = balance + (shares_held * self.data['close'].iloc[-1])
@@ -233,6 +227,7 @@ class Strategy:
         if 'position' not in self.data.columns:
             self.data['position'] = self.data['signal']
         stock_data = self.data
+        price = 0
         for i, row in stock_data.iterrows():
             price = row['close']  # Assuming the 'close' column has the stock price
             position = row['position']
@@ -307,8 +302,6 @@ class Strategy:
                                             gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
-        # ax1.plot(lows, color='orange', alpha=.5, linewidth=0.5)
-        # ax1.plot(highs, color='orange', alpha=.5, linewidth=0.5)
         ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
         ax1.set_ylabel('Price')
         ax1.legend()

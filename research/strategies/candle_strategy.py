@@ -326,9 +326,7 @@ class CandleStrategy(Strategy):
         prev_peaks, prev_valleys = set(), set()
         prev_vol_peaks, prev_vol_valleys = set(), set()
         positions = []
-        base = data.iloc[0]['close']
         for index in range(len(data)):
-            row = data.iloc[index]
             position = 0
             visible_rows = data.loc[:index]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
