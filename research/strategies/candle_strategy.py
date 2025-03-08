@@ -54,57 +54,6 @@ class CandleStrategy(Strategy):
 
         return position
 
-    def keypoint(self, p, structure):
-        data = self.data
-        key_point_signal = "neutral"
-        key_vol = data['volume'].iloc[p - 1:p + 2]
-        key_price = data['close'].iloc[p - 1:p + 2]
-
-        key_vol_trend = np.polyfit(range(3), key_vol, 1)[0]  # Volume trend at key point
-        key_price_trend = np.polyfit(range(3), key_price, 1)[0]  # Price trend at key point
-
-        if structure == "peak":
-            if key_vol_trend > 0 and key_price_trend > 0:
-                key_point_signal = "momentum peak"
-            elif key_vol_trend < 0 < key_price_trend:
-                key_point_signal = "buyer exhaustion"
-            elif key_vol_trend > 0 > key_price_trend:
-                key_point_signal = "volume spike reversal"
-            else:
-                key_point_signal = "calm peak"
-        elif structure == "valley":
-            if key_vol_trend > 0 and key_price_trend > 0:
-                key_point_signal = "momentum valley"
-            elif key_vol_trend < 0 < key_price_trend:
-                key_point_signal = "strong demand absorption"
-            elif key_vol_trend > 0 > key_price_trend:
-                key_point_signal = "false breakdown"
-            else:
-                key_point_signal = "calm valley"
-
-        return key_point_signal
-
-    def follow_through(self, start, end):
-        data = self.data
-        signal = 'neutral'
-        for i in range(start, end):
-            row = data.iloc[i]
-            body = int(row['body'] * 100)
-            if body > 40:
-                return 'reversal up'
-            if body < -30:
-                return 'reversal down'
-        return signal
-
-    def cluster(self, start, end):
-        data = self.data
-        volume = data.iloc[start:end]['volume'].sum()
-        span = data.iloc[start:end]['high'].max() - data.iloc[start:end]['low'].min()
-        body = (data.iloc[end - 1]['close'] - data.iloc[start]['open']) / span * 100
-        upper = (data.iloc[start:end]['high'].max() - max(data.iloc[end - 1]['close'], data.iloc[start]['open'])) / span * 100
-        lower = (min(data.iloc[end - 1]['close'], data.iloc[start]['open']) - data.iloc[start:end]['low'].min()) / span * 100
-        return volume // 10000, int(span / data.iloc[start]['close'] * 10000), [int(upper.round()), int(body.round()), int(lower.round())]
-
     def comment(self, idx):
         data = self.data
         row = data.iloc[idx]
@@ -227,10 +176,119 @@ class CandleStrategy(Strategy):
 
         return comment
 
-    def summarize(self, p, index, peaks, valleys):
-        patterns, trading_signals = [], []
+    def keypoint(self, p, structure):
         data = self.data
-        start, end, structure = 0, -1, ''
+        key_point_signal = "neutral"
+
+        # Consider 3 bars around p
+        key_vol = data['volume'].iloc[p - 1:p + 2]
+        key_price = data['close'].iloc[p - 1:p + 2]
+
+        # Linear regression slopes
+        key_vol_trend = np.polyfit(range(3), key_vol, 1)[0]  # Volume trend at key point
+        key_price_trend = np.polyfit(range(3), key_price, 1)[0]  # Price trend at key point
+
+        # Define a small threshold to avoid false classification of near-zero slopes
+        slope_threshold = 1e-6  # Adjust as needed
+
+        def slope_direction(value):
+            if value > slope_threshold:
+                return "up"
+            elif value < -slope_threshold:
+                return "down"
+            else:
+                return "flat"
+
+        vol_dir = slope_direction(key_vol_trend)
+        price_dir = slope_direction(key_price_trend)
+
+        if structure == "peak":
+            # Examples of refined naming
+            if vol_dir == "up" and price_dir == "up":
+                key_point_signal = "momentum peak"  # Price & volume both rising into the peak
+            elif vol_dir == "down" and price_dir == "up":
+                key_point_signal = "buyer exhaustion"  # Price up, volume fading
+            elif vol_dir == "up" and price_dir == "down":
+                key_point_signal = "volume spike reversal"  # Volume up, but price turning down
+            else:
+                key_point_signal = "calm peak"
+        elif structure == "valley":
+            if vol_dir == "up" and price_dir == "up":
+                key_point_signal = "momentum valley"
+            elif vol_dir == "down" and price_dir == "up":
+                key_point_signal = "strong demand absorption"
+            elif vol_dir == "up" and price_dir == "down":
+                key_point_signal = "false breakdown"
+            else:
+                key_point_signal = "calm valley"
+
+        return key_point_signal
+
+    def follow_through(self, start, end):
+        """
+        Checks the candlestick bodies in a range to see if there's a strong follow-through move.
+        Instead of returning after the first bar, we watch the entire interval.
+        """
+        data = self.data
+        signal = "neutral"
+        positive_bars = 0
+        negative_bars = 0
+
+        for i in range(start, end):
+            row = data.iloc[i]
+            # Assuming row['body'] is a decimal ratio * 100 => e.g. 50 = 50%
+            body_ratio = row['body'] * 100
+
+            # If body_ratio > 40 => bullish bar
+            if body_ratio > 40:
+                positive_bars += 1
+            elif body_ratio < -40:
+                negative_bars += 1
+
+        # Simple logic: if majority are bullish => "reversal up", if majority are bearish => "reversal down"
+        if positive_bars > negative_bars and positive_bars > 0:
+            signal = "reversal up"
+        elif negative_bars > positive_bars and negative_bars > 0:
+            signal = "reversal down"
+
+        return signal
+
+    def cluster(self, start, end):
+        """
+        Summarize volume, price range, and 'combined candle' characteristics over [start, end).
+        """
+        data = self.data
+        segment = data.iloc[start:end]
+
+        volume = segment['volume'].sum()
+        high = segment['high'].max()
+        low = segment['low'].min()
+        open_ = data['open'].iloc[start]
+        close_ = data['close'].iloc[end - 1]
+
+        span = high - low
+        # Body is relative to the entire span in that interval
+        body_ratio = ((close_ - open_) / (span + 1e-6)) * 100
+
+        # Wicks: top/bottom as % of total range
+        upper_wick_ratio = ((high - max(close_, open_)) / (span + 1e-6)) * 100
+        lower_wick_ratio = ((min(close_, open_) - low) / (span + 1e-6)) * 100
+
+        # Return scaled or integer values as needed
+        volume_k = volume // 10000
+        span_pct = (span / max(open_, 1e-6)) * 10000  # e.g. "range" in basis points
+        # Round or convert to int
+        upper_wick = int(round(upper_wick_ratio))
+        body = int(round(body_ratio))
+        lower_wick = int(round(lower_wick_ratio))
+
+        return volume_k, int(span_pct), [upper_wick, body, lower_wick]
+
+    def summarize(self, p, index, peaks, valleys):
+        data = self.data
+        patterns, trading_signals = [], []
+
+        # Determine if this point is a peak or valley
         if p in peaks:
             structure = 'peak'
             start = max([x for x in valleys if x < p - 1], default=0)
@@ -239,36 +297,44 @@ class CandleStrategy(Strategy):
             structure = 'valley'
             start = max([x for x in peaks if x < p - 1], default=0)
             end = next((x for x in peaks if x > p + 1), index)
+        else:
+            structure = 'neutral'
+            start, end = 0, index
 
+        # 1) Key point signal
         key_point_signal = self.keypoint(p, structure)
-        follow_through = self.follow_through(p + 1, end + 1)
+
+        # 2) Follow-through analysis
+        follow_through_signal = self.follow_through(p + 1, end + 1)
+
+        # 3) Phases to analyze
         phases = [(start, p), (p, p + 1), (p + 1, end + 1)]
 
-        for phase in phases:
-            start, end = phase[0], phase[1]
-            cv, span, c = self.cluster(start, end)
-            print(f"\t\t\t\t🔴[{start} - {end - 1}] vol {cv:3d}, candle {span} {c} at {structure} @{p}")
-            if end - start > 1:
-                vol = data['volume'].iloc[start:end]
-                vwap = data['vwap'].iloc[start:end]
-                price = data['close'].iloc[start:end]
+        for (ph_start, ph_end) in phases:
+            cv, span, c = self.cluster(ph_start, ph_end)
+            print(f"[{ph_start} - {ph_end - 1}] vol {cv:3d}, candle {span} {c} at {structure} @{p}")
+
+            # Only proceed if there's more than 1 bar
+            if ph_end - ph_start > 1:
+                vol = data['volume'].iloc[ph_start:ph_end]
+                vwap = data['vwap'].iloc[ph_start:ph_end]
+                price = data['close'].iloc[ph_start:ph_end]
 
                 vol_average = vol.mean()
                 vol_std = vol.std()
                 vol_max_min_ratio = vol.max() / max(vol.min(), 1)  # Avoid zero division
 
-                duration = end - start  # Length of the period
+                duration = ph_end - ph_start
                 vol_trend_slope = np.polyfit(range(duration), vol, 1)[0]
                 price_trend_slope = np.polyfit(range(duration), price, 1)[0]
                 vwap_trend_slope = np.polyfit(range(duration), vwap, 1)[0]
 
-                price_change = price.iloc[-1] - price.iloc[0]  # Absolute price movement
+                price_change = price.iloc[-1] - price.iloc[0]
 
-                # Define slope significance dynamically based on volume magnitude
-                steep_slope_threshold = 0.21 * vol_average  # 21% of average volume
-                moderate_slope_threshold = 0.08 * vol_average  # 8% of average volume
+                # Volume Pattern Classification
+                steep_slope_threshold = 0.21 * vol_average
+                moderate_slope_threshold = 0.08 * vol_average
 
-                # Categorize volume pattern
                 if vol_trend_slope > moderate_slope_threshold:
                     if vol_trend_slope > steep_slope_threshold:
                         volume_pattern = "super strong increase"
@@ -278,7 +344,6 @@ class CandleStrategy(Strategy):
                         volume_pattern = "strong increase"
                     else:
                         volume_pattern = "erratic increase"
-
                 elif vol_trend_slope < -moderate_slope_threshold:
                     if vol_trend_slope < -steep_slope_threshold:
                         volume_pattern = "super strong decrease"
@@ -288,30 +353,108 @@ class CandleStrategy(Strategy):
                         volume_pattern = "strong decrease"
                     else:
                         volume_pattern = "erratic decrease"
-
                 else:
                     volume_pattern = "flat or stable"
 
                 patterns.append(volume_pattern)
 
-                if price_trend_slope > 0 and volume_pattern == "steady increase":
-                    trading_signal = "bullish continuation"
-                elif price_trend_slope < 0 and volume_pattern == "steady decrease":
-                    trading_signal = "bearish continuation"
-                elif price_change < 0 and "strong increase" in volume_pattern:
-                    trading_signal = "bear trap (liquidity grab) - reversal up"
-                elif price_change > 0 and volume_pattern == "strong decrease":
-                    trading_signal = "bull trap (liquidity grab) - reversal down"
+                # Candle analysis from cluster
+                long_upper_wick = c[0] > 60
+                candle_body = c[1]  # in % of range
+                long_lower_wick = c[2] > 60
+
+                # Example: tension field > 0 => price reclaim, < 0 => price reject
+                last = data.iloc[ph_end - 1]
+                price_reclaim = last['tension'] > 0
+                price_reject = last['tension'] < 0
+
+                # Refined Price Direction with Threshold
+                slope_threshold = 0.1  # Adjust if needed
+                if price_trend_slope > slope_threshold:
+                    price_direction = "up"
+                elif price_trend_slope < -slope_threshold:
+                    price_direction = "down"
                 else:
-                    trading_signal = "neutral"
+                    price_direction = "flat"
+
+                # Refined Volume Direction (including 'flat' possibility)
+                if "increase" in volume_pattern:
+                    volume_direction = "up"
+                elif "decrease" in volume_pattern:
+                    volume_direction = "down"
+                else:
+                    volume_direction = "flat"
+
+                # --- Generate Trading Signals ---
+                if price_direction == "up" and volume_direction == "up":
+                    if any(x in volume_pattern for x in ["super strong", "strong"]):
+                        if candle_body > 50 and price_reclaim:
+                            trading_signal = "strong bullish continuation"
+                        else:
+                            trading_signal = "bullish continuation - caution"
+                    elif "steady" in volume_pattern:
+                        trading_signal = "bullish continuation - steady momentum"
+                    elif "erratic" in volume_pattern:
+                        trading_signal = "bullish continuation - erratic volume"
+                    else:  # "flat or stable"
+                        trading_signal = "bullish but volume stable"
+
+                elif price_direction == "up" and volume_direction == "down":
+                    if any(x in volume_pattern for x in ["super strong", "strong"]):
+                        if candle_body < 30 and long_upper_wick and price_reject:
+                            trading_signal = "bull trap confirmed - strong reversal down"
+                        else:
+                            trading_signal = "bull trap possible - needs more confirmation"
+                    elif "steady" in volume_pattern:
+                        trading_signal = "weak bullish move - watch for reversal"
+                    elif "erratic" in volume_pattern:
+                        trading_signal = "bullish uncertainty - caution advised"
+                    else:  # "flat or stable"
+                        trading_signal = "bullish but volume dropping - potential exhaustion"
+
+                elif price_direction == "down" and volume_direction == "up":
+                    if any(x in volume_pattern for x in ["super strong", "strong"]):
+                        if candle_body < 30 and long_lower_wick and price_reclaim:
+                            trading_signal = "bear trap confirmed - strong reversal up"
+                        else:
+                            trading_signal = "bear trap possible - needs more confirmation"
+                    elif "steady" in volume_pattern:
+                        trading_signal = "weak bearish move - watch for reversal"
+                    elif "erratic" in volume_pattern:
+                        trading_signal = "bearish uncertainty - caution advised"
+                    else:  # "flat or stable"
+                        trading_signal = "bearish but volume stable - possible absorption"
+
+                elif price_direction == "down" and volume_direction == "down":
+                    if any(x in volume_pattern for x in ["super strong", "strong"]):
+                        if candle_body > 50 and price_reject:
+                            trading_signal = "strong bearish continuation"
+                        else:
+                            trading_signal = "bearish continuation - caution"
+                    elif "steady" in volume_pattern:
+                        trading_signal = "bearish continuation - steady momentum"
+                    elif "erratic" in volume_pattern:
+                        trading_signal = "bearish continuation - erratic volume"
+                    else:  # "flat or stable"
+                        trading_signal = "bearish but volume stable"
+
+                else:
+                    # Covers "flat" price or volume combos
+                    trading_signal = "neutral or inconclusive"
+
                 trading_signals.append(trading_signal)
 
-                print(f"\t\t\t\tVolume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
-                print(
-                    f"\t\t\t\tVol avg/std: {int(vol_average//10000)}/{int(vol_std//10000)} Trend Slope: {vol_trend_slope / 10000:.1f}, Max/Min: {vol_max_min_ratio:.1f}")
-                print(f"\t\t\t\tPrice Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
+                # Debug/monitoring prints
+                print(f"  Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
+                print(f"  Vol avg/std: {int(vol_average // 10000)}/{int(vol_std // 10000)} "
+                      f"Slope: {vol_trend_slope:.2f}, Max/Min: {vol_max_min_ratio:.2f}")
+                print(f"  Price Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
 
-        return patterns[0] + ', ' + trading_signals[0], key_point_signal, follow_through
+        # Combine the first pattern & first signal with the key point & follow-through
+        if patterns and trading_signals:
+            return patterns[0] + ', ' + trading_signals[0], key_point_signal, follow_through_signal
+        else:
+            return "no-pattern", key_point_signal, follow_through_signal
 
     def spot(self, index):
         row = self.data.iloc[index]
