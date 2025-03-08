@@ -6,54 +6,6 @@ from scipy.signal import find_peaks
 
 class CandleStrategy(Strategy):
 
-    @staticmethod
-    def scenario(structure):
-        position = 0
-        match structure:
-            case ('sudden decrease', 'momentum valley', 'gradual increase'):
-                print("Buy with high confidence. Strong demand absorption and continuation.")
-                position = 1
-
-            case ('gradual increase', 'momentum peak', 'sharp pullback'):
-                print("Sell with medium confidence. Possible reversal or temporary correction.")
-                position = -1
-
-            case ('rapid increase', 'buyer exhaustion', 'sudden reversal'):
-                print("Sell with high confidence. Exhaustion and distribution detected.")
-
-            case ('steady downtrend', 'false breakdown', 'strong reversal'):
-                print("Buy with high confidence. Possible bottom formation.")
-                position = 1
-
-            case ('sideways range', 'fake breakout', 'return to range'):
-                print("Wait or fade breakout. Market remains indecisive.")
-
-            case ('steady uptrend', 'volume spike reversal', 'failed recovery'):
-                print("Sell with medium to high confidence. Trend breakdown confirmed.")
-                position = -1
-
-            case ('rapid sell-off', 'climactic bottom', 'sharp rebound'):
-                print("Buy with medium confidence. Exhaustion detected.")
-                position = 1
-
-            case ('slow grind upwards', 'supply zone rejection', 'failed breakdown'):
-                print("Hold or wait. Lack of conviction in either direction.")
-
-            case ('consolidation at highs', 'breakout', 'continuation up'):
-                print("Buy with high confidence. Breakout confirmed.")
-                position = 1
-
-            case _:
-                print(f"Processing default logic for {structure}")
-
-        if 'bear trap' in structure[0] and 'reversal up' in structure[2]:
-            position = 1
-
-        if 'bull trap' in structure[0] and 'reversal down' in structure[2]:
-            position = -1
-
-        return position
-
     def comment(self, idx):
         data = self.data
         row = data.iloc[idx]
@@ -74,7 +26,7 @@ class CandleStrategy(Strategy):
 
         tension = row['tension']
         macd = row['macd']
-        macd_signal = row['signal_line']
+        macd_signal = row['macd_signal']
         strength = row['strength']
         atr = row['atr']
         rvol = row['rvol']
@@ -147,7 +99,7 @@ class CandleStrategy(Strategy):
             prev_volume = prev_row['volume'] // 10000
             prev_trend = prev_row['trending']
             prev_macd = prev_row['macd']
-            prev_macd_signal = prev_row['signal_line']
+            prev_macd_signal = prev_row['macd_signal']
 
             # Bullish reversal: Lower wick absorption, increasing volume, trend shift, VWAP confirmation, and MACD crossover
             if (
@@ -176,82 +128,313 @@ class CandleStrategy(Strategy):
 
         return comment
 
-    def keypoint(self, p, structure):
+    def pivot_context(self, prev_p, current_p):
+        """
+        Analyze the 'macro' window from [prev_p, current_p] to derive an overall trend context.
+
+        Returns a dictionary or a string describing the market context, e.g.:
+            {
+              'price_slope': 'strong up',
+              'volume_slope': 'mild up',
+              'rsi_trend': 'neutral->overbought',
+              'macd_trend': 'bullish->neutral',
+              'dominant_candle': 'bullish',
+              'context_signal': 'strong uptrend overall'
+            }
+        """
+        data = self.data
+
+        # Ensure indices are valid
+        start_idx = min(prev_p, current_p)
+        end_idx = max(prev_p, current_p) + 1  # slice end is exclusive
+
+        # Safety check
+        if start_idx < 0 or end_idx > len(data):
+            return {"context_signal": "invalid range"}
+
+        segment = data.iloc[start_idx:end_idx]
+        n = len(segment)
+        if n < 2:
+            return {"context_signal": "not enough bars"}
+
+        # --- 1) Price & Volume Slopes ---
+        price_array = segment['close']
+        volume_array = segment['volume']
+        price_slope = np.polyfit(range(n), price_array, 1)[0]
+        volume_slope = np.polyfit(range(n), volume_array, 1)[0]
+        price_dir = Strategy.slope_classification(price_slope)
+        volume_dir = Strategy.slope_classification(volume_slope)
+
+        # --- 2) RSI / MACD Over the Range ---
+        rsi_start = segment.iloc[0]['rsi'] if 'rsi' in segment.columns else None
+        rsi_end = segment.iloc[-1]['rsi'] if 'rsi' in segment.columns else None
+        rsi_label_start = Strategy.classify_rsi(rsi_start) if rsi_start is not None else "N/A"
+        rsi_label_end = Strategy.classify_rsi(rsi_end) if rsi_end is not None else "N/A"
+        rsi_trend = f"{rsi_label_start}->{rsi_label_end}"
+
+        macd_start = segment.iloc[0]['macd'] if 'macd' in segment.columns else None
+        macd_signal_start = segment.iloc[0]['macd_signal'] if 'macd_signal' in segment.columns else None
+        macd_end = segment.iloc[-1]['macd'] if 'macd' in segment.columns else None
+        macd_signal_end = segment.iloc[-1]['macd_signal'] if 'macd_signal' in segment.columns else None
+
+        if macd_start is not None and macd_signal_start is not None:
+            macd_label_start = Strategy.classify_macd(macd_start, macd_signal_start)
+        else:
+            macd_label_start = "N/A"
+
+        if macd_end is not None and macd_signal_end is not None:
+            macd_label_end = Strategy.classify_macd(macd_end, macd_signal_end)
+        else:
+            macd_label_end = "N/A"
+
+        macd_trend = f"{macd_label_start}->{macd_label_end}"
+
+        # --- 3) High-Level Candlestick Stats ---
+        # Count bullish/bearish bars (based on 'body')
+        bullish_count = 0
+        bearish_count = 0
+        for i in range(start_idx, end_idx):
+            body_ratio = self.data.iloc[i]['body'] * 100
+            if body_ratio > 0:
+                bullish_count += 1
+            elif body_ratio < 0:
+                bearish_count += 1
+
+        # Simple classification: which is dominant?
+        if bullish_count > bearish_count:
+            dominant_candle = "bullish"
+        elif bearish_count > bullish_count:
+            dominant_candle = "bearish"
+        else:
+            dominant_candle = "mixed"
+
+        # --- 4) VWAP Positioning (optional) ---
+        # e.g., how many bars close above VWAP?
+        above_vwap_count = 0
+        for i in range(start_idx, end_idx):
+            row = self.data.iloc[i]
+            if row['close'] > row['vwap']:
+                above_vwap_count += 1
+        vwap_ratio = above_vwap_count / n
+        if vwap_ratio > 0.7:
+            vwap_stance = "mostly above"
+        elif vwap_ratio < 0.3:
+            vwap_stance = "mostly below"
+        else:
+            vwap_stance = "mixed"
+
+        # --- 5) Combine into a Context Signal ---
+        # For example, if price_dir is "strong up" and dominant_candle is "bullish" => "strong uptrend overall"
+        # This is just one simplistic logic approach
+        if price_dir.endswith("up") and dominant_candle == "bullish":
+            context_signal = "strong uptrend overall" if "strong" in price_dir else "mild uptrend overall"
+        elif price_dir.endswith("down") and dominant_candle == "bearish":
+            context_signal = "strong downtrend overall" if "strong" in price_dir else "mild downtrend overall"
+        else:
+            context_signal = "range-bound or mixed"
+
+        return {
+            "price_slope": price_dir,
+            "volume_slope": volume_dir,
+            "rsi_trend": rsi_trend,
+            "macd_trend": macd_trend,
+            "dominant_candle": dominant_candle,
+            "vwap_stance": vwap_stance,
+            "context_signal": context_signal
+        }
+
+    def keypoint(self, p, structure, half_window=1, use_rsi=True, use_macd=True, confirm_bars=2):
+        """
+        Analyzes [p - half_window, p + half_window] to classify a peak or valley.
+        Then optionally uses RSI/MACD for additional context.
+        Finally, calls follow_through() on the next `confirm_bars` to confirm direction.
+
+        :param p: The index of the pivot bar
+        :param structure: 'peak' or 'valley'
+        :param half_window: 1 => 3 bars total, 2 => 5 bars total, etc.
+        :param use_rsi: whether to incorporate RSI classification
+        :param use_macd: whether to incorporate MACD classification
+        :param confirm_bars: how many bars after p to check for follow-through
+        :return: key_point_signal, follow_through_signal
+        """
         data = self.data
         key_point_signal = "neutral"
 
-        # Consider 3 bars around p
-        key_vol = data['volume'].iloc[p - 1:p + 2]
-        key_price = data['close'].iloc[p - 1:p + 2]
+        start_idx = max(0, p - half_window)
+        end_idx = min(len(data), p + half_window + 1)  # slice end is exclusive
+        segment = data.iloc[start_idx:end_idx]
 
-        # Linear regression slopes
-        key_vol_trend = np.polyfit(range(3), key_vol, 1)[0]  # Volume trend at key point
-        key_price_trend = np.polyfit(range(3), key_price, 1)[0]  # Price trend at key point
+        # Edge case: if segment too small, return neutral
+        if len(segment) < 2:
+            return key_point_signal, "neutral"
 
-        # Define a small threshold to avoid false classification of near-zero slopes
-        slope_threshold = 1e-6  # Adjust as needed
+        # Price & volume arrays
+        n = len(segment)
+        price_ = segment['close']
+        volume_ = segment['volume']
 
-        def slope_direction(value):
-            if value > slope_threshold:
-                return "up"
-            elif value < -slope_threshold:
-                return "down"
-            else:
-                return "flat"
+        # Slopes
+        price_slope = np.polyfit(range(n), price_, 1)[0]
+        volume_slope = np.polyfit(range(n), volume_, 1)[0]
+        price_dir = Strategy.slope_classification(price_slope)
+        vol_dir = Strategy.slope_classification(volume_slope)
 
-        vol_dir = slope_direction(key_vol_trend)
-        price_dir = slope_direction(key_price_trend)
+        # Check if bar p is truly local max/min in that window
+        middle_close = data.iloc[p]['close']
+        highest_close = price_.max()
+        lowest_close = price_.min()
+        is_local_peak = (middle_close == highest_close)
+        is_local_valley = (middle_close == lowest_close)
 
+        # Basic pivot logic
         if structure == "peak":
-            # Examples of refined naming
-            if vol_dir == "up" and price_dir == "up":
-                key_point_signal = "momentum peak"  # Price & volume both rising into the peak
-            elif vol_dir == "down" and price_dir == "up":
-                key_point_signal = "buyer exhaustion"  # Price up, volume fading
-            elif vol_dir == "up" and price_dir == "down":
-                key_point_signal = "volume spike reversal"  # Volume up, but price turning down
+            if is_local_peak:
+                if price_dir.startswith("strong up") and vol_dir.startswith("strong up"):
+                    key_point_signal = "momentum peak"
+                elif price_dir.endswith("up") and vol_dir.startswith("strong down"):
+                    key_point_signal = "buyer exhaustion"
+                elif price_dir.startswith("strong down") and vol_dir.startswith("strong up"):
+                    key_point_signal = "volume spike reversal"
+                else:
+                    key_point_signal = "calm peak"
             else:
-                key_point_signal = "calm peak"
+                key_point_signal = "soft peak - not local max"
+
         elif structure == "valley":
-            if vol_dir == "up" and price_dir == "up":
-                key_point_signal = "momentum valley"
-            elif vol_dir == "down" and price_dir == "up":
-                key_point_signal = "strong demand absorption"
-            elif vol_dir == "up" and price_dir == "down":
-                key_point_signal = "false breakdown"
+            if is_local_valley:
+                if price_dir.startswith("strong up") and vol_dir.startswith("strong up"):
+                    key_point_signal = "momentum valley"
+                elif price_dir.endswith("up") and vol_dir.startswith("strong down"):
+                    key_point_signal = "strong demand absorption"
+                elif price_dir.startswith("strong down") and vol_dir.startswith("strong up"):
+                    key_point_signal = "false breakdown"
+                else:
+                    key_point_signal = "calm valley"
             else:
-                key_point_signal = "calm valley"
+                key_point_signal = "soft valley - not local min"
 
-        return key_point_signal
+        # --- Incorporate RSI / MACD if available ---
+        rsi_label = "N/A"
+        macd_label = "N/A"
+        if use_rsi and 'rsi' in segment.columns:
+            # e.g. average RSI in the window
+            avg_rsi = segment['rsi'].mean()
+            rsi_label = Strategy.classify_rsi(avg_rsi)
 
-    def follow_through(self, start, end):
+        if use_macd and 'macd' in segment.columns and 'macd_signal' in segment.columns:
+            avg_macd = segment['macd'].mean()
+            avg_macd_signal = segment['macd_signal'].mean()
+            macd_label = Strategy.classify_macd(avg_macd, avg_macd_signal)
+
+        # Adjust key_point_signal based on RSI/MACD
+        # For instance, if we have a "peak" but RSI is not overbought, maybe reduce confidence
+        if structure == "peak" and rsi_label == "overbought":
+            key_point_signal += " + RSI overbought"
+        elif structure == "valley" and rsi_label == "oversold":
+            key_point_signal += " + RSI oversold"
+
+        if use_macd:
+            if "peak" in structure and macd_label == "bearish":
+                key_point_signal += " + MACD Bearish"
+            elif "valley" in structure and macd_label == "bullish":
+                key_point_signal += " + MACD Bullish"
+
+        # Decide expected direction from key_point_signal
+        # e.g., "momentum valley" => we expect a bullish follow-through
+        if any(x in key_point_signal for x in ["valley", "demand absorption", "false breakdown"]):
+            expected_dir = "up"
+        elif any(x in key_point_signal for x in ["peak", "exhaustion", "reversal"]):
+            expected_dir = "down"
+        else:
+            expected_dir = None  # no strong bias
+
+        # --- Follow-Through Check ---
+        if expected_dir:
+            follow_start = p + 1
+            follow_end = min(len(data), p + 1 + confirm_bars)
+            follow_signal = self.follow_through(follow_start, follow_end, expected_direction=expected_dir)
+        else:
+            follow_signal = "neutral"
+
+        return key_point_signal, follow_signal
+
+    @staticmethod
+    def keypoint_direction(key_point_signal):
         """
-        Checks the candlestick bodies in a range to see if there's a strong follow-through move.
-        Instead of returning after the first bar, we watch the entire interval.
+        Map the key point signal to an expected follow-through direction.
+        """
+        if key_point_signal in ["momentum valley", "strong demand absorption"]:
+            return "up"
+        elif key_point_signal in ["momentum peak", "buyer exhaustion", "volume spike reversal"]:
+            return "down"
+        else:
+            return None  # e.g. "calm valley", "calm peak" => no strong bias
+
+    def follow_through(self, start, end, expected_direction=None):
+        """
+        Checks multiple factors over [start, end) to confirm if the market
+        actually follows the expected direction ('up' or 'down').
         """
         data = self.data
-        signal = "neutral"
-        positive_bars = 0
-        negative_bars = 0
+        if end - start < 1:
+            return "neutral"
 
+        segment = data.iloc[start:end]
+        n_bars = len(segment)
+
+        # Price slope
+        price_slope = np.polyfit(range(n_bars), segment['close'], 1)[0]
+        price_dir = Strategy.slope_classification(price_slope)
+
+        # Volume slope
+        volume_slope = np.polyfit(range(n_bars), segment['volume'], 1)[0]
+        volume_dir = Strategy.slope_classification(volume_slope)
+
+        # Count bullish/bearish bars by body ratio
+        bullish_bars = 0
+        bearish_bars = 0
+        for i in range(start, end):
+            body_ratio = data.iloc[i]['body'] * 100
+            if body_ratio > 40:
+                bullish_bars += 1
+            elif body_ratio < -40:
+                bearish_bars += 1
+
+        # VWAP check: how many bars close above VWAP?
+        above_vwap_count = 0
         for i in range(start, end):
             row = data.iloc[i]
-            # Assuming row['body'] is a decimal ratio * 100 => e.g. 50 = 50%
-            body_ratio = row['body'] * 100
+            if row['close'] > row['vwap']:
+                above_vwap_count += 1
+        vwap_bullish = (above_vwap_count / n_bars) > 0.6
+        vwap_bearish = (above_vwap_count / n_bars) < 0.4
 
-            # If body_ratio > 40 => bullish bar
-            if body_ratio > 40:
-                positive_bars += 1
-            elif body_ratio < -40:
-                negative_bars += 1
+        # Decide the overall direction in [start, end)
+        # If price_dir is "strong up" or "mild up", volume_dir is up,
+        # majority bars are bullish, and VWAP is bullish => "up" bias.
+        total_strong_bars = bullish_bars + bearish_bars
+        bull_ratio = bullish_bars / total_strong_bars if total_strong_bars > 0 else 0
+        bear_ratio = bearish_bars / total_strong_bars if total_strong_bars > 0 else 0
 
-        # Simple logic: if majority are bullish => "reversal up", if majority are bearish => "reversal down"
-        if positive_bars > negative_bars and positive_bars > 0:
-            signal = "reversal up"
-        elif negative_bars > positive_bars and negative_bars > 0:
-            signal = "reversal down"
+        def direction_bias():
+            if (price_dir.endswith("up") and volume_dir.endswith("up")
+                    and bull_ratio > 0.6 and vwap_bullish):
+                return "up"
+            elif (price_dir.endswith("down") and volume_dir.endswith("down")
+                  and bear_ratio > 0.6 and vwap_bearish):
+                return "down"
+            else:
+                return "mixed"
 
-        return signal
+        actual_direction = direction_bias()
+
+        # Compare actual direction with the expected direction from the key point
+        if expected_direction == "up" and actual_direction == "up":
+            return "confirmed up"
+        elif expected_direction == "down" and actual_direction == "down":
+            return "confirmed down"
+        else:
+            return f"no follow-through ({actual_direction})"
 
     def cluster(self, start, end):
         """
@@ -284,178 +467,216 @@ class CandleStrategy(Strategy):
 
         return volume_k, int(span_pct), [upper_wick, body, lower_wick]
 
-    def summarize(self, p, index, peaks, valleys):
-        data = self.data
-        patterns, trading_signals = [], []
+    def analyze_pivot(self, prev_p, current_p, structure='peak', half_window=2):
+        """
+        Performs macro + micro analysis around a pivot and provides a trading recommendation
+        as a continuous score in [-1, 1].
+        """
+        # 1) Macro context from prev_p to current_p
+        context = self.pivot_context(prev_p, current_p)
 
-        # Determine if this point is a peak or valley
-        if p in peaks:
-            structure = 'peak'
-            start = max([x for x in valleys if x < p - 1], default=0)
-            end = next((x for x in valleys if x > p + 1), index)
-        elif p in valleys:
-            structure = 'valley'
-            start = max([x for x in peaks if x < p - 1], default=0)
-            end = next((x for x in peaks if x > p + 1), index)
-        else:
-            structure = 'neutral'
-            start, end = 0, index
+        # 2) Micro (local) analysis around the current pivot
+        kp_signal, ft_signal = self.keypoint(p=current_p, structure=structure, half_window=half_window)
 
-        # 1) Key point signal
-        key_point_signal = self.keypoint(p, structure)
+        # 3) Generate a final trading decision (text-based)
+        decision_dict = self._generate_trading_decision(context, kp_signal, ft_signal, structure)
 
-        # 2) Follow-through analysis
-        follow_through_signal = self.follow_through(p + 1, end + 1)
+        # 4) Convert that text-based recommendation into a continuous score
+        score = self._score_recommendation_text(decision_dict["decision_text"])
 
-        # 3) Phases to analyze
-        phases = [(start, p), (p, p + 1), (p + 1, end + 1)]
+        # 5) Return everything
+        return {
+            "macro_context": context,
+            "micro_signal": kp_signal,
+            "follow_through": ft_signal,
+            "trading_decision": {
+                "decision_text": decision_dict["decision_text"],
+                "score": score
+            }
+        }
 
-        tab = "\t\t\t\t"
-        for (ph_start, ph_end) in phases:
-            cv, span, c = self.cluster(ph_start, ph_end)
-            print(f"{tab}🔴 [{ph_start} - {ph_end - 1}] vol {cv:3d}, candle {span} {c} at {structure} @{p}")
+    @staticmethod
+    def _generate_trading_decision(context, kp_signal, ft_signal, structure):
+        """
+        Combines macro context, micro keypoint signal, and follow-through signal
+        to produce a final trading recommendation.
+        """
 
-            # Only proceed if there's more than 1 bar
-            if ph_end - ph_start > 1:
-                vol = data['volume'].iloc[ph_start:ph_end]
-                vwap = data['vwap'].iloc[ph_start:ph_end]
-                price = data['close'].iloc[ph_start:ph_end]
+        # Extract macro context
+        macro_dir = context.get("price_slope",
+                                "flat")  # e.g., 'strong up', 'mild up', 'flat', 'mild down', 'strong down'
+        macro_volume = context.get("volume_slope", "flat")
+        macro_rsi = context.get("rsi_trend", "neutral->neutral")  # e.g., 'neutral->overbought'
+        macro_macd = context.get("macd_trend", "neutral->neutral")  # e.g., 'bullish->bearish'
+        macro_vwap = context.get("vwap_stance", "mixed")  # e.g., 'mostly above', 'mostly below', 'mixed'
+        macro_signal = context.get("context_signal", "range-bound")  # e.g., 'strong uptrend overall'
 
-                vol_average = vol.mean()
-                vol_std = vol.std()
-                vol_max_min_ratio = vol.max() / max(vol.min(), 1)  # Avoid zero division
+        # Micro signals
+        # Example keypoint signals: 'momentum peak', 'buyer exhaustion', 'calm peak', etc.
+        # Example follow-through signals: 'confirmed up', 'confirmed down', 'no follow-through (mixed)'
+        micro_kp = kp_signal
+        micro_ft = ft_signal
 
-                duration = ph_end - ph_start
-                vol_trend_slope = np.polyfit(range(duration), vol, 1)[0]
-                price_trend_slope = np.polyfit(range(duration), price, 1)[0]
-                vwap_trend_slope = np.polyfit(range(duration), vwap, 1)[0]
+        # Initialize a recommendation
+        recommendation = "Hold / No Clear Trade"
 
-                price_change = price.iloc[-1] - price.iloc[0]
-
-                # Volume Pattern Classification
-                steep_slope_threshold = 0.21 * vol_average
-                moderate_slope_threshold = 0.08 * vol_average
-
-                if vol_trend_slope > moderate_slope_threshold:
-                    if vol_trend_slope > steep_slope_threshold:
-                        volume_pattern = "super strong increase"
-                    elif vol_std / vol_average < 0.2:
-                        volume_pattern = "steady increase"
-                    elif vol_max_min_ratio > 2:
-                        volume_pattern = "strong increase"
+        # 1) Senior trader might first see if there's a strong macro uptrend or downtrend
+        if "uptrend" in macro_signal:
+            # Macro is bullish
+            if structure == "valley":
+                # If we have a valley in a strong uptrend, potential long
+                if "momentum valley" in micro_kp or "strong demand absorption" in micro_kp:
+                    if "confirmed up" in micro_ft:
+                        recommendation = "Go Long (Bullish Reversal Confirmed)"
                     else:
-                        volume_pattern = "erratic increase"
-                elif vol_trend_slope < -moderate_slope_threshold:
-                    if vol_trend_slope < -steep_slope_threshold:
-                        volume_pattern = "super strong decrease"
-                    elif vol_std / vol_average < 0.2:
-                        volume_pattern = "steady decrease"
-                    elif vol_max_min_ratio > 2:
-                        volume_pattern = "strong decrease"
+                        recommendation = "Watch for Bullish Confirmation (Uptrend + Potential Valley)"
+                elif "false breakdown" in micro_kp:
+                    if "confirmed up" in micro_ft:
+                        recommendation = "Bear Trap -> Go Long"
                     else:
-                        volume_pattern = "erratic decrease"
+                        recommendation = "Possible Bear Trap, Wait for More Confirmation"
                 else:
-                    volume_pattern = "flat or stable"
-
-                patterns.append(volume_pattern)
-
-                # Candle analysis from cluster
-                long_upper_wick = c[0] > 60
-                candle_body = c[1]  # in % of range
-                long_lower_wick = c[2] > 60
-
-                # Example: tension field > 0 => price reclaim, < 0 => price reject
-                last = data.iloc[ph_end - 1]
-                price_reclaim = last['tension'] > 0
-                price_reject = last['tension'] < 0
-
-                # Refined Price Direction with Threshold
-                slope_threshold = 0.1  # Adjust if needed
-                if price_trend_slope > slope_threshold:
-                    price_direction = "up"
-                elif price_trend_slope < -slope_threshold:
-                    price_direction = "down"
+                    # Calm or soft valley
+                    recommendation = "Potential Buy on Dip (Macro Uptrend) but Weak Local Signal"
+            else:
+                # structure == 'peak'
+                # In a strong uptrend, a peak might just be a local pullback
+                if "momentum peak" in micro_kp:
+                    if "confirmed down" in micro_ft:
+                        recommendation = "Short-Term Pullback, but Long-Term Uptrend"
+                    else:
+                        recommendation = "Uptrend Momentum Peak, Consider Partial Profit"
+                elif "buyer exhaustion" in micro_kp:
+                    recommendation = "Possible Reversal, Watch for Bearish Follow-Through"
                 else:
-                    price_direction = "flat"
+                    recommendation = "Peak in Uptrend - Potential Minor Correction"
 
-                # Refined Volume Direction (including 'flat' possibility)
-                if "increase" in volume_pattern:
-                    volume_direction = "up"
-                elif "decrease" in volume_pattern:
-                    volume_direction = "down"
+        elif "downtrend" in macro_signal:
+            # Macro is bearish
+            if structure == "peak":
+                # Peak in a strong downtrend is a potential short entry
+                if "momentum peak" in micro_kp or "buyer exhaustion" in micro_kp:
+                    if "confirmed down" in micro_ft:
+                        recommendation = "Go Short (Bearish Continuation Confirmed)"
+                    else:
+                        recommendation = "Watch for Bearish Confirmation (Downtrend + Peak)"
+                elif "volume spike reversal" in micro_kp:
+                    if "confirmed down" in micro_ft:
+                        recommendation = "Volume Spike -> Short Entry Confirmed"
+                    else:
+                        recommendation = "Possible Reversal Spike, Wait for More Confirmation"
                 else:
-                    volume_direction = "flat"
-
-                # --- Generate Trading Signals ---
-                if price_direction == "up" and volume_direction == "up":
-                    if any(x in volume_pattern for x in ["super strong", "strong"]):
-                        if candle_body > 50 and price_reclaim:
-                            trading_signal = "strong bullish continuation"
-                        else:
-                            trading_signal = "bullish continuation - caution"
-                    elif "steady" in volume_pattern:
-                        trading_signal = "bullish continuation - steady momentum"
-                    elif "erratic" in volume_pattern:
-                        trading_signal = "bullish continuation - erratic volume"
-                    else:  # "flat or stable"
-                        trading_signal = "bullish but volume stable"
-
-                elif price_direction == "up" and volume_direction == "down":
-                    if any(x in volume_pattern for x in ["super strong", "strong"]):
-                        if candle_body < 30 and long_upper_wick and price_reject:
-                            trading_signal = "bull trap confirmed - strong reversal down"
-                        else:
-                            trading_signal = "bull trap possible - needs more confirmation"
-                    elif "steady" in volume_pattern:
-                        trading_signal = "weak bullish move - watch for reversal"
-                    elif "erratic" in volume_pattern:
-                        trading_signal = "bullish uncertainty - caution advised"
-                    else:  # "flat or stable"
-                        trading_signal = "bullish but volume dropping - potential exhaustion"
-
-                elif price_direction == "down" and volume_direction == "up":
-                    if any(x in volume_pattern for x in ["super strong", "strong"]):
-                        if candle_body < 30 and long_lower_wick and price_reclaim:
-                            trading_signal = "bear trap confirmed - strong reversal up"
-                        else:
-                            trading_signal = "bear trap possible - needs more confirmation"
-                    elif "steady" in volume_pattern:
-                        trading_signal = "weak bearish move - watch for reversal"
-                    elif "erratic" in volume_pattern:
-                        trading_signal = "bearish uncertainty - caution advised"
-                    else:  # "flat or stable"
-                        trading_signal = "bearish but volume stable - possible absorption"
-
-                elif price_direction == "down" and volume_direction == "down":
-                    if any(x in volume_pattern for x in ["super strong", "strong"]):
-                        if candle_body > 50 and price_reject:
-                            trading_signal = "strong bearish continuation"
-                        else:
-                            trading_signal = "bearish continuation - caution"
-                    elif "steady" in volume_pattern:
-                        trading_signal = "bearish continuation - steady momentum"
-                    elif "erratic" in volume_pattern:
-                        trading_signal = "bearish continuation - erratic volume"
-                    else:  # "flat or stable"
-                        trading_signal = "bearish but volume stable"
-
+                    recommendation = "Peak in Downtrend - Potential Sell Rally"
+            else:
+                # structure == 'valley'
+                # In a strong downtrend, a valley might be a local bounce
+                if "momentum valley" in micro_kp:
+                    recommendation = "Potential Bearish Retracement, Wait for Confirmation"
+                elif "false breakdown" in micro_kp:
+                    if "confirmed up" in micro_ft:
+                        recommendation = "Bullish Divergence, Possible Short Squeeze"
+                    else:
+                        recommendation = "False Breakdown, but No Confirmation Yet"
                 else:
-                    # Covers "flat" price or volume combos
-                    trading_signal = "neutral or inconclusive"
+                    recommendation = "Weak Valley in Downtrend, Could Break Lower"
 
-                trading_signals.append(trading_signal)
-
-                # Debug/monitoring prints
-                print(f"{tab}    Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
-                print(f"{tab}    Volume avg/std: {int(vol_average // 10000)}/{int(vol_std // 10000)} "
-                      f"Slope: {vol_trend_slope:.2f}, Max/Min: {vol_max_min_ratio:.2f}")
-                print(f"{tab}    Price Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
-
-        # Combine the first pattern & first signal with the key point & follow-through
-        if patterns and trading_signals:
-            return patterns[0] + ', ' + trading_signals[0], key_point_signal, follow_through_signal
         else:
-            return "no-pattern", key_point_signal, follow_through_signal
+            # Macro is range-bound or mixed
+            if "confirmed up" in micro_ft:
+                recommendation = "Range-Bound but Micro Up -> Possible Quick Long"
+            elif "confirmed down" in micro_ft:
+                recommendation = "Range-Bound but Micro Down -> Possible Quick Short"
+            else:
+                recommendation = "Sideways Market - Scalping or Wait for Clear Trend"
+
+        # 2) Refine recommendation with RSI or MACD extremes
+        # e.g., if RSI ended 'overbought' and we have a peak, that might strengthen a short call
+        rsi_end = macro_rsi.split("->")[-1] if "->" in macro_rsi else "neutral"
+        macd_end = macro_macd.split("->")[-1] if "->" in macro_macd else "neutral"
+
+        if "peak" in structure and "overbought" in rsi_end:
+            recommendation += " | RSI Overbought => Strengthens Bearish Bias"
+        elif "valley" in structure and "oversold" in rsi_end:
+            recommendation += " | RSI Oversold => Strengthens Bullish Bias"
+
+        if "peak" in structure and "bearish" in macd_end.lower():
+            recommendation += " | MACD Bearish => Confirms Potential Reversal"
+        elif "valley" in structure and "bullish" in macd_end.lower():
+            recommendation += " | MACD Bullish => Confirms Potential Reversal"
+
+        # 3) Optionally factor in VWAP stance
+        if "above" in macro_vwap:
+            recommendation += " | Price Mostly Above VWAP => Bullish Lean"
+        elif "below" in macro_vwap:
+            recommendation += " | Price Mostly Below VWAP => Bearish Lean"
+
+        return {"decision_text": recommendation}
+
+    @staticmethod
+    def _score_recommendation_text(recommendation):
+        """
+        Converts a human-readable recommendation string into a continuous score in [-1, 1].
+          +1 => strong buy
+          +0.5 => mild buy
+           0  => hold
+          -0.5 => mild sell
+          -1  => strong sell
+
+        You can expand the logic as needed.
+        """
+        rec_lower = recommendation.lower()
+
+        # 1) Define a base "keyword -> base score" map
+        # If multiple strong keywords appear, we can pick the largest absolute or sum them, etc.
+        base_map = {
+            "go long": 1.0,
+            "buy": 1.0,
+            "bullish reversal confirmed": 0.9,
+            "quick long": 0.8,
+            "partial profit": 0.2,  # might be less bullish if we talk about profit-taking
+            "go short": -1.0,
+            "sell": -1.0,
+            "bearish continuation confirmed": -0.9,
+            "quick short": -0.8,
+            "pullback": -0.3,
+            "minor correction": -0.2
+        }
+
+        # 2) Define multipliers for phrases like "possible", "watch", "caution"
+        # If these appear, we'll multiply the final absolute score by the multiplier.
+        multiplier_map = {
+            "possible": 0.5,
+            "watch": 0.7,
+            "caution": 0.7,
+            "weak": 0.6
+        }
+
+        # 3) Find the strongest base keyword
+        base_score = 0.0
+        for phrase, val in base_map.items():
+            if phrase in rec_lower:
+                # Option A: pick the phrase with the largest absolute score
+                if abs(val) > abs(base_score):
+                    base_score = val
+
+        # 4) Apply multipliers if present
+        # e.g., if "possible" in text => multiply absolute value by 0.5
+        final_score = base_score
+        for phrase, mult in multiplier_map.items():
+            if phrase in rec_lower:
+                final_score = final_score * mult
+
+        # 5) If no strong keyword found, we default to 0 => hold
+        # or if the recommendation was "Hold / No Clear Trade"
+        if final_score == 0.0 and "hold" not in rec_lower:
+            # There's a chance the text is truly neutral
+            # You can decide if you want to keep it at 0 or do something else
+            final_score = 0.0
+
+        # Ensure final_score is clipped in [-1, 1]
+        final_score = max(min(final_score, 1.0), -1.0)
+
+        return final_score
 
     def spot(self, index):
         row = self.data.iloc[index]
@@ -495,17 +716,27 @@ class CandleStrategy(Strategy):
                 print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
                 prev_vol_valleys.update(vol_valleys)
 
-            if len(peaks) and index > peaks[-1] + 1 and len(new_peaks):
+            if len(peaks) and len(new_peaks) and index > peaks[-1] + 1:
                 print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
-                    if p in vol_peaks or p in vol_valleys:
-                        position = self.scenario(self.summarize(p, index, peaks, valleys))
+                    prev_peak = max((peak for peak in peaks if peak < p), default=None)
+                    if prev_peak is not None:
+                        result = self.analyze_pivot(prev_peak, p, structure='peak')
+                        print(f"🔴 {result}")
+                        if result['trading_decision']['score'] < -0.6:
+                            position = -1
                 prev_peaks.update(peaks)
+
             if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     if v in vol_peaks or v in vol_valleys:
-                        position = self.scenario(self.summarize(v, index, peaks, valleys))
+                        prev_valley = max((valley for valley in valleys if valley < v), default=None)
+                        if prev_valley is not None:
+                            result = self.analyze_pivot(prev_valley, v, structure='valley')
+                            print(f"🔴 {result}")
+                            if result['trading_decision']['score'] > 0.6:
+                                position = 1
                 prev_valleys.update(valleys)
 
             positions.append(position)

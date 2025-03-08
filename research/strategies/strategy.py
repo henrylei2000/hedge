@@ -87,8 +87,8 @@ class Strategy:
         data['long_ma'] = data['close'].ewm(span=long_window, adjust=False).mean()
         data['trending'] = data['close'] - data['close'].ewm(alpha=0.3, adjust=False).mean()
         data['macd'] = data['short_ma'] - data['long_ma']
-        data['signal_line'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
-        data['strength'] = data['macd'] - data['signal_line']
+        data['macd_signal'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
+        data['strength'] = data['macd'] - data['macd_signal']
 
         delta = data['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
@@ -126,6 +126,57 @@ class Strategy:
 
     def signal(self):
         pass
+
+    @staticmethod
+    def classify_rsi(rsi_value):
+        """
+        Simple RSI classification:
+          - > 70: overbought
+          - < 30: oversold
+          - Otherwise: neutral
+        """
+        if rsi_value > 70:
+            return "overbought"
+        elif rsi_value < 30:
+            return "oversold"
+        else:
+            return "neutral"
+
+    @staticmethod
+    def classify_macd(macd_value, macd_signal_value):
+        """
+        Simple MACD classification:
+          - macd_value > macd_signal_value: bullish
+          - macd_value < macd_signal_value: bearish
+          - Otherwise: neutral
+        """
+        if macd_value > macd_signal_value:
+            return "bullish"
+        elif macd_value < macd_signal_value:
+            return "bearish"
+        else:
+            return "neutral"
+
+    @staticmethod
+    def slope_classification(slope, mild_thresh=1e-6, steep_thresh=5e-6):
+        """
+        Classify slope into:
+          - strong up
+          - mild up
+          - flat
+          - mild down
+          - strong down
+        """
+        if slope > steep_thresh:
+            return "strong up"
+        elif slope > mild_thresh:
+            return "mild up"
+        elif slope < -steep_thresh:
+            return "strong down"
+        elif slope < -mild_thresh:
+            return "mild down"
+        else:
+            return "flat"
 
     @staticmethod
     def rearrange_valley_peak(valley_indices, valley_prices, peak_indices, peak_prices, alternative_valley):
