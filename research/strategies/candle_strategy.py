@@ -128,19 +128,17 @@ class CandleStrategy(Strategy):
 
         return comment
 
-    def pivot_context(self, prev_p, current_p):
+    def pivot_context(self, prev_p, current_p,
+                      baseline_period=20,
+                      use_momentum=False,
+                      consecutive_vol_thresh=3):
         """
-        Analyze the 'macro' window from [prev_p, current_p] to derive an overall trend context.
+        Analyze the 'macro' window [prev_p, current_p] with heavier emphasis on volume.
 
-        Returns a dictionary or a string describing the market context, e.g.:
-            {
-              'price_slope': 'strong up',
-              'volume_slope': 'mild up',
-              'rsi_trend': 'neutral->overbought',
-              'macd_trend': 'bullish->neutral',
-              'dominant_candle': 'bullish',
-              'context_signal': 'strong uptrend overall'
-            }
+        :param baseline_period: # of bars before 'prev_p' to calculate baseline volume for acceleration checks
+        :param use_momentum: Whether to factor RSI/MACD into final classification
+        :param consecutive_vol_thresh: # of consecutive rising/falling volume bars to label 'steady accumulation/distribution'
+        :return: dict with context info (price_slope, volume_slope, volume_pattern, context_signal, etc.)
         """
         data = self.data
 
@@ -148,7 +146,6 @@ class CandleStrategy(Strategy):
         start_idx = min(prev_p, current_p)
         end_idx = max(prev_p, current_p) + 1  # slice end is exclusive
 
-        # Safety check
         if start_idx < 0 or end_idx > len(data):
             return {"context_signal": "invalid range"}
 
@@ -157,50 +154,114 @@ class CandleStrategy(Strategy):
         if n < 2:
             return {"context_signal": "not enough bars"}
 
-        # --- 1) Price & Volume Slopes ---
+        # --- 1) Price & Volume Slopes in [prev_p, current_p] ---
         price_array = segment['close']
         volume_array = segment['volume']
         price_slope = np.polyfit(range(n), price_array, 1)[0]
         volume_slope = np.polyfit(range(n), volume_array, 1)[0]
-        price_dir = Strategy.slope_classification(price_slope)
-        volume_dir = Strategy.slope_classification(volume_slope)
 
-        # --- 2) RSI / MACD Over the Range ---
-        rsi_start = segment.iloc[0]['rsi'] if 'rsi' in segment.columns else None
-        rsi_end = segment.iloc[-1]['rsi'] if 'rsi' in segment.columns else None
-        rsi_label_start = Strategy.classify_rsi(rsi_start) if rsi_start is not None else "N/A"
-        rsi_label_end = Strategy.classify_rsi(rsi_end) if rsi_end is not None else "N/A"
-        rsi_trend = f"{rsi_label_start}->{rsi_label_end}"
+        price_dir = self.slope_classification(price_slope)
+        volume_dir = self.slope_classification(volume_slope)
 
-        macd_start = segment.iloc[0]['macd'] if 'macd' in segment.columns else None
-        macd_signal_start = segment.iloc[0]['macd_signal'] if 'macd_signal' in segment.columns else None
-        macd_end = segment.iloc[-1]['macd'] if 'macd' in segment.columns else None
-        macd_signal_end = segment.iloc[-1]['macd_signal'] if 'macd_signal' in segment.columns else None
+        # --- 2) Volume Acceleration (compare average volume to baseline) ---
+        segment_vol_avg = volume_array.mean()
 
-        if macd_start is not None and macd_signal_start is not None:
-            macd_label_start = Strategy.classify_macd(macd_start, macd_signal_start)
+        # baseline_period bars before start_idx
+        baseline_start = max(0, start_idx - baseline_period)
+        baseline_end = start_idx  # slice end is exclusive
+        baseline_segment = data.iloc[baseline_start:baseline_end]
+        if len(baseline_segment) > 0:
+            baseline_vol_avg = baseline_segment['volume'].mean()
         else:
-            macd_label_start = "N/A"
+            baseline_vol_avg = segment_vol_avg  # fallback if no data
 
-        if macd_end is not None and macd_signal_end is not None:
-            macd_label_end = Strategy.classify_macd(macd_end, macd_signal_end)
+        # Ratio of segment volume to baseline
+        if baseline_vol_avg > 0:
+            vol_acc_ratio = segment_vol_avg / baseline_vol_avg
         else:
-            macd_label_end = "N/A"
+            vol_acc_ratio = 1.0  # avoid division by zero
 
-        macd_trend = f"{macd_label_start}->{macd_label_end}"
+        # We'll define a threshold to consider it "accelerated volume"
+        # e.g., if ratio > 1.5 => 50% higher volume
+        accelerated_volume = (vol_acc_ratio > 1.5)
 
-        # --- 3) High-Level Candlestick Stats ---
-        # Count bullish/bearish bars (based on 'body')
+        # --- 3) Multi-Bar Volume Patterns (accumulation / distribution) ---
+        # Check consecutive rising or falling volume
+        consecutive_up = 0
+        consecutive_down = 0
+        max_consecutive_up = 0
+        max_consecutive_down = 0
+        last_vol = None
+
+        for i in range(start_idx, end_idx):
+            current_vol = data.iloc[i]['volume']
+            if last_vol is not None:
+                if current_vol > last_vol:
+                    consecutive_up += 1
+                    consecutive_down = 0
+                elif current_vol < last_vol:
+                    consecutive_down += 1
+                    consecutive_up = 0
+                # else equal => reset both?
+            last_vol = current_vol
+            max_consecutive_up = max(max_consecutive_up, consecutive_up)
+            max_consecutive_down = max(max_consecutive_down, consecutive_down)
+
+        # Decide a volume_pattern label
+        if max_consecutive_up >= consecutive_vol_thresh:
+            volume_pattern = "steady accumulation"
+        elif max_consecutive_down >= consecutive_vol_thresh:
+            volume_pattern = "steady distribution"
+        else:
+            volume_pattern = "mixed volume"
+
+        # If accelerated volume is detected, we can refine the label
+        if accelerated_volume and "accumulation" in volume_pattern:
+            volume_pattern = "accelerated accumulation"
+        elif accelerated_volume and "distribution" in volume_pattern:
+            volume_pattern = "accelerated distribution"
+        elif accelerated_volume:
+            volume_pattern = "accelerated volume"
+
+        # --- 4) Price-Volume Divergence ---
+        # If price is up but volume is strongly down => exhaustion uptrend
+        # If price is down but volume is strongly up => accumulation downtrend
+        # We'll define "strong" as "strong up"/"strong down" in the classification
+        divergence_label = None
+        if price_dir.startswith("strong up") and volume_dir.startswith("strong down"):
+            divergence_label = "exhaustion uptrend"
+        elif price_dir.startswith("strong down") and volume_dir.startswith("strong up"):
+            divergence_label = "accumulation downtrend"
+
+        # --- 5) (Optional) RSI / MACD usage (selective) ---
+        if use_momentum:
+            rsi_start = segment.iloc[0]['rsi'] if 'rsi' in segment.columns else None
+            rsi_end = segment.iloc[-1]['rsi'] if 'rsi' in segment.columns else None
+            rsi_label_start = self.classify_rsi(rsi_start) if rsi_start is not None else "N/A"
+            rsi_label_end = self.classify_rsi(rsi_end) if rsi_end is not None else "N/A"
+            rsi_trend = f"{rsi_label_start}->{rsi_label_end}"
+
+            macd_start = segment.iloc[0]['macd'] if 'macd' in segment.columns else None
+            macd_signal_start = segment.iloc[0]['macd_signal'] if 'macd_signal' in segment.columns else None
+            macd_end = segment.iloc[-1]['macd'] if 'macd' in segment.columns else None
+            macd_signal_end = segment.iloc[-1]['macd_signal'] if 'macd_signal' in segment.columns else None
+            macd_label_start = self.classify_macd(macd_start, macd_signal_start) if macd_start is not None else "N/A"
+            macd_label_end = self.classify_macd(macd_end, macd_signal_end) if macd_end is not None else "N/A"
+            macd_trend = f"{macd_label_start}->{macd_label_end}"
+        else:
+            rsi_trend = "N/A->N/A"
+            macd_trend = "N/A->N/A"
+
+        # --- 6) High-Level Candlestick Stats (for reference) ---
         bullish_count = 0
         bearish_count = 0
         for i in range(start_idx, end_idx):
-            body_ratio = self.data.iloc[i]['body'] * 100
+            body_ratio = data.iloc[i]['body'] * 100
             if body_ratio > 0:
                 bullish_count += 1
             elif body_ratio < 0:
                 bearish_count += 1
 
-        # Simple classification: which is dominant?
         if bullish_count > bearish_count:
             dominant_candle = "bullish"
         elif bearish_count > bullish_count:
@@ -208,11 +269,10 @@ class CandleStrategy(Strategy):
         else:
             dominant_candle = "mixed"
 
-        # --- 4) VWAP Positioning (optional) ---
-        # e.g., how many bars close above VWAP?
+        # --- 7) VWAP Positioning (optional) ---
         above_vwap_count = 0
         for i in range(start_idx, end_idx):
-            row = self.data.iloc[i]
+            row = data.iloc[i]
             if row['close'] > row['vwap']:
                 above_vwap_count += 1
         vwap_ratio = above_vwap_count / n
@@ -223,19 +283,47 @@ class CandleStrategy(Strategy):
         else:
             vwap_stance = "mixed"
 
-        # --- 5) Combine into a Context Signal ---
-        # For example, if price_dir is "strong up" and dominant_candle is "bullish" => "strong uptrend overall"
-        # This is just one simplistic logic approach
-        if price_dir.endswith("up") and dominant_candle == "bullish":
-            context_signal = "strong uptrend overall" if "strong" in price_dir else "mild uptrend overall"
-        elif price_dir.endswith("down") and dominant_candle == "bearish":
-            context_signal = "strong downtrend overall" if "strong" in price_dir else "mild downtrend overall"
+        # --- 8) Combine into a Final Context Signal ---
+        # Priority:
+        # 1) Check for strong price-volume divergence
+        # 2) Otherwise check alignment of price_dir & volume_dir
+        # 3) Incorporate volume_pattern (accumulation, distribution, etc.)
+        # 4) Momentum signals only if use_momentum=True (could break ties or add commentary)
+        if divergence_label:
+            context_signal = divergence_label
         else:
-            context_signal = "range-bound or mixed"
+            if price_dir.endswith("up") and volume_dir.endswith("up"):
+                # Possibly 'volume-driven uptrend'
+                if "strong" in price_dir or "strong" in volume_dir:
+                    context_signal = "volume-driven uptrend"
+                else:
+                    context_signal = "mild volume uptrend"
+            elif price_dir.endswith("down") and volume_dir.endswith("down"):
+                if "strong" in price_dir or "strong" in volume_dir:
+                    context_signal = "volume-driven downtrend"
+                else:
+                    context_signal = "mild volume downtrend"
+            else:
+                context_signal = "range-bound or mixed"
+
+        # We can refine final context based on volume_pattern
+        # e.g., if context_signal is 'volume-driven uptrend' but we see 'accelerated accumulation',
+        # we can combine them:
+        if "uptrend" in context_signal and "accumulation" in volume_pattern:
+            context_signal += " + accumulation"
+        elif "downtrend" in context_signal and "distribution" in volume_pattern:
+            context_signal += " + distribution"
+
+        # If volume is accelerated, but context is mixed => "mixed + accelerated volume"
+        if "mixed" in context_signal and "accelerated volume" in volume_pattern:
+            context_signal = "mixed + accelerated volume"
 
         return {
             "price_slope": price_dir,
             "volume_slope": volume_dir,
+            "volume_pattern": volume_pattern,          # steady/accelerated accumulation/distribution, etc.
+            "accelerated_volume": accelerated_volume,  # bool
+            "divergence_label": divergence_label,      # exhaustion uptrend, accumulation downtrend, or None
             "rsi_trend": rsi_trend,
             "macd_trend": macd_trend,
             "dominant_candle": dominant_candle,
@@ -498,33 +586,53 @@ class CandleStrategy(Strategy):
     @staticmethod
     def _generate_trading_decision(context, kp_signal, ft_signal, structure):
         """
-        Combines macro context, micro keypoint signal, and follow-through signal
-        to produce a final trading recommendation.
+        Combines macro context (from pivot_context), micro keypoint signal,
+        and follow-through signal to produce a final trading recommendation.
+        Incorporates new volume/divergence signals:
+          - divergence_label (e.g., 'exhaustion uptrend', 'accumulation downtrend')
+          - volume_pattern (e.g., 'accelerated accumulation', 'steady distribution', etc.)
+          - accelerated_volume (bool)
         """
 
-        # Extract macro context
-        macro_dir = context.get("price_slope",
-                                "flat")  # e.g., 'strong up', 'mild up', 'flat', 'mild down', 'strong down'
-        macro_volume = context.get("volume_slope", "flat")
-        macro_rsi = context.get("rsi_trend", "neutral->neutral")  # e.g., 'neutral->overbought'
-        macro_macd = context.get("macd_trend", "neutral->neutral")  # e.g., 'bullish->bearish'
-        macro_vwap = context.get("vwap_stance", "mixed")  # e.g., 'mostly above', 'mostly below', 'mixed'
-        macro_signal = context.get("context_signal", "range-bound")  # e.g., 'strong uptrend overall'
+        # --- 1) Extract macro context ---
+        # Price & Volume Slopes
+        macro_dir = context.get("price_slope", "flat")  # e.g., 'strong up', 'mild up', 'flat', ...
+        macro_volume = context.get("volume_slope", "flat")  # e.g., 'strong up', 'mild up', 'flat', ...
+        macro_signal = context.get("context_signal",
+                                   "mixed")  # e.g., 'exhaustion uptrend', 'volume-driven uptrend + accumulation'
+        divergence_label = context.get("divergence_label", None)  # e.g., 'exhaustion uptrend', 'accumulation downtrend'
+        volume_pattern = context.get("volume_pattern", "mixed volume")
+        accelerated_vol = context.get("accelerated_volume", False)
 
-        # Micro signals
-        # Example keypoint signals: 'momentum peak', 'buyer exhaustion', 'calm peak', etc.
-        # Example follow-through signals: 'confirmed up', 'confirmed down', 'no follow-through (mixed)'
+        # RSI / MACD / VWAP
+        macro_rsi = context.get("rsi_trend", "neutral->neutral")
+        macro_macd = context.get("macd_trend", "neutral->neutral")
+        macro_vwap = context.get("vwap_stance", "mixed")  # e.g. 'mostly above', 'mostly below', 'mixed'
+
+        # --- 2) Extract micro signals (keypoint & follow-through) ---
+        # Example keypoint signals: 'momentum peak', 'buyer exhaustion', etc.
+        # Example follow-through: 'confirmed up', 'confirmed down', 'no follow-through (mixed)'
         micro_kp = kp_signal
         micro_ft = ft_signal
 
-        # Initialize a recommendation
+        # Start with a default
         recommendation = "Hold / No Clear Trade"
 
-        # 1) Senior trader might first see if there's a strong macro uptrend or downtrend
-        if "uptrend" in macro_signal:
+        # --- 3) Volume/Divergence Pre-Check (Override) ---
+        # If pivot_context gave a strong divergence_label, it can overshadow the usual uptrend/downtrend logic
+        # Example: 'exhaustion uptrend' => strongly hints at a reversal in an otherwise bullish scenario
+        if divergence_label == "exhaustion uptrend":
+            # Typically indicates price strong up, volume strong down => watch for reversal
+            # Let's set an early "bearish" tilt unless micro signals confirm otherwise
+            recommendation = "Possible Uptrend Exhaustion - Watch for Bearish Reversal"
+        elif divergence_label == "accumulation downtrend":
+            # Price strong down, volume strong up => bullish tilt
+            recommendation = "Potential Accumulation in Downtrend - Watch for Bullish Reversal"
+
+        # If no divergence_label, or after we've set an initial stance, proceed with standard macro logic:
+        if "uptrend" in macro_signal and divergence_label is None:
             # Macro is bullish
             if structure == "valley":
-                # If we have a valley in a strong uptrend, potential long
                 if "momentum valley" in micro_kp or "strong demand absorption" in micro_kp:
                     if "confirmed up" in micro_ft:
                         recommendation = "Go Long (Bullish Reversal Confirmed)"
@@ -536,11 +644,9 @@ class CandleStrategy(Strategy):
                     else:
                         recommendation = "Possible Bear Trap, Wait for More Confirmation"
                 else:
-                    # Calm or soft valley
                     recommendation = "Potential Buy on Dip (Macro Uptrend) but Weak Local Signal"
             else:
                 # structure == 'peak'
-                # In a strong uptrend, a peak might just be a local pullback
                 if "momentum peak" in micro_kp:
                     if "confirmed down" in micro_ft:
                         recommendation = "Short-Term Pullback, but Long-Term Uptrend"
@@ -551,10 +657,9 @@ class CandleStrategy(Strategy):
                 else:
                     recommendation = "Peak in Uptrend - Potential Minor Correction"
 
-        elif "downtrend" in macro_signal:
+        elif "downtrend" in macro_signal and divergence_label is None:
             # Macro is bearish
             if structure == "peak":
-                # Peak in a strong downtrend is a potential short entry
                 if "momentum peak" in micro_kp or "buyer exhaustion" in micro_kp:
                     if "confirmed down" in micro_ft:
                         recommendation = "Go Short (Bearish Continuation Confirmed)"
@@ -569,7 +674,6 @@ class CandleStrategy(Strategy):
                     recommendation = "Peak in Downtrend - Potential Sell Rally"
             else:
                 # structure == 'valley'
-                # In a strong downtrend, a valley might be a local bounce
                 if "momentum valley" in micro_kp:
                     recommendation = "Potential Bearish Retracement, Wait for Confirmation"
                 elif "false breakdown" in micro_kp:
@@ -580,8 +684,8 @@ class CandleStrategy(Strategy):
                 else:
                     recommendation = "Weak Valley in Downtrend, Could Break Lower"
 
-        else:
-            # Macro is range-bound or mixed
+        elif divergence_label is None:
+            # Macro is range-bound or mixed (no divergence label overshadowing)
             if "confirmed up" in micro_ft:
                 recommendation = "Range-Bound but Micro Up -> Possible Quick Long"
             elif "confirmed down" in micro_ft:
@@ -589,8 +693,18 @@ class CandleStrategy(Strategy):
             else:
                 recommendation = "Sideways Market - Scalping or Wait for Clear Trend"
 
-        # 2) Refine recommendation with RSI or MACD extremes
-        # e.g., if RSI ended 'overbought' and we have a peak, that might strengthen a short call
+        # --- 4) Volume Pattern & Acceleration Enhancements ---
+        # If we see 'accumulation' or 'distribution', we can tilt the recommendation
+        if "accumulation" in volume_pattern.lower():
+            recommendation += " | Volume Accumulation => Bullish Lean"
+        elif "distribution" in volume_pattern.lower():
+            recommendation += " | Volume Distribution => Bearish Lean"
+
+        # If accelerated_volume is True => emphasize the move
+        if accelerated_vol:
+            recommendation += " | Accelerated Volume => Stronger Conviction"
+
+        # --- 5) Refine with RSI or MACD extremes (like before) ---
         rsi_end = macro_rsi.split("->")[-1] if "->" in macro_rsi else "neutral"
         macd_end = macro_macd.split("->")[-1] if "->" in macro_macd else "neutral"
 
@@ -604,7 +718,7 @@ class CandleStrategy(Strategy):
         elif "valley" in structure and "bullish" in macd_end.lower():
             recommendation += " | MACD Bullish => Confirms Potential Reversal"
 
-        # 3) Optionally factor in VWAP stance
+        # --- 6) Factor in VWAP stance (like before) ---
         if "above" in macro_vwap:
             recommendation += " | Price Mostly Above VWAP => Bullish Lean"
         elif "below" in macro_vwap:
@@ -622,12 +736,11 @@ class CandleStrategy(Strategy):
           -0.5 => mild sell
           -1  => strong sell
 
-        You can expand the logic as needed.
+        Incorporates volume/divergence references and momentum signals as additive modifiers.
         """
         rec_lower = recommendation.lower()
 
-        # 1) Define a base "keyword -> base score" map
-        # If multiple strong keywords appear, we can pick the largest absolute or sum them, etc.
+        # --- 1) Base Keywords -> Base Score ---
         base_map = {
             "go long": 1.0,
             "buy": 1.0,
@@ -642,8 +755,8 @@ class CandleStrategy(Strategy):
             "minor correction": -0.2
         }
 
-        # 2) Define multipliers for phrases like "possible", "watch", "caution"
-        # If these appear, we'll multiply the final absolute score by the multiplier.
+        # --- 2) Multipliers for Uncertainty Phrases ---
+        #    Scale the absolute value of the base score
         multiplier_map = {
             "possible": 0.5,
             "watch": 0.7,
@@ -651,29 +764,57 @@ class CandleStrategy(Strategy):
             "weak": 0.6
         }
 
-        # 3) Find the strongest base keyword
+        # --- 3) Additive Modifiers for Volume/Divergence/RSI/MACD/VWAP references ---
+        #    We *add* these values to the final score
+        #    Example: "exhaustion uptrend" => -0.5, "volume accumulation => bullish lean" => +0.3, etc.
+        additive_map = {
+            # Volume & Divergence signals
+            "exhaustion uptrend": -0.5,
+            "accumulation downtrend": +0.5,
+            "volume accumulation => bullish lean": +0.3,
+            "volume distribution => bearish lean": -0.3,
+            "accelerated volume => stronger conviction": +0.2,
+
+            # RSI references
+            "rsi overbought => strengthens bearish bias": -0.2,
+            "rsi oversold => strengthens bullish bias": +0.2,
+
+            # MACD references
+            "macd bearish => confirms potential reversal": -0.2,
+            "macd bullish => confirms potential reversal": +0.2,
+
+            # VWAP stance references (optional)
+            "price mostly above vwap => bullish lean": +0.1,
+            "price mostly below vwap => bearish lean": -0.1
+        }
+
+        # --- Step A: Identify the strongest base keyword ---
         base_score = 0.0
         for phrase, val in base_map.items():
             if phrase in rec_lower:
-                # Option A: pick the phrase with the largest absolute score
+                # Option: pick the phrase with the largest absolute value
                 if abs(val) > abs(base_score):
                     base_score = val
 
-        # 4) Apply multipliers if present
+        # --- Step B: Apply multipliers if present ---
         # e.g., if "possible" in text => multiply absolute value by 0.5
         final_score = base_score
         for phrase, mult in multiplier_map.items():
             if phrase in rec_lower:
                 final_score = final_score * mult
 
-        # 5) If no strong keyword found, we default to 0 => hold
-        # or if the recommendation was "Hold / No Clear Trade"
+        # --- Step C: Apply additive modifiers (sum them) ---
+        # If multiple additive phrases appear, we sum them all
+        for phrase, delta in additive_map.items():
+            if phrase in rec_lower:
+                final_score += delta
+
+        # If no strong keyword found, default to 0 => hold
+        # (unless the text explicitly says 'hold')
         if final_score == 0.0 and "hold" not in rec_lower:
-            # There's a chance the text is truly neutral
-            # You can decide if you want to keep it at 0 or do something else
             final_score = 0.0
 
-        # Ensure final_score is clipped in [-1, 1]
+        # --- Step D: Clamp to [-1, 1] ---
         final_score = max(min(final_score, 1.0), -1.0)
 
         return final_score
@@ -696,7 +837,7 @@ class CandleStrategy(Strategy):
             visible_rows = data.loc[:index]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
 
-            self.spot(index)
+            # self.spot(index)
 
             peaks, _ = find_peaks(prices, distance=5)
             valleys, _ = find_peaks(-prices, distance=5)
@@ -710,32 +851,32 @@ class CandleStrategy(Strategy):
 
             limiter = "- " * 36
             if len(vol_peaks) and index > vol_peaks[-1] + 1 and len(new_vol_peaks):
-                print(f"{limiter} vol_peaks found {new_vol_peaks} @{index}")
+                # print(f"{limiter} vol_peaks found {new_vol_peaks} @{index}")
                 prev_vol_peaks.update(vol_peaks)
             if len(vol_valleys) and index > vol_valleys[-1] + 1 and len(new_vol_valleys):
-                print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
+                # print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
                 prev_vol_valleys.update(vol_valleys)
 
             if len(peaks) and len(new_peaks) and index > peaks[-1] + 1:
-                print(f"{limiter} peaks found {new_peaks} @{index}")
+                #print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
                     prev_peak = max((peak for peak in peaks if peak < p), default=None)
                     if prev_peak is not None:
                         result = self.analyze_pivot(prev_peak, p, structure='peak')
-                        print(f"🔴 {result}")
-                        if result['trading_decision']['score'] < -0.6:
+                        # print(f"🔴 {result}")
+                        if result['trading_decision']['score'] < -0.7:
                             position = -1
                 prev_peaks.update(peaks)
 
             if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
-                print(f"{limiter} valleys found {new_valleys} @{index}")
+                #print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     if v in vol_peaks or v in vol_valleys:
                         prev_valley = max((valley for valley in valleys if valley < v), default=None)
                         if prev_valley is not None:
                             result = self.analyze_pivot(prev_valley, v, structure='valley')
-                            print(f"🔴 {result}")
-                            if result['trading_decision']['score'] > 0.6:
+                            # print(f"🔴 {result}")
+                            if result['trading_decision']['score'] > 0.7:
                                 position = 1
                 prev_valleys.update(valleys)
 
