@@ -310,9 +310,10 @@ class CandleStrategy(Strategy):
         # 3) Phases to analyze
         phases = [(start, p), (p, p + 1), (p + 1, end + 1)]
 
+        tab = "\t\t\t\t"
         for (ph_start, ph_end) in phases:
             cv, span, c = self.cluster(ph_start, ph_end)
-            print(f"[{ph_start} - {ph_end - 1}] vol {cv:3d}, candle {span} {c} at {structure} @{p}")
+            print(f"{tab}🔴 [{ph_start} - {ph_end - 1}] vol {cv:3d}, candle {span} {c} at {structure} @{p}")
 
             # Only proceed if there's more than 1 bar
             if ph_end - ph_start > 1:
@@ -445,10 +446,10 @@ class CandleStrategy(Strategy):
                 trading_signals.append(trading_signal)
 
                 # Debug/monitoring prints
-                print(f"  Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
-                print(f"  Vol avg/std: {int(vol_average // 10000)}/{int(vol_std // 10000)} "
+                print(f"{tab}    Volume Pattern: {volume_pattern}, Trading Signal: {trading_signal}")
+                print(f"{tab}    Volume avg/std: {int(vol_average // 10000)}/{int(vol_std // 10000)} "
                       f"Slope: {vol_trend_slope:.2f}, Max/Min: {vol_max_min_ratio:.2f}")
-                print(f"  Price Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
+                print(f"{tab}    Price Trend Slope: {price_trend_slope:.2f}, VWAP Trend Slope: {vwap_trend_slope:.2f}")
 
         # Combine the first pattern & first signal with the key point & follow-through
         if patterns and trading_signals:
