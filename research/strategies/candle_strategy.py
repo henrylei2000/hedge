@@ -809,11 +809,6 @@ class CandleStrategy(Strategy):
             if phrase in rec_lower:
                 final_score += delta
 
-        # If no strong keyword found, default to 0 => hold
-        # (unless the text explicitly says 'hold')
-        if final_score == 0.0 and "hold" not in rec_lower:
-            final_score = 0.0
-
         # --- Step D: Clamp to [-1, 1] ---
         final_score = max(min(final_score, 1.0), -1.0)
 
