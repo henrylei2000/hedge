@@ -556,10 +556,6 @@ class CandleStrategy(Strategy):
         return volume_k, int(span_pct), [upper_wick, body, lower_wick]
 
     def analyze_pivot(self, prev_p, current_p, structure='peak', half_window=2):
-        """
-        Performs macro + micro analysis around a pivot and provides a trading recommendation
-        as a continuous score in [-1, 1].
-        """
         # 1) Macro context from prev_p to current_p
         context = self.pivot_context(prev_p, current_p)
 
@@ -832,7 +828,7 @@ class CandleStrategy(Strategy):
             visible_rows = data.loc[:index]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
 
-            # self.spot(index)
+            self.spot(index)
 
             peaks, _ = find_peaks(prices, distance=5)
             valleys, _ = find_peaks(-prices, distance=5)
@@ -853,32 +849,32 @@ class CandleStrategy(Strategy):
                 prev_vol_valleys.update(vol_valleys)
 
             if len(peaks) and len(new_peaks) and index > peaks[-1] + 1:
-                #print(f"{limiter} peaks found {new_peaks} @{index}")
+                print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
                     prev_peak = max((peak for peak in peaks if peak < p), default=None)
                     if prev_peak is not None:
                         result = self.analyze_pivot(prev_peak, p, structure='peak')
-                        # print(f"🔴 {result}")
-                        if result['trading_decision']['score'] < -0.7:
+                        print(f"🔴 {result}")
+                        if result['trading_decision']['score'] < -0.9:
                             position = -1
                 prev_peaks.update(peaks)
 
             if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
-                #print(f"{limiter} valleys found {new_valleys} @{index}")
+                print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     if v in vol_peaks or v in vol_valleys:
                         prev_valley = max((valley for valley in valleys if valley < v), default=None)
                         if prev_valley is not None:
                             result = self.analyze_pivot(prev_valley, v, structure='valley')
-                            # print(f"🔴 {result}")
-                            if result['trading_decision']['score'] > 0.7:
+                            print(f"🟢 {result}")
+                            if result['trading_decision']['score'] > 0.1:
                                 position = 1
                 prev_valleys.update(valleys)
 
             positions.append(position)
         data['position'] = positions
         self.data = data
-        # self.snapshot([20, 100])
+        self.snapshot([300, 350], ['tension', 'strength'])
 
     def signal(self):
         self.candle()

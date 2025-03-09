@@ -12,8 +12,8 @@ from email.mime.text import MIMEText
 
 def test(mode='online'):
     if mode == 'online':
-        start_date = '2025-03-03'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
-        end_date = '2025-03-03'
+        start_date = '2025-01-27'  # 2024-02-23 2023-07-19 2024-06-24 2023-03-09
+        end_date = '2025-01-27'
         symbols = ['TQQQ']
         config = configparser.ConfigParser()
         config.read('config.ini')
