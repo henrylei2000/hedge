@@ -158,7 +158,7 @@ class Strategy:
             return "neutral"
 
     @staticmethod
-    def slope_classification(slope, mild_thresh=1e-6, steep_thresh=5e-6):
+    def slope_classification(slope, mild_thresh=0.01, steep_thresh=0.05):
         """
         Classify slope into:
           - strong up

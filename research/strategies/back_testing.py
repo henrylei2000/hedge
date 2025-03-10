@@ -32,6 +32,7 @@ def test(mode='online'):
             bars = api.get_bars(symbol, TimeFrame(1, TimeFrameUnit.Day), start, end).df
             context[symbol] = bars
 
+        daily_stat = []
         for day in calendar:
             daily_pnl, trades = 0, 0
             for symbol in symbols:
@@ -45,7 +46,14 @@ def test(mode='online'):
                 trades += strategy.trades
             if trades:
                 print(f"-------------------------------------------- {daily_pnl:.2f} ({trades})")
-        print(f"------------ TOTAL ------------------------- {performance:.2f}")
+            daily_stat.append((day, daily_pnl))
+
+        if len(daily_stat) > 1:
+            max_day = max(daily_stat, key=lambda item: item[1])
+            min_day = min(daily_stat, key=lambda item: item[1])
+            print(f"------------ TOTAL ------------------------- {performance:.2f} Max gain {max_day[1]:.2f} {max_day[0].date.strftime('%Y-%m-%d')}, Max loss {min_day[1]:.2f} {min_day[0].date.strftime('%Y-%m-%d')}")
+        else:
+            print(f"------------ TOTAL ------------------------- {performance:.2f}")
     else:
         strategy = CandleStrategy()
         strategy.backtest()

@@ -129,12 +129,11 @@ class CandleStrategy(Strategy):
         return comment
 
     def pivot_context(self, prev_p, current_p,
-                      baseline_period=20,
+                      baseline_period=10,
                       use_momentum=False,
-                      consecutive_vol_thresh=3):
+                      consecutive_vol_thresh=2):
         """
         Analyze the 'macro' window [prev_p, current_p] with heavier emphasis on volume.
-
         :param baseline_period: # of bars before 'prev_p' to calculate baseline volume for acceleration checks
         :param use_momentum: Whether to factor RSI/MACD into final classification
         :param consecutive_vol_thresh: # of consecutive rising/falling volume bars to label 'steady accumulation/distribution'
@@ -157,15 +156,12 @@ class CandleStrategy(Strategy):
         # --- 1) Price & Volume Slopes in [prev_p, current_p] ---
         price_array = segment['close']
         volume_array = segment['volume']
-        price_slope = np.polyfit(range(n), price_array, 1)[0]
-        volume_slope = np.polyfit(range(n), volume_array, 1)[0]
-
-        price_dir = self.slope_classification(price_slope)
-        volume_dir = self.slope_classification(volume_slope)
-
-        # --- 2) Volume Acceleration (compare average volume to baseline) ---
+        segment_price_avg = price_array.mean()
         segment_vol_avg = volume_array.mean()
 
+        price_dir, volume_dir = self.slope(segment)
+
+        # --- 2) Volume Acceleration (compare average volume to baseline) ---
         # baseline_period bars before start_idx
         baseline_start = max(0, start_idx - baseline_period)
         baseline_end = start_idx  # slice end is exclusive
@@ -331,18 +327,26 @@ class CandleStrategy(Strategy):
             "context_signal": context_signal
         }
 
+    @staticmethod
+    def slope(segment):
+        n = len(segment)
+        price_array = segment['close']
+        volume_array = segment['volume']
+        price_slope = np.polyfit(range(n), price_array, 1)[0]
+        volume_slope = np.polyfit(range(n), volume_array, 1)[0]
+        segment_price_avg = price_array.mean()
+        segment_vol_avg = volume_array.mean()
+
+        price_dir = Strategy.slope_classification(price_slope / segment_price_avg, 0.001, 0.002)
+        volume_dir = Strategy.slope_classification(volume_slope / segment_vol_avg, 0.05, 0.1)
+
+        return price_dir, volume_dir
+
     def keypoint(self, p, structure, half_window=1, use_rsi=True, use_macd=True, confirm_bars=2):
         """
         Analyzes [p - half_window, p + half_window] to classify a peak or valley.
         Then optionally uses RSI/MACD for additional context.
         Finally, calls follow_through() on the next `confirm_bars` to confirm direction.
-
-        :param p: The index of the pivot bar
-        :param structure: 'peak' or 'valley'
-        :param half_window: 1 => 3 bars total, 2 => 5 bars total, etc.
-        :param use_rsi: whether to incorporate RSI classification
-        :param use_macd: whether to incorporate MACD classification
-        :param confirm_bars: how many bars after p to check for follow-through
         :return: key_point_signal, follow_through_signal
         """
         data = self.data
@@ -361,11 +365,7 @@ class CandleStrategy(Strategy):
         price_ = segment['close']
         volume_ = segment['volume']
 
-        # Slopes
-        price_slope = np.polyfit(range(n), price_, 1)[0]
-        volume_slope = np.polyfit(range(n), volume_, 1)[0]
-        price_dir = Strategy.slope_classification(price_slope)
-        vol_dir = Strategy.slope_classification(volume_slope)
+        price_dir, volume_dir = self.slope(segment)
 
         # Check if bar p is truly local max/min in that window
         middle_close = data.iloc[p]['close']
@@ -377,11 +377,11 @@ class CandleStrategy(Strategy):
         # Basic pivot logic
         if structure == "peak":
             if is_local_peak:
-                if price_dir.startswith("strong up") and vol_dir.startswith("strong up"):
+                if price_dir.startswith("strong up") and volume_dir.startswith("strong up"):
                     key_point_signal = "momentum peak"
-                elif price_dir.endswith("up") and vol_dir.startswith("strong down"):
+                elif price_dir.endswith("up") and volume_dir.startswith("strong down"):
                     key_point_signal = "buyer exhaustion"
-                elif price_dir.startswith("strong down") and vol_dir.startswith("strong up"):
+                elif price_dir.startswith("strong down") and volume_dir.startswith("strong up"):
                     key_point_signal = "volume spike reversal"
                 else:
                     key_point_signal = "calm peak"
@@ -390,11 +390,11 @@ class CandleStrategy(Strategy):
 
         elif structure == "valley":
             if is_local_valley:
-                if price_dir.startswith("strong up") and vol_dir.startswith("strong up"):
+                if price_dir.startswith("strong up") and volume_dir.startswith("strong up"):
                     key_point_signal = "momentum valley"
-                elif price_dir.endswith("up") and vol_dir.startswith("strong down"):
+                elif price_dir.endswith("up") and volume_dir.startswith("strong down"):
                     key_point_signal = "strong demand absorption"
-                elif price_dir.startswith("strong down") and vol_dir.startswith("strong up"):
+                elif price_dir.startswith("strong down") and volume_dir.startswith("strong up"):
                     key_point_signal = "false breakdown"
                 else:
                     key_point_signal = "calm valley"
@@ -459,68 +459,18 @@ class CandleStrategy(Strategy):
             return None  # e.g. "calm valley", "calm peak" => no strong bias
 
     def follow_through(self, start, end, expected_direction=None):
-        """
-        Checks multiple factors over [start, end) to confirm if the market
-        actually follows the expected direction ('up' or 'down').
-        """
         data = self.data
         if end - start < 1:
             return "neutral"
-
         segment = data.iloc[start:end]
-        n_bars = len(segment)
-
-        # Price slope
-        price_slope = np.polyfit(range(n_bars), segment['close'], 1)[0]
-        price_dir = Strategy.slope_classification(price_slope)
-
-        # Volume slope
-        volume_slope = np.polyfit(range(n_bars), segment['volume'], 1)[0]
-        volume_dir = Strategy.slope_classification(volume_slope)
-
-        # Count bullish/bearish bars by body ratio
-        bullish_bars = 0
-        bearish_bars = 0
-        for i in range(start, end):
-            body_ratio = data.iloc[i]['body'] * 100
-            if body_ratio > 40:
-                bullish_bars += 1
-            elif body_ratio < -40:
-                bearish_bars += 1
-
-        # VWAP check: how many bars close above VWAP?
-        above_vwap_count = 0
-        for i in range(start, end):
-            row = data.iloc[i]
-            if row['close'] > row['vwap']:
-                above_vwap_count += 1
-        vwap_bullish = (above_vwap_count / n_bars) > 0.6
-        vwap_bearish = (above_vwap_count / n_bars) < 0.4
-
-        # Decide the overall direction in [start, end)
-        # If price_dir is "strong up" or "mild up", volume_dir is up,
-        # majority bars are bullish, and VWAP is bullish => "up" bias.
-        total_strong_bars = bullish_bars + bearish_bars
-        bull_ratio = bullish_bars / total_strong_bars if total_strong_bars > 0 else 0
-        bear_ratio = bearish_bars / total_strong_bars if total_strong_bars > 0 else 0
-
-        def direction_bias():
-            if (price_dir.endswith("up") and volume_dir.endswith("up")
-                    and bull_ratio > 0.6 and vwap_bullish):
-                return "up"
-            elif (price_dir.endswith("down") and volume_dir.endswith("down")
-                  and bear_ratio > 0.6 and vwap_bearish):
-                return "down"
-            else:
-                return "mixed"
-
-        actual_direction = direction_bias()
-
-        # Compare actual direction with the expected direction from the key point
-        if expected_direction == "up" and actual_direction == "up":
-            return "confirmed up"
-        elif expected_direction == "down" and actual_direction == "down":
-            return "confirmed down"
+        price_dir, volume_dir = self.slope(segment)
+        actual_direction = "mixed"
+        if price_dir.endswith("up"):
+            actual_direction = "up"
+        elif price_dir.endswith("down"):
+            actual_direction = "down"
+        if expected_direction == actual_direction:
+            return "confirmed " + actual_direction
         else:
             return f"no follow-through ({actual_direction})"
 
@@ -824,12 +774,10 @@ class CandleStrategy(Strategy):
         prev_vol_peaks, prev_vol_valleys = set(), set()
         positions = []
         for index in range(len(data)):
+            self.spot(index)
             position = 0
             visible_rows = data.loc[:index]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
-
-            self.spot(index)
-
             peaks, _ = find_peaks(prices, distance=5)
             valleys, _ = find_peaks(-prices, distance=5)
             new_peaks = [p for p in peaks if p > 5 > index - p and p not in prev_peaks]
@@ -851,11 +799,11 @@ class CandleStrategy(Strategy):
             if len(peaks) and len(new_peaks) and index > peaks[-1] + 1:
                 print(f"{limiter} peaks found {new_peaks} @{index}")
                 for p in new_peaks:
-                    prev_peak = max((peak for peak in peaks if peak < p), default=None)
-                    if prev_peak is not None:
-                        result = self.analyze_pivot(prev_peak, p, structure='peak')
+                    prev_valley = max((valley for valley in valleys if valley < p), default=None)
+                    if prev_valley is not None:
+                        result = self.analyze_pivot(prev_valley, p, structure='peak')
                         print(f"🔴 {result}")
-                        if result['trading_decision']['score'] < -0.9:
+                        if result['trading_decision']['score'] < -0.5:
                             position = -1
                 prev_peaks.update(peaks)
 
@@ -863,18 +811,18 @@ class CandleStrategy(Strategy):
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
                     if v in vol_peaks or v in vol_valleys:
-                        prev_valley = max((valley for valley in valleys if valley < v), default=None)
-                        if prev_valley is not None:
-                            result = self.analyze_pivot(prev_valley, v, structure='valley')
+                        prev_peak = max((peak for peak in peaks if peak < v), default=None)
+                        if prev_peak is not None:
+                            result = self.analyze_pivot(prev_peak, v, structure='valley')
                             print(f"🟢 {result}")
-                            if result['trading_decision']['score'] > 0.1:
+                            if result['trading_decision']['score'] > 0.5:
                                 position = 1
                 prev_valleys.update(valleys)
 
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([300, 350], ['tension', 'strength'])
+        self.snapshot([0, 60], ['tension', 'strength'])
 
     def signal(self):
         self.candle()
