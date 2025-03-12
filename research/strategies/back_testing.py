@@ -1,5 +1,5 @@
 from candle_strategy import CandleStrategy
-import alpaca_trade_api as tradeapi
+import alpaca_trade_api as trade_api
 from alpaca_trade_api.rest import TimeFrame, TimeFrameUnit
 from alpaca_trade_api.common import URL
 import configparser
@@ -19,7 +19,7 @@ def test(mode='online'):
         config.read('config.ini')
         api_key = config.get('settings', 'API_KEY')
         secret_key = config.get('settings', 'SECRET_KEY')
-        api = tradeapi.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
+        api = trade_api.REST(api_key, secret_key,  URL('https://paper-api.alpaca.markets'), api_version='v2')
         performance = 0.0
         calendar = api.get_calendar(start=start_date, end=end_date)
 

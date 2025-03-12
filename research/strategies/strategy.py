@@ -308,7 +308,7 @@ class Strategy:
                     bucket['bucket_value'] = sell_value  # Update bucket value with the result of the trade
 
         final_balance = sum(bucket['bucket_value'] for bucket in buckets if not bucket['in_use']) + \
-                        sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
+            sum(bucket['shares'] * price for bucket in buckets if bucket['in_use'])
         total_pnl = final_balance - initial_balance
         self.pnl = total_pnl
         return total_pnl
@@ -438,5 +438,3 @@ class Strategy:
         ax.legend(loc='upper right')
 
         plt.show()
-
-
