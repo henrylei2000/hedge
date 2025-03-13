@@ -338,12 +338,14 @@ class CandleStrategy(Strategy):
         return price_dir, volume_dir
 
     @staticmethod
-    def detect_single_candle(bar, body_threshold=0.3, wick_threshold=0.6):
+    def detect_single_candle(bar, body_threshold=0.3, wick_threshold=0.4):
         """
-        Analyzes a single bar (Series with open, high, low, close) for basic patterns:
+        Analyzes a single bar (Series with open, high, low, close) for various patterns:
           - Hammer / Inverted Hammer
           - Shooting Star
           - Doji
+          - Strong bearish shooting star
+          - Strong bullish hammer
         Returns a string describing the pattern or None.
         """
         o = bar['open']
@@ -357,13 +359,26 @@ class CandleStrategy(Strategy):
         lower_wick = (min(o, c) - l) / candle_range
         body_ratio = body_size / candle_range
 
-        # Example logic:
+        # Detect Doji
         if body_ratio < 0.1 and upper_wick > 0.4 and lower_wick > 0.4:
             return "doji"
+
+        # Standard Hammer/Inverted Hammer
         elif body_ratio < body_threshold and lower_wick > wick_threshold:
             return "hammer" if c > o else "inverted hammer"
+
+        # Standard Shooting Star
         elif body_ratio < body_threshold and upper_wick > wick_threshold:
             return "shooting star"
+
+        # Strong bearish shooting star (your scenario: large bearish body, big upper wick, tiny/no lower wick)
+        elif (c < o) and body_ratio >= body_threshold and upper_wick >= wick_threshold and lower_wick < 0.1:
+            return "strong bearish shooting star"
+
+        # Strong bullish hammer (for completeness, bullish candle with large lower wick)
+        elif (c > o) and body_ratio >= body_threshold and lower_wick >= wick_threshold and upper_wick < 0.1:
+            return "strong bullish hammer"
+
         return None
 
     @staticmethod
@@ -410,6 +425,7 @@ class CandleStrategy(Strategy):
         """
         data = self.data
         key_point_signal = "neutral"
+        expected_dir = None
 
         start_idx = max(0, p - half_window)
         end_idx = min(len(data), p + half_window + 1)
@@ -431,6 +447,7 @@ class CandleStrategy(Strategy):
 
         # 3) Basic pivot logic
         if structure == "peak":
+            expected_dir = "down"
             if is_local_peak:
                 if price_dir.startswith("strong up") and volume_dir.startswith("strong up"):
                     key_point_signal = "momentum peak"
@@ -444,6 +461,7 @@ class CandleStrategy(Strategy):
                 key_point_signal = "soft peak - not local max"
 
         elif structure == "valley":
+            expected_dir = "up"
             if is_local_valley:
                 if price_dir.startswith("strong up") and volume_dir.startswith("strong up"):
                     key_point_signal = "momentum valley"
@@ -496,33 +514,9 @@ class CandleStrategy(Strategy):
             elif "valley" in structure and macd_label == "bullish":
                 key_point_signal += " + MACD Bullish"
 
-        # 6) Decide expected direction from pivot logic
-        if any(x in key_point_signal for x in ["valley", "demand absorption", "false breakdown"]):
-            expected_dir = "up"
-        elif any(x in key_point_signal for x in ["peak", "exhaustion", "reversal"]):
-            expected_dir = "down"
-        else:
-            expected_dir = None
-
-        # 7) Tie Candlestick Patterns to expected_dir
-        # Example: If we detect bullish patterns => set or override expected_dir="up"
-        #          If we detect bearish patterns => set or override expected_dir="down"
+        # 6) Tie Candlestick Patterns to expected_dir
         bullish_patterns = ["hammer", "morning star", "bullish engulfing", "inverted hammer"]  # or others
         bearish_patterns = ["shooting star", "evening star", "bearish engulfing"]
-
-        if any(bp in key_point_signal for bp in bullish_patterns):
-            if expected_dir is None:
-                expected_dir = "up"
-            elif expected_dir == "down":
-                # Conflict resolution: you can let candlestick override pivot logic
-                expected_dir = "up"
-
-        if any(bp in key_point_signal for bp in bearish_patterns):
-            if expected_dir is None:
-                expected_dir = "down"
-            elif expected_dir == "up":
-                # Conflict resolution: let candlestick override pivot logic
-                expected_dir = "down"
 
         # 8) Follow-Through
         if expected_dir:
@@ -550,6 +544,9 @@ class CandleStrategy(Strategy):
         data = self.data
         if end - start < 1:
             return "neutral"
+
+        last_bar = data.iloc[end - 1]
+        self.detect_single_candle(last_bar)
         segment = data.iloc[start:end]
         price_dir, volume_dir = self.slope(segment)
         actual_direction = "mixed"
@@ -560,7 +557,7 @@ class CandleStrategy(Strategy):
         if expected_direction == actual_direction:
             return "confirmed " + actual_direction
         else:
-            return f"no follow-through ({actual_direction})"
+            return f"no follow-through (expected {expected_direction} got {actual_direction})"
 
     def cluster(self, start, end):
         """
@@ -622,12 +619,11 @@ class CandleStrategy(Strategy):
         """
         Combines macro context (from pivot_context), micro keypoint signal,
         and follow-through signal to produce a final trading recommendation.
-        Now also incorporates candlestick patterns from `kp_signal`.
+        Places a heavier emphasis on follow-through: if it's not 'confirmed up/down',
+        we strongly discourage any trade.
         """
 
         # --- 1) Extract macro context ---
-        macro_dir = context.get("price_slope", "flat")
-        macro_volume = context.get("volume_slope", "flat")
         macro_signal = context.get("context_signal", "mixed")
         divergence_label = context.get("divergence_label", None)
         volume_pattern = context.get("volume_pattern", "mixed volume")
@@ -639,71 +635,95 @@ class CandleStrategy(Strategy):
         macro_vwap = context.get("vwap_stance", "mixed")
 
         # --- 2) Extract micro signals ---
-        micro_kp = kp_signal  # e.g. "momentum peak + hammer"
-        micro_ft = ft_signal  # e.g. "confirmed up"
+        micro_kp = kp_signal  # e.g. 'momentum valley', 'buyer exhaustion', etc.
+        micro_ft = ft_signal  # e.g. 'confirmed up', 'confirmed down', or 'no follow-through (mixed)'
 
         recommendation = "Hold / No Clear Trade"
 
-        # --- 3) Volume/Divergence Pre-Check (Override) ---
+        # --- 3) If there's a divergence_label, it overrides the normal macro logic ---
         if divergence_label == "exhaustion uptrend":
             recommendation = "Possible Uptrend Exhaustion - Watch for Bearish Reversal"
         elif divergence_label == "accumulation downtrend":
             recommendation = "Potential Accumulation in Downtrend - Watch for Bullish Reversal"
 
-        # If no divergence_label, or after we've set an initial stance, proceed with standard macro logic:
+        # Helper to quickly check if we do NOT have a valid follow-through
+        def no_follow_through():
+            return ("confirmed up" not in micro_ft) and ("confirmed down" not in micro_ft)
+
+        # --- 4) Standard Macro Logic, but we require confirmation ---
         if "uptrend" in macro_signal and divergence_label is None:
             # Macro is bullish
             if structure == "valley":
-                if "momentum valley" in micro_kp or "strong demand absorption" in micro_kp:
+                if any(x in micro_kp for x in ["momentum valley", "strong demand absorption"]):
                     if "confirmed up" in micro_ft:
                         recommendation = "Go Long (Bullish Reversal Confirmed)"
                     else:
-                        recommendation = "Watch for Bullish Confirmation (Uptrend + Potential Valley)"
+                        recommendation = "No Follow-Through => Avoid Trade"
                 elif "false breakdown" in micro_kp:
                     if "confirmed up" in micro_ft:
                         recommendation = "Bear Trap -> Go Long"
                     else:
-                        recommendation = "Possible Bear Trap, Wait for More Confirmation"
+                        recommendation = "No Follow-Through => Avoid Trade"
                 else:
-                    recommendation = "Potential Buy on Dip (Macro Uptrend) but Weak Local Signal"
+                    # If it's just a weak local valley
+                    if no_follow_through():
+                        recommendation = "No Follow-Through => Avoid Trade"
+                    else:
+                        recommendation = "Potential Buy on Dip (Macro Uptrend) but Weak Local Signal"
+
             else:
                 # structure == 'peak'
                 if "momentum peak" in micro_kp:
                     if "confirmed down" in micro_ft:
                         recommendation = "Short-Term Pullback, but Long-Term Uptrend"
                     else:
-                        recommendation = "Uptrend Momentum Peak, Consider Partial Profit"
+                        recommendation = "No Follow-Through => Avoid Trade"
                 elif "buyer exhaustion" in micro_kp:
-                    recommendation = "Possible Reversal, Watch for Bearish Follow-Through"
+                    if "confirmed down" in micro_ft:
+                        recommendation = "Possible Reversal, Enter Short"
+                    else:
+                        recommendation = "No Follow-Through => Avoid Trade"
                 else:
-                    recommendation = "Peak in Uptrend - Potential Minor Correction"
+                    if no_follow_through():
+                        recommendation = "No Follow-Through => Avoid Trade"
+                    else:
+                        recommendation = "Peak in Uptrend - Potential Minor Correction"
 
         elif "downtrend" in macro_signal and divergence_label is None:
             # Macro is bearish
             if structure == "peak":
-                if "momentum peak" in micro_kp or "buyer exhaustion" in micro_kp:
+                if any(x in micro_kp for x in ["momentum peak", "buyer exhaustion"]):
                     if "confirmed down" in micro_ft:
                         recommendation = "Go Short (Bearish Continuation Confirmed)"
                     else:
-                        recommendation = "Watch for Bearish Confirmation (Downtrend + Peak)"
+                        recommendation = "No Follow-Through => Avoid Trade"
                 elif "volume spike reversal" in micro_kp:
                     if "confirmed down" in micro_ft:
                         recommendation = "Volume Spike -> Short Entry Confirmed"
                     else:
-                        recommendation = "Possible Reversal Spike, Wait for More Confirmation"
+                        recommendation = "No Follow-Through => Avoid Trade"
                 else:
-                    recommendation = "Peak in Downtrend - Potential Sell Rally"
+                    if no_follow_through():
+                        recommendation = "No Follow-Through => Avoid Trade"
+                    else:
+                        recommendation = "Peak in Downtrend - Potential Sell Rally"
             else:
                 # structure == 'valley'
                 if "momentum valley" in micro_kp:
-                    recommendation = "Potential Bearish Retracement, Wait for Confirmation"
+                    if no_follow_through():
+                        recommendation = "No Follow-Through => Avoid Trade"
+                    else:
+                        recommendation = "Potential Bearish Retracement, Wait for Confirmation"
                 elif "false breakdown" in micro_kp:
                     if "confirmed up" in micro_ft:
                         recommendation = "Bullish Divergence, Possible Short Squeeze"
                     else:
-                        recommendation = "False Breakdown, but No Confirmation Yet"
+                        recommendation = "No Follow-Through => Avoid Trade"
                 else:
-                    recommendation = "Weak Valley in Downtrend, Could Break Lower"
+                    if no_follow_through():
+                        recommendation = "No Follow-Through => Avoid Trade"
+                    else:
+                        recommendation = "Weak Valley in Downtrend, Could Break Lower"
 
         elif divergence_label is None:
             # Macro is range-bound or mixed
@@ -712,18 +732,21 @@ class CandleStrategy(Strategy):
             elif "confirmed down" in micro_ft:
                 recommendation = "Range-Bound but Micro Down -> Possible Quick Short"
             else:
-                recommendation = "Sideways Market - Scalping or Wait for Clear Trend"
+                recommendation = "No Follow-Through => Avoid Trade"
 
-        # --- 4) Volume Pattern & Acceleration ---
+        # --- 5) Volume Pattern & Acceleration Enhancements ---
+        volume_pattern = context.get("volume_pattern", "mixed volume")
+        accelerated_vol = context.get("accelerated_volume", False)
         if "accumulation" in volume_pattern.lower():
             recommendation += " | Volume Accumulation => Bullish Lean"
         elif "distribution" in volume_pattern.lower():
             recommendation += " | Volume Distribution => Bearish Lean"
-
         if accelerated_vol:
             recommendation += " | Accelerated Volume => Stronger Conviction"
 
-        # --- 5) RSI / MACD extremes ---
+        # --- 6) RSI / MACD extremes ---
+        macro_rsi = context.get("rsi_trend", "neutral->neutral")
+        macro_macd = context.get("macd_trend", "neutral->neutral")
         rsi_end = macro_rsi.split("->")[-1] if "->" in macro_rsi else "neutral"
         macd_end = macro_macd.split("->")[-1] if "->" in macro_macd else "neutral"
 
@@ -737,13 +760,14 @@ class CandleStrategy(Strategy):
         elif "valley" in structure and "bullish" in macd_end.lower():
             recommendation += " | MACD Bullish => Confirms Potential Reversal"
 
-        # --- 6) Factor in VWAP stance ---
+        # --- 7) VWAP stance ---
+        macro_vwap = context.get("vwap_stance", "mixed")
         if "above" in macro_vwap:
             recommendation += " | Price Mostly Above VWAP => Bullish Lean"
         elif "below" in macro_vwap:
             recommendation += " | Price Mostly Below VWAP => Bearish Lean"
 
-        # --- 7) Candlestick Patterns from `kp_signal` ---
+        # --- 8) Candlestick Patterns from `kp_signal` ---
         # We'll scan for known candlestick keywords in the micro keypoint signal
         candlestick_map = {
             "hammer": "Hammer => Bullish Lean",
@@ -753,12 +777,19 @@ class CandleStrategy(Strategy):
             "shooting star": "Shooting Star => Bearish Reversal",
             "evening star": "Evening Star => Bearish Reversal",
             "bearish engulfing": "Bearish Engulfing => Strong Bearish Reversal",
-            "doji": "Doji => Indecision/Reversal"
+            "doji": "Doji => Indecision/Reversal",
+            "strong bearish shooting star": "Strong Bearish Shooting Star => Strong Bearish Reversal",
+            "strong bullish hammer": "Strong Bullish Hammer => Strong Bullish Reversal"
         }
 
         kp_lower = micro_kp.lower()
         for pattern, text in candlestick_map.items():
             if pattern in kp_lower:
+                recommendation += f" | {text}"
+
+        ft_lower = micro_ft.lower()
+        for pattern, text in candlestick_map.items():
+            if pattern in ft_lower:
                 recommendation += f" | {text}"
 
         return {"decision_text": recommendation}
@@ -833,7 +864,9 @@ class CandleStrategy(Strategy):
             "shooting star => bearish reversal": -0.3,
             "evening star => bearish reversal": -0.4,
             "bearish engulfing => strong bearish reversal": -0.4,
-            "doji => indecision/reversal": 0.0  # or small negative if you consider doji uncertain
+            "doji => indecision/reversal": 0.0,
+            "strong bearish shooting star => strong bearish reversal": -0.5,
+            "strong bullish hammer => strong bullish reversal": +0.5
         }
 
         # --- Step A: Identify the strongest base keyword ---
@@ -877,6 +910,11 @@ class CandleStrategy(Strategy):
         positions = []
         for index in range(len(data)):
             self.spot(index)
+            bar = data.iloc[index]
+            candle = self.detect_single_candle(bar)
+            if candle is not None:
+                print(f"candle @ {index}: {candle}")
+
             position = 0
             visible_rows = data.loc[:index]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
@@ -891,16 +929,16 @@ class CandleStrategy(Strategy):
             new_vol_valleys = [v for v in vol_valleys if v > 5 > index - v and v not in prev_vol_valleys]
 
             limiter = "- " * 36
-            if len(vol_peaks) and index > vol_peaks[-1] + 1 and len(new_vol_peaks):
+            if len(vol_peaks) and index > vol_peaks[-1] + 2 and len(new_vol_peaks):
                 # print(f"{limiter} vol_peaks found {new_vol_peaks} @{index}")
                 prev_vol_peaks.update(vol_peaks)
-            if len(vol_valleys) and index > vol_valleys[-1] + 1 and len(new_vol_valleys):
+            if len(vol_valleys) and index > vol_valleys[-1] + 2 and len(new_vol_valleys):
                 # print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
                 prev_vol_valleys.update(vol_valleys)
 
-            if len(peaks) and len(new_peaks) and index > peaks[-1] + 1:
+            if len(peaks) and len(new_peaks) and index > peaks[-1] + 2:
                 print(f"{limiter} peaks found {new_peaks} @{index}")
-                print(f"{limiter} valleys: {valleys}")
+                print(f"{limiter} valleys found {valleys}")
                 for p in new_peaks:
                     prev_valley = max((valley for valley in valleys if valley < p), default=None)
                     if prev_valley is not None:
@@ -910,9 +948,8 @@ class CandleStrategy(Strategy):
                             position = -1
                 prev_peaks.update(peaks)
 
-            if len(valleys) and index > valleys[-1] + 1 and len(new_valleys):
+            if len(valleys) and len(new_valleys) and index > valleys[-1] + 2:
                 print(f"{limiter} valleys found {new_valleys} @{index}")
-                print(f"{limiter} peaks: {peaks}")
                 for v in new_valleys:
                     if v in vol_peaks or v in vol_valleys:
                         prev_peak = max((peak for peak in peaks if peak < v), default=None)
@@ -926,7 +963,7 @@ class CandleStrategy(Strategy):
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([230, 260], ['tension', 'strength'])
+        self.snapshot([100, 130], ['tension', 'rsi'])
 
     def signal(self):
         self.candle()
