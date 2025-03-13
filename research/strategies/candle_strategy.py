@@ -309,7 +309,7 @@ class CandleStrategy(Strategy):
             context_signal = "mixed + accelerated volume"
 
         return {
-            "observation": f"{prev_p} - {current_p}",
+            "observation": f"{prev_p}-{current_p}",
             "price_slope": price_dir,
             "volume_slope": volume_dir,
             "volume_pattern": volume_pattern,          # steady/accelerated accumulation/distribution, etc.
@@ -906,7 +906,6 @@ class CandleStrategy(Strategy):
     def candle(self):
         data = self.data
         prev_peaks, prev_valleys = set(), set()
-        prev_vol_peaks, prev_vol_valleys = set(), set()
         positions = []
         for index in range(len(data)):
             self.spot(index)
@@ -923,19 +922,7 @@ class CandleStrategy(Strategy):
             new_peaks = [p for p in peaks if p > 5 > index - p and p not in prev_peaks]
             new_valleys = [v for v in valleys if v > 5 > index - v and v not in prev_valleys]
 
-            vol_peaks, _ = find_peaks(volumes, distance=5)
-            vol_valleys, _ = find_peaks(-volumes, distance=5)
-            new_vol_peaks = [p for p in vol_peaks if p > 5 > index - p and p not in prev_vol_peaks]
-            new_vol_valleys = [v for v in vol_valleys if v > 5 > index - v and v not in prev_vol_valleys]
-
             limiter = "- " * 36
-            if len(vol_peaks) and index > vol_peaks[-1] + 2 and len(new_vol_peaks):
-                # print(f"{limiter} vol_peaks found {new_vol_peaks} @{index}")
-                prev_vol_peaks.update(vol_peaks)
-            if len(vol_valleys) and index > vol_valleys[-1] + 2 and len(new_vol_valleys):
-                # print(f"{limiter} vol_valleys found {new_vol_valleys} @{index}")
-                prev_vol_valleys.update(vol_valleys)
-
             if len(peaks) and len(new_peaks) and index > peaks[-1] + 2:
                 print(f"{limiter} peaks found {new_peaks} @{index}")
                 print(f"{limiter} valleys found {valleys}")
@@ -951,19 +938,18 @@ class CandleStrategy(Strategy):
             if len(valleys) and len(new_valleys) and index > valleys[-1] + 2:
                 print(f"{limiter} valleys found {new_valleys} @{index}")
                 for v in new_valleys:
-                    if v in vol_peaks or v in vol_valleys:
-                        prev_peak = max((peak for peak in peaks if peak < v), default=None)
-                        if prev_peak is not None:
-                            context = self.analyze_pivot(prev_peak, v, structure='valley')
-                            print(f"{context}")
-                            if context['trading_decision']['score'] > 0.5:
-                                position = 1
+                    prev_peak = max((peak for peak in peaks if peak < v), default=None)
+                    if prev_peak is not None:
+                        context = self.analyze_pivot(prev_peak, v, structure='valley')
+                        print(f"{context}")
+                        if context['trading_decision']['score'] > 0.5:
+                            position = 1
                 prev_valleys.update(valleys)
 
             positions.append(position)
         data['position'] = positions
         self.data = data
-        self.snapshot([100, 130], ['tension', 'rsi'])
+        self.snapshot([0, 100], ['macd', 'strength'])
 
     def signal(self):
         self.candle()

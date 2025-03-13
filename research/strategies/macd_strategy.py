@@ -42,10 +42,10 @@ class MACDStrategy(Strategy):
         data['rolling_obv'] = data['obv'].rolling(window=12).mean()
 
         data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
-        data.loc[data['macd'] > data['signal_line'], 'signal'] = 1
-        data.loc[data['macd'] < data['signal_line'], 'signal'] = -1
+        data.loc[data['macd'] > data['macd_signal'], 'signal'] = 1
+        data.loc[data['macd'] < data['macd_signal'], 'signal'] = -1
 
-        data.dropna(subset=['close', 'macd', 'macd_derivative', 'rolling_macd', 'signal_line', 'rsi'], inplace=True)
+        # data.dropna(subset=['close', 'macd', 'macd_derivative', 'rolling_macd', 'macd_signal', 'rsi'], inplace=True)
 
     def significance_reference(self):
         self.macd_simple()
@@ -294,7 +294,7 @@ class MACDStrategy(Strategy):
 
         for index, row in data.iterrows():
             position = 0
-            current = row['macd']
+            current = row['strength']
             if len(previous):
                 if previous[-1] < 0 < current and not hold:
                     position = 1
@@ -306,6 +306,7 @@ class MACDStrategy(Strategy):
             previous.append(current)
 
         data['position'] = positions
+        self.snapshot([100, 200], ['strength', 'macd'])
 
     def crossover(self):
         self.macd_simple()
@@ -455,19 +456,6 @@ class MACDStrategy(Strategy):
             positions.append(position)
             count += 1
 
-        # print(f"*********** RSI Peaks Change Rate ({len(rpeaks)}) ************")
-        # for i in range(1, len(rpeaks)):
-        #     print(f"{(rpeaks[i][1] / rpeaks[i-1][1] -1) / (rpeaks[i][0] - rpeaks[i-1][0]) * 100:.2f} {rpeaks[i]} / {rpeaks[i-1]}")
-        # print(f"*********** RSI Valleys Change Rate ({len(rvalleys)}) ************")
-        # for i in range(1, len(rvalleys)):
-        #     print(f"{(rvalleys[i][1] / rvalleys[i - 1][1] - 1) / (rvalleys[i][0] - rvalleys[i - 1][0]) * 100:.2f} {rvalleys[i]} / {rvalleys[i - 1]}")
-        # print(f"*********** MACD Peaks Change Rate ({len(mpeaks)}) ************")
-        # for i in range(1, len(mpeaks)):
-        #     print(f"{(mpeaks[i][1] / mpeaks[i-1][1] -1) / (mpeaks[i][0] - mpeaks[i-1][0]) * 100:.2f} {mpeaks[i]} / {mpeaks[i-1]}")
-        # print(f"*********** MACD Valleys Change Rate ({len(mvalleys)}) ************")
-        # for i in range(1, len(mvalleys)):
-        #     print(f"{(mvalleys[i][1] / mvalleys[i-1][1] -1) / (mvalleys[i][0] - mvalleys[i-1][0]) * 100:.2f} {mvalleys[i]} / {mvalleys[i-1]}")
-        # print(f"*********************")
         data['position'] = positions
 
     def wave(self):
@@ -603,7 +591,7 @@ class MACDStrategy(Strategy):
         data['position'] = positions
 
     def signal(self):
-        self.rsi()
+        self.zero_crossing()
         # waves = self.wave_sums('strength', '2024-03-26 12:59')
         # print(waves)
         #

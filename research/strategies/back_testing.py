@@ -1,4 +1,5 @@
 from candle_strategy import CandleStrategy
+from macd_strategy import MACDStrategy
 import alpaca_trade_api as trade_api
 from alpaca_trade_api.rest import TimeFrame, TimeFrameUnit
 from alpaca_trade_api.common import URL
@@ -37,7 +38,7 @@ def test(mode='online'):
             daily_pnl, trades = 0, 0
             for symbol in symbols:
                 current = day.date.strftime('%Y-%m-%d')
-                strategy = CandleStrategy(symbol, f"{current} {day.open}", f"{current} {day.close}", api, context[symbol])
+                strategy = MACDStrategy(symbol, f"{current} {day.open}", f"{current} {day.close}", api, context[symbol])
                 strategy.backtest()
                 if strategy.trades:
                     print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")
