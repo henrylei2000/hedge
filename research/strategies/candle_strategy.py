@@ -338,7 +338,7 @@ class CandleStrategy(Strategy):
         return price_dir, volume_dir
 
     @staticmethod
-    def detect_single_candle(bar, body_threshold=0.3, wick_threshold=0.4):
+    def detect_single_candle(bar, body_threshold=0.4, wick_threshold=0.5):
         """
         Analyzes a single bar (Series with open, high, low, close) for various patterns:
           - Hammer / Inverted Hammer
@@ -364,7 +364,7 @@ class CandleStrategy(Strategy):
             return "doji"
 
         # Standard Hammer/Inverted Hammer
-        elif body_ratio < body_threshold and lower_wick > wick_threshold:
+        elif body_ratio < body_threshold and lower_wick > wick_threshold and upper_wick < 0.1:
             return "hammer" if c > o else "inverted hammer"
 
         # Standard Shooting Star
@@ -921,7 +921,7 @@ class CandleStrategy(Strategy):
                 upper_wick >= min_wick_pct and
                 high > vwap and
                 (volume_threshold is None or volume >= volume_threshold)
-            ) or True
+            )
 
             if peak_cond:
                 peaks.append(i)
@@ -932,7 +932,7 @@ class CandleStrategy(Strategy):
                 lower_wick >= min_wick_pct and
                 low < vwap and
                 (volume_threshold is None or volume >= volume_threshold)
-            ) or True
+            )
 
             if valley_cond:
                 valleys.append(i)
@@ -981,21 +981,30 @@ class CandleStrategy(Strategy):
                 current_peak = peaks[-1]
                 prev_valley = valleys[-2]
                 current_valley = valleys[-1]
-                resistance, support = self.key_level(idx)
+                # resistance, support = self.key_level(idx)
+
                 self.spot(idx)
-                if bar['open'] > resistance > support:
+                if current_peak < current_valley:
+                    context = self.analyze_pivot(prev_peak, current_valley, structure='valley')
+                    score = context['trading_decision']['score']
+                    if idx - current_peak < 5:
+                        print(f"new found peaks {peaks[-2:]} score {score} @{idx}")
+                    if score > 0.5:
+                        position = 1
+                if current_peak > current_valley:
                     context = self.analyze_pivot(prev_valley, current_peak, structure='peak')
-                    if context['trading_decision']['score'] < -0.5:
+                    score = context['trading_decision']['score']
+                    if idx - current_valley < 5:
+                        print(f"new found valleys {valleys[-2:]} score {score} @{idx}")
+                    if score < -0.5:
                         position = -1
 
-                if bar['open'] < support < resistance:
-                    context = self.analyze_pivot(prev_peak, current_valley, structure='valley')
-                    if context['trading_decision']['score'] > 0.5:
-                        position = 1
+                # if current_peak == current_valley:
+                #     print(f"{current_peak} == {current_valley} @ {idx} \n {peaks}\n {valleys}")
 
             positions.append(position)
         data['position'] = positions
-        self.snapshot([0, 50], ['rsi', 'vwap'])
+        self.snapshot([30, 90], ['rsi', 'vwap'])
 
     def dual_frame(self):
         data = self.data
