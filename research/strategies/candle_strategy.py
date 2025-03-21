@@ -514,11 +514,9 @@ class CandleStrategy(Strategy):
             elif "valley" in structure and macd_label == "bullish":
                 key_point_signal += " + MACD Bullish"
 
-        # 6) Tie Candlestick Patterns to expected_dir
         bullish_patterns = ["hammer", "morning star", "bullish engulfing", "inverted hammer"]  # or others
         bearish_patterns = ["shooting star", "evening star", "bearish engulfing"]
 
-        # 8) Follow-Through
         if expected_dir:
             follow_start = p + 1
             follow_end = min(len(data), p + 1 + confirm_bars)
@@ -893,10 +891,72 @@ class CandleStrategy(Strategy):
         # --- Step D: Clamp to [-1, 1] ---
         final_score = max(min(final_score, 1.0), -1.0)
 
-        return final_score
+        return round(final_score, 2)
+
+    def detect_swings(self, idx=0, left=3, right=3, min_wick_pct=30, volume_threshold=None):
+        """
+        Advanced swing detection with conditions:
+        - Minimum wick percentage
+        - Volume filters
+        - VWAP proximity (optional)
+        """
+        data = self.data[:idx]
+        peaks, valleys = [], []
+        volume_threshold = 0  # self.context['volume'] // 390)
+        for i in range(left, len(data) - right):
+            high = data['high'][i]
+            low = data['low'][i]
+            open_ = data['open'][i]
+            close = data['close'][i]
+            volume = data['volume'][i]
+            vwap = data['vwap'][i]
+
+            # Calculate wick percentages
+            upper_wick = (high - max(open_, close)) / (high - low + 1e-8) * 100
+            lower_wick = (min(open_, close) - low) / (high - low + 1e-8) * 100
+
+            # Peak Condition
+            peak_cond = (
+                high == max(data['high'][i - left:i + right + 1]) and
+                upper_wick >= min_wick_pct and
+                high > vwap and
+                (volume_threshold is None or volume >= volume_threshold)
+            ) or True
+
+            if peak_cond:
+                peaks.append(i)
+
+            # Valley Condition
+            valley_cond = (
+                low == min(data['low'][i - left:i + right + 1]) and
+                lower_wick >= min_wick_pct and
+                low < vwap and
+                (volume_threshold is None or volume >= volume_threshold)
+            ) or True
+
+            if valley_cond:
+                valleys.append(i)
+
+        return peaks, valleys
+
+    def key_level(self, idx=0):
+        bar = self.data.iloc[idx]
+        visible_rows = self.data.iloc[:idx]
+        prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
+        a_p, b_p = np.polyfit(np.arange(len(highs)), highs, 1)
+        resistance = a_p * idx + b_p
+        a_v, b_v = np.polyfit(np.arange(len(lows)), lows, 1)
+        support = a_v * idx + b_v
+        print(f"R {resistance:.3f} = {a_p:.3f} * {idx} + {b_p:.3f}")
+        print(f"P {bar['open']:.3f} - {bar['high']:.3f} - {bar['low']:.3f} - {bar['close']:.3f}")
+        print(f"S {support:.3f} = {a_v:.3f} * {idx} + {b_v:.3f}")
+        return resistance, support
 
     def spot(self, index):
         row = self.data.iloc[index]
+        candle = self.detect_single_candle(row)
+        if candle is not None:
+            print(f"candle @ {index}: {candle}")
         price = row['close']
         print(f"{index:3d} 📈{row['macd'] * 100:4.1f}", end=" ")
         print(f"🚿{row['volume'] // 10000:3d}, 🏹{int(row['tension']):4d}", end=" ")
@@ -905,51 +965,62 @@ class CandleStrategy(Strategy):
 
     def candle(self):
         data = self.data
-        prev_peaks, prev_valleys = set(), set()
         positions = []
-        for index in range(len(data)):
-            self.spot(index)
-            bar = data.iloc[index]
-            candle = self.detect_single_candle(bar)
-            if candle is not None:
-                print(f"candle @ {index}: {candle}")
-
+        for idx in range(len(data)):
+            bar = data.iloc[idx]
             position = 0
-            visible_rows = data.loc[:index]
+            visible_rows = data.iloc[:idx]
             prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
-            peaks, _ = find_peaks(prices, distance=5)
-            valleys, _ = find_peaks(-prices, distance=5)
-            new_peaks = [p for p in peaks if p > 5 > index - p and p not in prev_peaks]
-            new_valleys = [v for v in valleys if v > 5 > index - v and v not in prev_valleys]
+            peaks, _ = find_peaks(highs)
+            valleys, _ = find_peaks(-lows)
+            # peaks, valleys = self.detect_swings(idx)
+            # p_prices, v_prices = prices.iloc[peaks], prices.iloc[valleys]
 
-            limiter = "- " * 36
-            if len(peaks) and len(new_peaks) and index > peaks[-1] + 2:
-                print(f"{limiter} peaks found {new_peaks} @{index}")
-                print(f"{limiter} valleys found {valleys}")
-                for p in new_peaks:
-                    prev_valley = max((valley for valley in valleys if valley < p), default=None)
-                    if prev_valley is not None:
-                        context = self.analyze_pivot(prev_valley, p, structure='peak')
-                        print(f"{context}")
-                        if context['trading_decision']['score'] < -0.5:
-                            position = -1
-                prev_peaks.update(peaks)
+            if len(peaks) > 1 and len(valleys) > 1:
+                prev_peak = peaks[-2]
+                current_peak = peaks[-1]
+                prev_valley = valleys[-2]
+                current_valley = valleys[-1]
+                resistance, support = self.key_level(idx)
+                self.spot(idx)
+                if bar['open'] > resistance > support:
+                    context = self.analyze_pivot(prev_valley, current_peak, structure='peak')
+                    if context['trading_decision']['score'] < -0.5:
+                        position = -1
 
-            if len(valleys) and len(new_valleys) and index > valleys[-1] + 2:
-                print(f"{limiter} valleys found {new_valleys} @{index}")
-                for v in new_valleys:
-                    prev_peak = max((peak for peak in peaks if peak < v), default=None)
-                    if prev_peak is not None:
-                        context = self.analyze_pivot(prev_peak, v, structure='valley')
-                        print(f"{context}")
-                        if context['trading_decision']['score'] > 0.5:
-                            position = 1
-                prev_valleys.update(valleys)
+                if bar['open'] < support < resistance:
+                    context = self.analyze_pivot(prev_peak, current_valley, structure='valley')
+                    if context['trading_decision']['score'] > 0.5:
+                        position = 1
 
             positions.append(position)
         data['position'] = positions
-        self.data = data
-        self.snapshot([0, 100], ['macd', 'strength'])
+        self.snapshot([0, 50], ['rsi', 'vwap'])
+
+    def dual_frame(self):
+        data = self.data
+        data5 = self.data5
+        positions = []
+        for idx in range(len(data)):
+            position = 0
+            visible_rows = data.iloc[:idx]
+            prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows['volume']
+            group = idx // 5
+            if group > 3:
+                visible_group = group - 1
+                a_p, b_p = np.polyfit(np.arange(3), highs[-3:], 1)
+                resistance = a_p * idx + b_p
+                a_v, b_v = np.polyfit(np.arange(3), lows[-3:], 1)
+                support = a_v * idx + b_v
+                visible_groups = data5.iloc[:visible_group]
+                group_closes = visible_groups['close']
+                ga_v, gb_v = np.polyfit(np.arange(3), group_closes[-3:], 1)
+                if ga_v > 0 > a_v:
+                    position = 1
+                if ga_v < 0 < a_p:
+                    position = -1
+            positions.append(position)
+        data['position'] = positions
 
     def signal(self):
         self.candle()

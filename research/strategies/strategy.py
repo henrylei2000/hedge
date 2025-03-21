@@ -13,6 +13,7 @@ class Strategy:
         self.api = api
         self.context = context
         self.data = None
+        self.data5 = None
         self.pnl = 0.00
         self.trades = 0
         self.init_balance = 10000
@@ -89,12 +90,7 @@ class Strategy:
         data['macd'] = data['short_ma'] - data['long_ma']
         data['macd_signal'] = data['macd'].ewm(span=signal_window, adjust=False).mean()
         data['strength'] = data['macd'] - data['macd_signal']
-
-        delta = data['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=signal_window).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=signal_window).mean()
-        rs = gain / loss
-        data['rsi'] = 100 - (100 / (1 + rs))
+        data['rsi'] = self.calculate_rsi(data['close'], signal_window)
 
         price_change_ratio = data['close'].pct_change()
         data['vpt'] = (price_change_ratio * data['volume']).cumsum()
@@ -106,6 +102,8 @@ class Strategy:
         data['rvol'] = data['volume'] / data['volume_sma']
         data['a/d'] = Strategy.ad_line(data['close'], data['high'], data['low'], data['volume'])
 
+        data['typical_price'] = (data['high'] + data['low'] + data['close']) / 3
+        data['tpv'] = data['typical_price'] * data['volume']
         data['tension'] = ((data['close'] - data['vwap']) / data['close'] * 10000).rolling(window=1).mean().fillna(0)
 
         high_low = data['high'] - data['low']
@@ -119,6 +117,20 @@ class Strategy:
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         data['atr'] = true_range.rolling(window=signal_window).mean()
 
+        group_size = 5
+        data['group'] = data.index // group_size
+        grouped = data.groupby('group').agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum',
+            'tpv': 'sum'
+        })
+        grouped['vwap'] = grouped['tpv'] / grouped['volume']
+        grouped['rsi'] = self.calculate_rsi(grouped['close'], period=3)
+        self.data5 = grouped
+
         data['signal'] = 0  # 0: No signal, 1: Buy, -1: Sell
 
     def sanitize(self):
@@ -126,6 +138,15 @@ class Strategy:
 
     def signal(self):
         pass
+
+    @staticmethod
+    def calculate_rsi(series, period=14):
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi.fillna(50)
 
     @staticmethod
     def classify_rsi(rsi_value):
@@ -325,15 +346,15 @@ class Strategy:
             normalized_columns.append(normalized_value)
         data['normalized_' + column] = normalized_columns
 
-    def snapshot(self, interval, indicators=None):
+    def snapshot(self, span, indicators=None):
         if indicators is None:
             indicators = ['tension', 'trending']
-        if interval[1] == -1 or interval[1] > 389:
-            interval[1] = 389
-        if interval[1] - interval[0] < 10:
+        if span[1] == -1 or span[1] > 389:
+            span[1] = 389
+        if span[1] - span[0] < 10:
             return
 
-        rows = self.data.iloc[interval[0]:interval[1]]
+        rows = self.data.iloc[span[0]:span[1]]
         prices, lows, highs = rows['close'], rows['low'], rows['high']
 
         distance = 5
@@ -353,7 +374,7 @@ class Strategy:
                                             gridspec_kw={'height_ratios': [3, 2, 2]})
 
         ax1.plot(prices, label='Price', color='blue')
-        ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {interval}")
+        ax1.set_title(f"{self.symbol}, {self.start.strftime('%Y-%m-%d')} {span}")
         ax1.set_ylabel('Price')
         ax1.legend()
         filtered_low_valley_indices = low_valley_indices[~np.isin(low_valley_indices, valley_indices)]
@@ -361,7 +382,7 @@ class Strategy:
         filtered_high_peak_indices = high_peak_indices[~np.isin(high_peak_indices, peak_indices)]
         ax1.plot(highs.iloc[filtered_high_peak_indices], 'ro', label='high peaks')
         for peak in peak_indices:
-            ax1.annotate(f'{interval[0] + peak}',
+            ax1.annotate(f'{span[0] + peak}',
                          (prices.index[peak], prices.iloc[peak]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, 10),  # Offset text by 10 points above the peak
@@ -369,7 +390,7 @@ class Strategy:
                          fontsize=9, color='red')  # You can adjust the font size if needed
         # ax1.plot(prices.iloc[valley_indices], 'go', label='Valleys')
         for valley in valley_indices:
-            ax1.annotate(f'{interval[0] + valley}',
+            ax1.annotate(f'{span[0] + valley}',
                          (prices.index[valley], prices.iloc[valley]),
                          textcoords="offset points",  # Positioning relative to the peak
                          xytext=(0, -10),  # Offset text by 10 points below the valley
@@ -395,14 +416,13 @@ class Strategy:
             obv_peak_indices = np.array(obv_peaks)
             obv_valleys, _ = find_peaks(-obvs, distance=distance)
             obv_valley_indices = np.array(obv_valleys)
-
             ax.plot(rows[indicator], label=f"{indicator}", color='lightblue')
             if indicator not in ['rsi', 'volume']:
                 ax.axhline(y=0, color='r', linestyle='--')
             # ax2.plot(obvs.iloc[obv_peak_indices], 'ro', label='peaks')
             # Annotate each peak with its value
             for peak in obv_peak_indices:
-                ax.annotate(f'{interval[0] + peak}',
+                ax.annotate(f'{span[0] + peak}',
                             (obvs.index[peak], obvs.iloc[peak]),
                             textcoords="offset points",  # Positioning relative to the peak
                             xytext=(0, 10),  # Offset text by 10 points above the peak
@@ -410,7 +430,7 @@ class Strategy:
                             fontsize=9, color='red')  # You can adjust the font size if needed
             # ax2.plot(obvs.iloc[obv_valley_indices], 'go', label='valleys')
             for valley in obv_valley_indices:
-                ax.annotate(f'{interval[0] + valley}',
+                ax.annotate(f'{span[0] + valley}',
                             (obvs.index[valley], obvs.iloc[valley]),
                             textcoords="offset points",  # Positioning relative to the peak
                             xytext=(0, 10),  # Offset text by 10 points above the peak

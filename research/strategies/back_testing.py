@@ -38,7 +38,7 @@ def test(mode='online'):
             daily_pnl, trades = 0, 0
             for symbol in symbols:
                 current = day.date.strftime('%Y-%m-%d')
-                strategy = MACDStrategy(symbol, f"{current} {day.open}", f"{current} {day.close}", api, context[symbol])
+                strategy = CandleStrategy(symbol, f"{current} {day.open}", f"{current} {day.close}", api, context[symbol])
                 strategy.backtest()
                 if strategy.trades:
                     print(f"{day.date.strftime('%Y-%m-%d')} {symbol} {strategy.pnl:.2f} ({strategy.trades})")

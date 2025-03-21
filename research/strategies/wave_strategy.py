@@ -323,7 +323,7 @@ class WaveStrategy(Strategy):
             position = 0
             price = row['close']
             # print(f"[{index.strftime('%Y-%m-%d %H:%M:%S')} {price:.4f} @ {count}]")
-            visible_rows = data.loc[:index]  # recent rows
+            visible_rows = data.iloc[:index]  # recent rows
             prices = visible_rows['close']
             adlines = visible_rows['a/d']
 
