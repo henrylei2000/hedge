@@ -6,6 +6,17 @@ from scipy.signal import find_peaks
 
 class CandleStrategy(Strategy):
 
+    def volume_context(self):
+        if self.context is not None:
+            volumes = self.context['volume']
+            volume_base = [int(volumes.mean() / 390), int(volumes.max() / 390), int(volumes.min() / 390)]
+        else:
+            volume_base = [12, 15, 10]
+        typical_volume = volume_base[0] // 10000
+        strong_volume = volume_base[1] // 10000
+        moderate_volume = volume_base[2] // 10000
+        return typical_volume, strong_volume, moderate_volume
+
     def comment(self, idx):
         data = self.data
         row = data.iloc[idx]
@@ -16,13 +27,7 @@ class CandleStrategy(Strategy):
         span = int(row['span'] / price * 10000)
         volume = row['volume'] // 10000
 
-        if self.context is not None:
-            volumes = self.context['volume']
-            volume_base = [int(volumes.mean() / 390), int(volumes.max() / 390), int(volumes.min() / 390)]
-        else:
-            volume_base = [12, 15, 10]
-        strong_volume = volume_base[1] // 10000
-        moderate_volume = volume_base[2] // 10000
+        _, strong_volume, moderate_volume = self.volume_context()
 
         tension = row['tension']
         macd = row['macd']
@@ -45,8 +50,10 @@ class CandleStrategy(Strategy):
 
         if abs(body) > 80 and span > 25:
             direction = "bullish" if body > 0 else "bearish"
-            if volume > 20:
+            if volume > strong_volume:
                 comment.append(f"Strong {direction} move with high volume")
+            elif volume > moderate_volume:
+                comment.append(f"Strong {direction} move with moderate volume")
             else:
                 comment.append(f"Strong {direction} move but low volume")
 
@@ -557,37 +564,6 @@ class CandleStrategy(Strategy):
         else:
             return f"no follow-through (expected {expected_direction} got {actual_direction})"
 
-    def cluster(self, start, end):
-        """
-        Summarize volume, price range, and 'combined candle' characteristics over [start, end).
-        """
-        data = self.data
-        segment = data.iloc[start:end]
-
-        volume = segment['volume'].sum()
-        high = segment['high'].max()
-        low = segment['low'].min()
-        open_ = data['open'].iloc[start]
-        close_ = data['close'].iloc[end - 1]
-
-        span = high - low
-        # Body is relative to the entire span in that interval
-        body_ratio = ((close_ - open_) / (span + 1e-6)) * 100
-
-        # Wicks: top/bottom as % of total range
-        upper_wick_ratio = ((high - max(close_, open_)) / (span + 1e-6)) * 100
-        lower_wick_ratio = ((min(close_, open_) - low) / (span + 1e-6)) * 100
-
-        # Return scaled or integer values as needed
-        volume_k = volume // 10000
-        span_pct = (span / max(open_, 1e-6)) * 10000  # e.g. "range" in basis points
-        # Round or convert to int
-        upper_wick = int(round(upper_wick_ratio))
-        body = int(round(body_ratio))
-        lower_wick = int(round(lower_wick_ratio))
-
-        return volume_k, int(span_pct), [upper_wick, body, lower_wick]
-
     def analyze_pivot(self, prev_p, current_p, structure='peak', half_window=2):
         # 1) Macro context from prev_p to current_p
         context = self.pivot_context(prev_p, current_p)
@@ -678,7 +654,7 @@ class CandleStrategy(Strategy):
                         recommendation = "No Follow-Through => Avoid Trade"
                 elif "buyer exhaustion" in micro_kp:
                     if "confirmed down" in micro_ft:
-                        recommendation = "Possible Reversal, Enter Short"
+                        recommendation = "Possible Reversal, Go Short"
                     else:
                         recommendation = "No Follow-Through => Avoid Trade"
                 else:
@@ -952,16 +928,53 @@ class CandleStrategy(Strategy):
         print(f"S {support:.3f} = {a_v:.3f} * {idx} + {b_v:.3f}")
         return resistance, support
 
+    def cluster(self, start, end):
+        data = self.data
+        segment = data.loc[start:end]
+
+        volume = segment['volume'].sum()
+        high = segment['high'].max()
+        low = segment['low'].min()
+        open_ = data['open'].iloc[start]
+        close_ = data['close'].iloc[end]
+
+        span = high - low
+        # Body is relative to the entire span in that interval
+        body_ratio = ((close_ - open_) / (span + 1e-6)) * 100
+
+        # Wicks: top/bottom as % of total range
+        upper_wick_ratio = ((high - max(close_, open_)) / (span + 1e-6)) * 100
+        lower_wick_ratio = ((min(close_, open_) - low) / (span + 1e-6)) * 100
+
+        # Return scaled or integer values as needed
+        volume_k = volume // 10000
+        span_pct = (span / max(close_, 1e-6)) * 10000  # e.g. "range" in basis points
+        # Round or convert to int
+        upper_wick = int(round(upper_wick_ratio))
+        body = int(round(body_ratio))
+        lower_wick = int(round(lower_wick_ratio))
+
+        cluster_candle = f"[{start} - {end}] cluster candle: {int(span_pct)} ({upper_wick}, {body}, {lower_wick}) - vol {volume // 10000}"
+        print(cluster_candle)
+
+        return volume, int(span_pct), [upper_wick, body, lower_wick]
+
     def spot(self, index):
         row = self.data.iloc[index]
         candle = self.detect_single_candle(row)
         if candle is not None:
-            print(f"candle @ {index}: {candle}")
+            print(f"{index}: {candle}")
         price = row['close']
         print(f"{index:3d} 📈{row['macd'] * 100:4.1f}", end=" ")
         print(f"🚿{row['volume'] // 10000:3d}, 🏹{int(row['tension']):4d}", end=" ")
         candle = f"🕯️{int(row['span'] / price * 10000)} ({row['upper'] * 100:.0f} {row['body'] * 100:.0f} {row['lower'] * 100:.0f})"
         print(f"{candle:18} {', '.join(self.comment(index))}")
+        if index > 9:
+            self.cluster(max(0, index - 14), index - 10)
+        if index > 4:
+            self.cluster(max(0, index - 9), index - 5)
+        self.cluster(max(0, index - 4), index)
+
 
     def candle(self):
         data = self.data
@@ -987,15 +1000,15 @@ class CandleStrategy(Strategy):
                 if current_peak < current_valley:
                     context = self.analyze_pivot(prev_peak, current_valley, structure='valley')
                     score = context['trading_decision']['score']
-                    if idx - current_peak < 5:
-                        print(f"new found peaks {peaks[-2:]} score {score} @{idx}")
+                    decision = context['trading_decision']['decision_text']
+                    print(f"[{score}] for {valleys[-1]}@{idx} {decision} - new found valleys {valleys[-2:]}")
                     if score > 0.5:
                         position = 1
                 if current_peak > current_valley:
                     context = self.analyze_pivot(prev_valley, current_peak, structure='peak')
                     score = context['trading_decision']['score']
-                    if idx - current_valley < 5:
-                        print(f"new found valleys {valleys[-2:]} score {score} @{idx}")
+                    decision = context['trading_decision']['decision_text']
+                    print(f"[{score}] for {peaks[-1]}@{idx} {decision}- new found peaks {peaks[-2:]}")
                     if score < -0.5:
                         position = -1
 
@@ -1004,7 +1017,7 @@ class CandleStrategy(Strategy):
 
             positions.append(position)
         data['position'] = positions
-        self.snapshot([30, 90], ['rsi', 'vwap'])
+        self.snapshot([30, 90], ['rvol', 'tension'])
 
     def dual_frame(self):
         data = self.data
@@ -1031,5 +1044,45 @@ class CandleStrategy(Strategy):
             positions.append(position)
         data['position'] = positions
 
+    @staticmethod
+    def closest_stepstones(stepstones, b):
+        smaller = [t for t in stepstones if t[1] < b]
+        larger = [t for t in stepstones if t[1] > b]
+
+        a = max(smaller, key=lambda x: x[1]) if smaller else None
+        c = min(larger, key=lambda x: x[1]) if larger else None
+
+        return a, c
+
+    def stepstone(self):
+        data = self.data
+        data5 = self.data5
+        stepstones = [(0, data.iloc[0]['close'])]
+        positions = [0]
+        typical_volume, strong_volume, moderate_volume = self.volume_context()
+        for idx in range(1, len(data)):
+            position = 0
+            row = data.iloc[idx - 1]
+            price = row['close']
+            print(f"@{idx}")
+            a, c = self.closest_stepstones(stepstones, price)
+            if a is not None and c is not None:
+                print(f"{a} --{((price - a[1]) / price * 1000):.2f}-- ({idx-1}, {price:.3f}) --{((c[1] - price) / price * 1000):.2f}-- {c}")
+            elif a is not None:
+                print(f"{a} --{((price - a[1]) / price * 1000):.2f}-- ({idx - 1}, {price:.3f}) < {c}")
+            elif c is not None:
+                print(f"{a} < ({idx - 1}, {price:.3f}) --{((c[1] - price) / price * 1000):.2f}-- {c}")
+            else:
+                print(f"{a} < ({idx - 1}, {price:.3f}) < {c}")
+            self.spot(idx - 1)
+            print()
+            positions.append(position)
+            if row['rvol'] > 1.25 and row['volume'] // 10000 > typical_volume:
+                stepstones.append((idx, round(row['close'], 3)))
+            elif row['volume'] // 10000 > 3 * strong_volume and idx > 1:
+                stepstones.append((idx - 1, price, 3))
+        data['position'] = positions
+        self.snapshot([0, 70], ['rvol', 'tension'])
+
     def signal(self):
-        self.candle()
+        self.stepstone()
