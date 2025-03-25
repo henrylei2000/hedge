@@ -333,22 +333,18 @@ def detect_divergence(prices, indicators, peaks, valleys):
         # Analyze divergence based on point types (peak → valley or valley → peak)
         if prev_type == 'peak' and curr_type == 'valley':
             # Peak → Valley: Check for bearish divergence
-            if prices.iloc[curr_index] < prices.iloc[prev_index] and indicators.iloc[curr_index] > indicators.iloc[
-                prev_index]:
+            if prices.iloc[curr_index] < prices.iloc[prev_index] and indicators.iloc[curr_index] > indicators.iloc[prev_index]:
                 divergence_points.append((curr_index, 'bearish divergence'))
-            elif prices.iloc[curr_index] > prices.iloc[prev_index] and indicators.iloc[curr_index] < indicators.iloc[
-                prev_index]:
+            elif prices.iloc[curr_index] > prices.iloc[prev_index] and indicators.iloc[curr_index] < indicators.iloc[prev_index]:
                 divergence_points.append((curr_index, 'bullish divergence'))
             else:
                 divergence_points.append((curr_index, 'no divergence'))
 
         elif prev_type == 'valley' and curr_type == 'peak':
             # Valley → Peak: Check for bullish divergence
-            if prices.iloc[curr_index] > prices.iloc[prev_index] and indicators.iloc[curr_index] < indicators.iloc[
-                prev_index]:
+            if prices.iloc[curr_index] > prices.iloc[prev_index] and indicators.iloc[curr_index] < indicators.iloc[prev_index]:
                 divergence_points.append((curr_index, 'bullish divergence'))
-            elif prices.iloc[curr_index] < prices.iloc[prev_index] and indicators.iloc[curr_index] > indicators.iloc[
-                prev_index]:
+            elif prices.iloc[curr_index] < prices.iloc[prev_index] and indicators.iloc[curr_index] > indicators.iloc[prev_index]:
                 divergence_points.append((curr_index, 'bearish divergence'))
             else:
                 divergence_points.append((curr_index, 'no divergence'))
@@ -534,16 +530,174 @@ def generate_entry_signal(prices, volumes, macd):
 
 end_date = pd.to_datetime('2024-12-21', format='%Y-%m-%d')
 start_date = end_date - pd.DateOffset(months=6)
-open = '2024-12-19 09:30'
-close = '2024-12-19 16:00'
-start_date = pd.Timestamp(open, tz='America/New_York').tz_convert('UTC')
-end_date = pd.Timestamp(close, tz='America/New_York').tz_convert('UTC')
-data = yf.download('SQQQ', start=start_date, end=end_date, interval='1m')
-prices = data['Close']
-high = data['High']
-low = data['Low']
+
+config = configparser.ConfigParser()
+config.read('config.ini')
+# Access configuration values
+api_key = config.get('settings', 'API_KEY')
+secret_key = config.get('settings', 'SECRET_KEY')
+# Initialize Alpaca API
+api = tradeapi.REST(api_key, secret_key, api_version='v2')
+ticker = 'SQQQ'
+
+# Retrieve stock price data from Alpaca
+start_time = pd.Timestamp(start_date, tz='America/New_York').tz_convert('UTC')
+end_time = pd.Timestamp(end_date, tz='America/New_York').tz_convert('UTC')
+data = api.get_bars(ticker, '1Min', start=start_time.isoformat(), end=end_time.isoformat()).df
+data.index = data.index.tz_convert('US/Eastern')  # convert timestamp index to Eastern Timezone (EST)
+data = data.between_time('9:30', '15:59')  # filter rows between 9:30am and 4:00pm EST
+data = data.reset_index()  # converts timestamp index into a column
+data.rename(columns={'index': 'timestamp'}, inplace=True)
+
+prices = data['close']
+high = data['high']
+low = data['low']
 close = prices
-volumes = data['Volume']
+volumes = data['volume']
 macd = prices.ewm(span=12).mean() - prices.ewm(span=26).mean()
 
 generate_entry_signal(prices, volumes, macd)
+
+
+class Stepstone:
+
+    @staticmethod
+    def detect_stepstones(data, volume_threshold=200):
+        stepstones = []
+        for i in range(1, len(data) - 1):
+            # Peak detection
+            if data['high'][i] > data['high'][i - 1] and data['high'][i] > data['high'][i + 1]:
+                if data['volume'][i] >= volume_threshold:
+                    stepstones.append({'price': data['high'][i], 'type': 'resistance', 'volume': data['volume'][i]})
+
+            # Valley detection
+            if data['low'][i] < data['low'][i - 1] and data['low'][i] < data['low'][i + 1]:
+                if data['volume'][i] >= volume_threshold:
+                    stepstones.append({'price': data['low'][i], 'type': 'support', 'volume': data['volume'][i]})
+
+        # Sort stepstones by price
+        stepstones = sorted(stepstones, key=lambda x: x['price'])
+
+        return stepstones
+
+    # Fixed Cluster Evaluation
+    @staticmethod
+    def evaluate_fixed_cluster(cluster, volume, bullish_threshold=40, bearish_threshold=-40):
+        upper, body, lower = cluster
+        if body >= bullish_threshold and volume >= 200:
+            return 'bullish'
+        elif body <= bearish_threshold and volume >= 200:
+            return 'bearish'
+        else:
+            return 'neutral'
+
+    # Sliding Cluster Evaluation
+    @staticmethod
+    def evaluate_sliding_clusters(clusters, volumes, trend_bias):
+        pullback_count = 0
+        momentum_count = 0
+        for cluster, vol in zip(clusters, volumes):
+            upper, body, lower = cluster
+            if trend_bias == 'bullish' and body <= -20:
+                pullback_count += 1
+            elif trend_bias == 'bearish' and body >= 20:
+                pullback_count += 1
+            if trend_bias == 'bullish' and body >= 40:
+                momentum_count += 1
+            elif trend_bias == 'bearish' and body <= -40:
+                momentum_count += 1
+        return {'pullback_detected': pullback_count >= 1, 'momentum_detected': momentum_count >= 2}
+
+    # 1-Min Candle Entry Signal
+    @staticmethod
+    def evaluate_1min_candle(candle, volume, trend_bias):
+        upper, body, lower = candle
+        if trend_bias == 'bullish' and body > 10 and lower > 50 and upper < 15 and volume >= 50:
+            return 'bullish_entry'
+        if trend_bias == 'bearish' and body < -50 and upper > 20 and volume >= 50:
+            return 'bearish_entry'
+        return 'none'
+
+    @staticmethod
+    def assign_stepstone_roles(stepstones, current_price):
+        support_stepstones = []
+        resistance_stepstones = []
+
+        for ss in stepstones:
+            if ss['price'] < current_price:
+                support_stepstones.append(ss)
+            elif ss['price'] > current_price:
+                resistance_stepstones.append(ss)
+
+        support_stepstones = sorted(support_stepstones, key=lambda x: -x['price'])  # Descending
+        resistance_stepstones = sorted(resistance_stepstones, key=lambda x: x['price'])  # Ascending
+
+        return support_stepstones, resistance_stepstones
+
+    @staticmethod
+    def scalping_stepstone_signal(
+            current_price,
+            fixed_cluster, fixed_volume,
+            sliding_clusters, sliding_volumes,
+            recent_1min_candle, recent_1min_volume,
+            stepstones, reward_risk_min_ratio=1.5
+    ):
+        # Step 1: Trend Bias (Fixed Cluster)
+        trend = Stepstone.evaluate_fixed_cluster(fixed_cluster, fixed_volume)
+        if trend == 'neutral':
+            return 'stay_out'
+
+        # Step 2: Sliding Cluster Check
+        sliding_eval = Stepstone.evaluate_sliding_clusters(sliding_clusters, sliding_volumes, trend)
+
+        # Step 3: 1-min Candle Check
+        ltf_signal = Stepstone.evaluate_1min_candle(recent_1min_candle, recent_1min_volume, trend)
+
+        # Step 4: Stepstone Role Assignment
+        supports, resistances = Stepstone.assign_stepstone_roles(stepstones, current_price)
+
+        # Nearest stepstones
+        nearest_support = supports[0] if supports else None
+        nearest_resistance = resistances[0] if resistances else None
+
+        if not nearest_support or not nearest_resistance:
+            return 'stay_out'
+
+        # Step 5: Risk/Reward Assessment
+        reward = abs(nearest_resistance['price'] - current_price) if trend == 'bullish' else abs(
+            current_price - nearest_support['price'])
+        risk = abs(current_price - nearest_support['price']) if trend == 'bullish' else abs(
+            nearest_resistance['price'] - current_price)
+
+        if risk == 0 or reward / risk < reward_risk_min_ratio:
+            return 'risk_reward_unfavorable'
+
+        # Step 6: Sensitive Zone Detection
+        buffer_pct = 0.003  # 0.3% buffer
+        in_sensitive_zone = False
+
+        if trend == 'bullish' and abs(current_price - nearest_resistance['price']) / nearest_resistance['price'] <= buffer_pct:
+            in_sensitive_zone = True
+        elif trend == 'bearish' and abs(current_price - nearest_support['price']) / nearest_support['price'] <= buffer_pct:
+            in_sensitive_zone = True
+
+        # Step 7: Final Entry Decision
+        if ltf_signal.startswith(trend) and sliding_eval['pullback_detected'] and in_sensitive_zone:
+            return {
+                'action': f'{trend}_entry_confirmed',
+                'stop_loss': nearest_support['price'] if trend == 'bullish' else nearest_resistance['price'],
+                'target': nearest_resistance['price'] if trend == 'bullish' else nearest_support['price'],
+                'reward': reward,
+                'risk': risk
+            }
+
+        elif sliding_eval['momentum_detected'] and in_sensitive_zone:
+            return {
+                'action': f'{trend}_momentum_entry',
+                'stop_loss': nearest_support['price'] if trend == 'bullish' else nearest_resistance['price'],
+                'target': nearest_resistance['price'] if trend == 'bullish' else nearest_support['price'],
+                'reward': reward,
+                'risk': risk
+            }
+
+        return 'wait'

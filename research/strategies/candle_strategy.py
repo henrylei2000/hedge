@@ -975,7 +975,6 @@ class CandleStrategy(Strategy):
             self.cluster(max(0, index - 9), index - 5)
         self.cluster(max(0, index - 4), index)
 
-
     def candle(self):
         data = self.data
         positions = []
