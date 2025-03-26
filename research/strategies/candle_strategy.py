@@ -965,10 +965,10 @@ class CandleStrategy(Strategy):
         if candle is not None:
             print(f"{index}: {candle}")
         price = row['close']
-        print(f"{index:3d} 📈{row['macd'] * 100:4.1f}", end=" ")
-        print(f"🚿{row['volume'] // 10000:3d}, 🏹{int(row['tension']):4d}", end=" ")
-        candle = f"🕯️{int(row['span'] / price * 10000)} ({row['upper'] * 100:.0f} {row['body'] * 100:.0f} {row['lower'] * 100:.0f})"
-        print(f"{candle:18} {', '.join(self.comment(index))}")
+        print(f"{index} Mom.{row['macd'] * 100:.1f}/{row['strength'] * 100:.1f}", end=" ")
+        print(f"vol.{row['volume'] // 10000}, ∆vwap {int(row['tension'])},", end=" ")
+        candle = f"️candle {int(row['span'] / price * 10000)} ({row['upper'] * 100:.0f} {row['body'] * 100:.0f} {row['lower'] * 100:.0f})"
+        print(f"{candle} {', '.join(self.comment(index))}")
         if index > 9:
             self.cluster(max(0, index - 14), index - 10)
         if index > 4:
@@ -1010,13 +1010,9 @@ class CandleStrategy(Strategy):
                     print(f"[{score}] for {peaks[-1]}@{idx} {decision}- new found peaks {peaks[-2:]}")
                     if score < -0.5:
                         position = -1
-
-                # if current_peak == current_valley:
-                #     print(f"{current_peak} == {current_valley} @ {idx} \n {peaks}\n {valleys}")
-
             positions.append(position)
         data['position'] = positions
-        self.snapshot([30, 90], ['rvol', 'tension'])
+        self.snapshot([0, 30], ['rvol', 'tension'])
 
     def dual_frame(self):
         data = self.data
@@ -1053,35 +1049,37 @@ class CandleStrategy(Strategy):
 
         return a, c
 
+    def detect_stepstones(self, idx, volume_threshold=200):
+        data = self.data
+        stepstones = [(0, data.iloc[0]['close'])]
+        typical_volume, strong_volume, moderate_volume = self.volume_context()
+        visible_rows = data.iloc[:idx]
+        prices, highs, lows, volumes = visible_rows['close'], visible_rows['high'], visible_rows['low'], visible_rows[
+            'volume']
+        peaks, _ = find_peaks(highs)
+        valleys, _ = find_peaks(-lows)
+
+        for i in range(idx):
+            if i in peaks or i in valleys:
+                row = data.iloc[i]
+                if row['rvol'] > 1.25 and row['volume'] // 10000 > typical_volume:
+                    stepstones.append((i, round(row['close'], 3)))
+                elif row['volume'] // 10000 > 3 * strong_volume and i > 1:
+                    stepstones.append((i, round(row['close'], 3)))
+
+        return stepstones
+
     def stepstone(self):
         data = self.data
-        data5 = self.data5
-        stepstones = [(0, data.iloc[0]['close'])]
         positions = [0]
-        typical_volume, strong_volume, moderate_volume = self.volume_context()
         for idx in range(1, len(data)):
             position = 0
-            row = data.iloc[idx - 1]
-            price = row['close']
             print(f"@{idx}")
-            a, c = self.closest_stepstones(stepstones, price)
-            if a is not None and c is not None:
-                print(f"{a} --{((price - a[1]) / price * 1000):.2f}-- ({idx-1}, {price:.3f}) --{((c[1] - price) / price * 1000):.2f}-- {c}")
-            elif a is not None:
-                print(f"{a} --{((price - a[1]) / price * 1000):.2f}-- ({idx - 1}, {price:.3f}) < {c}")
-            elif c is not None:
-                print(f"{a} < ({idx - 1}, {price:.3f}) --{((c[1] - price) / price * 1000):.2f}-- {c}")
-            else:
-                print(f"{a} < ({idx - 1}, {price:.3f}) < {c}")
             self.spot(idx - 1)
             print()
             positions.append(position)
-            if row['rvol'] > 1.25 and row['volume'] // 10000 > typical_volume:
-                stepstones.append((idx, round(row['close'], 3)))
-            elif row['volume'] // 10000 > 3 * strong_volume and idx > 1:
-                stepstones.append((idx - 1, price, 3))
         data['position'] = positions
-        self.snapshot([0, 70], ['rvol', 'tension'])
+        self.snapshot([0, 51], ['a/d', 'macd'])
 
     def signal(self):
         self.stepstone()

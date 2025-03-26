@@ -422,6 +422,7 @@ def generate_signals(prices, macd, ad_line, obv):
 
     return signals
 
+
 def test_flow():
     # Calculate MACD, A/D Line, and OBV
     macd, _ = calculate_macd(prices)
@@ -516,7 +517,6 @@ def generate_entry_signal(prices, volumes, macd):
         ax1.plot(prices.index[b], prices.iloc[b], 'g^', markersize=12, alpha=.5)
     ax1.set_ylabel('Price')
     ax1.legend()
-
 
     ax2.plot(macd, label='MACD', color='purple')
     ax2.set_title('MACD')
